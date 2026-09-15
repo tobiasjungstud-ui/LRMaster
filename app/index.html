@@ -1,0 +1,143 @@
+<title>LRMaster</title>
+<meta name="description" content="Listening & Reading Creator: CEFR-kontrollierte Listenings, Readings und Worksheets aus dem Vokabular eines Lehrmittels, erstellt mit Claude.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Source+Sans+3:ital,wght@0,400;0,600;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="styles.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+
+<header class="topbar">
+  <div class="brand">
+    <span class="brand-mark" aria-hidden="true"></span>
+    <div><div class="brand-name">LRMaster</div><div class="brand-sub">Listening &amp; Reading Creator</div></div>
+  </div>
+  <nav class="nav" aria-label="Hauptnavigation">
+    <button type="button" id="nav-home" data-nav="home">Start</button>
+    <button type="button" id="nav-listening" data-nav="listening">Listening erstellen</button>
+    <button type="button" id="nav-reading" data-nav="reading">Reading erstellen</button>
+    <button type="button" id="nav-vocab" data-nav="vocab">Vocabulary / Lehrmittel verwalten</button>
+    <button type="button" id="nav-materials" data-nav="materials">Materialien</button>
+    <button type="button" id="nav-check" data-nav="check">Konzept-Check</button>
+  </nav>
+  <div class="mode" id="mode-toggle" role="group" aria-label="Modus" hidden>
+    <button type="button" data-mode="simple">Simple Mode</button>
+    <button type="button" data-mode="advanced">Advanced Mode</button>
+  </div>
+</header>
+
+<main class="page">
+
+  <!-- Start -->
+  <section class="view" id="view-home">
+    <div class="hero">
+      <h1>Hochwertige Listenings und Readings aus dem Vokabular deines Lehrmittels.</h1>
+      <p class="lead">Unit wählen, Niveau und Aufgaben einstellen, generieren. Textschwierigkeit und Frageschwierigkeit werden unabhängig gesteuert; jedes Material durchläuft vor der Ausgabe eine automatische Qualitätskontrolle.</p>
+      <p class="muted" id="home-stats"></p>
+    </div>
+    <div class="choice-grid">
+      <button type="button" class="choice listening" data-nav="listening">
+        <span class="choice-kicker">Audio</span>
+        <span class="choice-title">Listening erstellen</span>
+        <span class="choice-desc">Monolog, Dialog oder Gespräch mit Presets, Sprechanteilen, Turn-Länge, Emotion-Tags und Natürlichkeit. Skript für TTS plus Worksheet.</span>
+      </button>
+      <button type="button" class="choice reading" data-nav="reading">
+        <span class="choice-kicker">Text</span>
+        <span class="choice-title">Reading erstellen</span>
+        <span class="choice-desc">Story, Article, Blog Post, E-Mail, Review und mehr – mit Wortzahl oder A4-Länge, Explizitheit und Worksheet.</span>
+      </button>
+      <button type="button" class="choice vocab" data-nav="vocab">
+        <span class="choice-kicker">Datenbasis</span>
+        <span class="choice-title">Vocabulary / Lehrmittel verwalten</span>
+        <span class="choice-desc">Lehrmittel anlegen, Vocabulary-Dateien importieren, aktualisieren oder ersetzen. Units mit Thema und Wortliste.</span>
+      </button>
+    </div>
+  </section>
+
+  <!-- Creator -->
+  <section class="view" id="view-creator" hidden>
+    <div class="creator-head">
+      <h1 id="creator-kind">Listening erstellen</h1>
+      <div class="creator-actions">
+        <button type="button" class="btn secondary" id="btn-load-example">Beispielkonfiguration laden</button>
+        <button type="button" class="btn ghost" id="btn-reset">Zurücksetzen</button>
+      </div>
+    </div>
+    <p class="help">Simple Mode zeigt nur Unit, Topic, Level, Length, Format, Question Difficulty und Number of Questions; alle anderen Werte werden sinnvoll automatisch gewählt. Advanced Mode öffnet sämtliche Einstellungen.</p>
+    <form id="creator-form" class="creator-form" autocomplete="off" onsubmit="return false"></form>
+
+    <section id="output" class="output" hidden>
+      <div class="output-head">
+        <h2 id="out-title"></h2>
+        <div class="tabs" role="tablist">
+          <button type="button" class="tab active" data-tab="student">Student Version</button>
+          <button type="button" class="tab" data-tab="teacher">Teacher Version</button>
+          <button type="button" class="tab" data-tab="quality">Quality Check</button>
+          <button type="button" class="tab" data-tab="prompts">Prompts</button>
+          <button type="button" class="tab" data-tab="json">JSON</button>
+        </div>
+        <div class="output-actions">
+          <button type="button" class="btn tiny" id="btn-print">Drucken</button>
+          <button type="button" class="btn tiny" data-download="student">Student .html</button>
+          <button type="button" class="btn tiny" data-download="teacher">Teacher .html</button>
+          <button type="button" class="btn tiny" data-download="md">Markdown</button>
+          <button type="button" class="btn tiny" data-download="json">JSON</button>
+        </div>
+      </div>
+      <div class="pane" data-pane="student" id="out-student"></div>
+      <div class="pane" data-pane="teacher" id="out-teacher" hidden></div>
+      <div class="pane" data-pane="quality" id="out-quality" hidden></div>
+      <div class="pane" data-pane="prompts" id="out-prompts" hidden></div>
+      <pre class="pane json" data-pane="json" id="out-json" hidden></pre>
+    </section>
+  </section>
+
+  <!-- Vocabulary manager -->
+  <section class="view" id="view-vocab" hidden>
+    <div class="creator-head"><h1>Vocabulary / Lehrmittel verwalten</h1><div class="creator-actions"><button type="button" class="btn primary" id="btn-new-textbook">Lehrmittel anlegen</button></div></div>
+    <div class="two-col">
+      <div id="textbook-list" class="textbook-list"></div>
+      <div class="import card">
+        <h2>Vocabulary importieren</h2>
+        <div class="field"><label for="import-textbook">Lehrmittel</label><select id="import-textbook"></select></div>
+        <div class="field"><label for="import-mode">Modus</label><select id="import-mode"><option value="add">Hinzufügen (neue Units/Wörter ergänzen)</option><option value="update">Aktualisieren (bestehende Units zusammenführen)</option><option value="replace">Ersetzen (Wortlisten gleichnamiger Units überschreiben)</option></select></div>
+        <div class="field"><label for="import-unit">Unit-Name, falls die Datei keine Unit-Angabe enthält</label><input type="text" id="import-unit" placeholder="z. B. Unit 3"></div>
+        <div class="field"><label for="import-file">Datei (CSV, TSV, TXT, XLSX)</label><input type="file" id="import-file" accept=".csv,.tsv,.txt,.xlsx,.xls,.ods,text/plain,text/csv"></div>
+        <div class="field"><label for="import-text">… oder Liste einfügen</label><textarea id="import-text" rows="8" placeholder="Unit 3: Movies&#10;box office - Kinokasse&#10;cast - Besetzung"></textarea></div>
+        <div class="row"><button type="button" class="btn secondary" id="btn-parse-text">Liste erkennen</button><button type="button" class="btn secondary" id="btn-parse-claude" title="Unstrukturierte Listen (z. B. aus einem PDF kopiert) mit Claude strukturieren">Mit Claude strukturieren</button></div>
+        <div id="import-preview" class="import-preview"></div>
+        <button type="button" class="btn primary" id="btn-import-confirm" disabled>Import übernehmen</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- Materials -->
+  <section class="view" id="view-materials" hidden>
+    <div class="creator-head"><h1>Gespeicherte Materialien</h1></div>
+    <div id="materials-list"></div>
+  </section>
+
+  <!-- Concept check -->
+  <section class="view" id="view-check" hidden>
+    <div class="creator-head"><h1>Konzept-Check</h1><div class="creator-actions"><button type="button" class="btn secondary" id="btn-run-check">Erneut prüfen</button></div></div>
+    <p class="help">Jede Anforderung aus dem Konzeptdokument ist im Manifest (<code>manifest.js</code>) hinterlegt und wird hier gegen den laufenden Code geprüft: Existiert das Steuerelement? Verändert die Einstellung nachweislich den Prompt an Claude? Ist die Qualitätsregel implementiert? Enthält die gerenderte Ausgabe das geforderte Element? Derselbe Lauf ist als <code>npm test</code> Teil der CI.</p>
+    <p id="check-summary" class="check-summary"></p>
+    <div id="check-results"></div>
+  </section>
+</main>
+
+<div id="toast" class="toast" hidden></div>
+
+<script id="print-css" type="text/plain">
+body{font-family:Georgia,serif;margin:2cm;color:#111;line-height:1.45}.sheet h1{font-size:1.6rem;margin:0 0 .25rem}.meta{color:#555;font-size:.9rem}.instructions{font-style:italic}.block{margin:1.4rem 0}.block h2{font-size:1.1rem;border-bottom:1px solid #bbb;padding-bottom:.2rem}.qlist>li{margin:.9rem 0}.q-format{font-size:.75rem;color:#666;text-transform:uppercase;letter-spacing:.04em}.options{margin:.3rem 0 .3rem 1.2rem}.answer-line{color:#999}.table-wrap{overflow-x:auto}.matching td,.completion td,.completion th,.keytable td,.keytable th{border:1px solid #bbb;padding:.25rem .5rem;vertical-align:top}table{border-collapse:collapse;width:100%;font-size:.92rem}.line-no{display:inline-block;min-width:2rem;color:#999;font-size:.8rem}.speaker{font-weight:700}.tag{font-family:monospace;color:#7a4b00}mark.vocab{background:#fde68a}.rationale{font-size:.85rem;color:#444}.badge{font-size:.7rem;border:1px solid #999;border-radius:4px;padding:0 .3rem;vertical-align:middle}.stats,.muted{color:#666;font-size:.85rem}.qc-list{list-style:none;padding:0}.qc-status{font-family:monospace;text-transform:uppercase;font-size:.75rem}.teacher-note{font-size:.85rem;color:#444}.pretask{margin:.6rem 0}
+</script>
+
+<script src="core.js"></script>
+<script src="prompts.js"></script>
+<script src="quality.js"></script>
+<script src="render.js"></script>
+<script src="vocab.js"></script>
+<script src="controls.js"></script>
+<script src="fixture.js"></script>
+<script src="manifest.js"></script>
+<script src="checks.js"></script>
+<script src="ui.js"></script>

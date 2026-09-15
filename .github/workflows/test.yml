@@ -1,0 +1,16 @@
+name: Concept coverage & unit tests
+on:
+  push:
+  pull_request:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm test
+      - run: npm run coverage
+      - name: Coverage report must be up to date
+        run: git diff --exit-code -- CONCEPT_COVERAGE.md || (echo "Run 'npm run coverage' and commit CONCEPT_COVERAGE.md" && exit 1)
