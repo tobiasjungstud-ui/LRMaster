@@ -126,6 +126,71 @@ test('every prompt stays well under the 64 KiB limit with a large unit', () => {
   for (const k of Object.keys(p)) assert.ok(Buffer.byteLength(p[k], 'utf8') < 40000, k + ' ' + Buffer.byteLength(p[k], 'utf8'));
 });
 
+/* ---------------- vocabulary lists ---------------- */
+console.log('\nVocabulary lists');
+
+test('a vocabulary list can be built from scratch in a new textbook', () => {
+  const parsed = vocab.parseText('box office\tKinokasse\ncast\tBesetzung\nplot\tHandlung');
+  const fresh = { id: vocab.makeId('tb'), name: 'English Plus 4', units: [] };
+  const built = vocab.mergeUnits(fresh, parsed.units.map(u => ({ name: 'Unit 8', topic: 'Movies', words: u.words })), 'add');
+  assert.equal(built.units.length, 1);
+  assert.equal(built.units[0].name, 'Unit 8');
+  assert.equal(built.units[0].topic, 'Movies');
+  assert.equal(built.units[0].words.length, 3);
+  assert.ok(built.units[0].id, 'unit id assigned');
+});
+
+test('everything can go into one single new unit', () => {
+  const parsed = vocab.parseText('Unit 1: A\nalpha - eins\nUnit 2: B\nbeta - zwei\ngamma - drei');
+  assert.equal(parsed.units.length, 2);
+  const flat = vocab.flattenUnits(parsed.units, 'Unit 12', 'Everything');
+  assert.equal(flat.length, 1);
+  assert.equal(flat[0].name, 'Unit 12');
+  assert.equal(flat[0].topic, 'Everything');
+  assert.deepEqual(flat[0].words.map(w => w.word), ['alpha', 'beta', 'gamma']);
+});
+
+test('regrouping by detected units never loses or reorders a word', () => {
+  const words = Array.from({ length: 20 }, (_, i) => ({ word: 'w' + (i + 1), translation: '' }));
+  const src = [{ name: 'Unit 1', topic: '', words }];
+  const cases = [
+    [{ name: 'A', topic: 't', from: 1, to: 5 }, { name: 'B', topic: 'u', from: 6, to: 20 }],
+    [{ name: 'A', from: 1, to: 4 }, { name: 'B', from: 9, to: 12 }],
+    [{ name: 'A', from: 3, to: 30 }],
+    [{ name: 'A', from: 10, to: 2 }],
+    [{ from: 1, to: 20 }],
+    [],
+  ];
+  for (const groups of cases) {
+    const r = vocab.applyGroups(src, groups);
+    assert.deepEqual(r.units.flatMap(u => u.words.map(w => w.word)), words.map(w => w.word), JSON.stringify(groups));
+    assert.ok(r.units.every(u => u.name), 'every unit is named: ' + JSON.stringify(groups));
+  }
+});
+
+test('unit detection prompt carries the list and asks for complete coverage', () => {
+  const words = [{ word: 'cast', translation: 'Besetzung' }, { word: 'sequel', translation: 'Fortsetzung' }];
+  const p = prompts.buildUnitDetectPrompt(words, 'aus Unit 8');
+  assert.ok(p.includes('1. cast — Besetzung'));
+  assert.ok(p.includes('aus Unit 8'));
+  assert.ok(/without gaps or overlaps/.test(p));
+  const many = prompts.buildUnitDetectPrompt(Array.from({ length: 400 }, (_, i) => ({ word: 'w' + i, translation: 'lange Übersetzung ' + i })), '');
+  assert.ok(Buffer.byteLength(many, 'utf8') < 40000, 'prompt for a long list stays small: ' + Buffer.byteLength(many, 'utf8'));
+  assert.ok(!many.includes('lange Übersetzung'), 'translations are dropped for long lists');
+});
+
+test('the interface uses its own dialogs, never window.prompt/confirm/alert', () => {
+  assert.ok(!/(^|[^\w.$])(window\.)?(prompt|confirm|alert)\s*\(/m.test(uiSource), 'native dialog call found in ui.js');
+  assert.ok(/function askText/.test(uiSource) && /function askConfirm/.test(uiSource));
+  assert.ok(html.includes('id="dlg"') && html.includes('id="dlg-ok"'));
+});
+
+test('the import form offers a brand-new textbook as target', () => {
+  assert.ok(html.includes('value="__new__"'), 'no new-textbook option');
+  assert.ok(html.includes('id="import-new-textbook"'), 'no name field for the new textbook');
+  assert.ok(html.includes('id="import-unit-mode"'), 'no unit mode select');
+});
+
 /* ---------------- Word export ---------------- */
 console.log('\nWord export');
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'lrmaster-docx-'));
@@ -248,7 +313,7 @@ const hasControl = (selector) => {
 };
 const pipelineSource = uiSource.slice(uiSource.indexOf('async function generate('), uiSource.indexOf('/* end generate */'));
 assert.ok(pipelineSource.length > 500, 'generate() pipeline not found in ui.js');
-const cov = checks.run({ hasControl, pipelineSource, pipeline: true });
+const cov = checks.run({ hasControl, pipelineSource, uiSource, pipeline: true });
 for (const r of cov.results) {
   if (r.status === 'pass') passes++; else failures++;
   console.log(`  ${r.status === 'pass' ? '✓' : '✗'} ${r.id} — ${r.title}${r.detail ? '\n      ' + r.detail : ''}`);

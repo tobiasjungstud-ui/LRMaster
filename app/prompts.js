@@ -326,6 +326,36 @@
     ].filter(Boolean).join('\n\n');
   }
 
+  /**
+   * Split an unstructured vocabulary list into units. Claude sees the list in
+   * its original order and returns groups covering it completely, each with a
+   * unit name and a topic — the names and topics are Claude's, not the app's.
+   */
+  function buildUnitDetectPrompt(entries, hint) {
+    const withTranslation = entries.length <= 250;
+    const list = entries.map((w, i) => `${i + 1}. ${w.word}${withTranslation && w.translation ? ' — ' + w.translation : ''}`).join('\n');
+    return [
+      'You are a language teacher sorting a textbook vocabulary list into units.',
+      hint ? 'Note from the teacher: ' + hint : '',
+      `The list has ${entries.length} entries, in their original order:\n${list}`,
+      'Decide whether the list contains several thematic blocks (units or lessons) or is one single list. Group only where the vocabulary really changes theme; a list about one theme stays a single group. Aim for groups of at least 6 entries.',
+      'For every group give:\n- "name": the unit name a teacher would write, continuing any numbering that is visible in the list; if there is none, number the groups from 1 ("Unit 1", "Unit 2", …).\n- "topic": 2–5 words naming what the vocabulary of that group is about, in English.\n- "from" and "to": the 1-based line numbers of the first and last entry of the group, inclusive.',
+      'The groups must be in order and cover every line from 1 to ' + entries.length + ' without gaps or overlaps.',
+      'Reply with only a JSON object: {"units": [{"name": "…", "topic": "…", "from": 1, "to": 12}]}',
+    ].filter(Boolean).join('\n\n');
+  }
+
+  /** Derive a topic for units that have none, from the words they contain. */
+  function buildUnitTopicPrompt(units) {
+    const list = units.map((u, i) => `${i + 1}. "${u.name}": ${u.words.slice(0, 40).map(w => w.word).join(', ')}`).join('\n');
+    return [
+      'You are a language teacher describing the units of a textbook.',
+      'Each line is one unit with its vocabulary:\n' + list,
+      'For every unit give a topic of 2–5 words in English that names what its vocabulary is about (for example "Friends and communication" or "Films and cinema"). Keep the unit name exactly as given.',
+      'Reply with only a JSON array: [{"unit": "unit name as given", "topic": "…"}]',
+    ].join('\n\n');
+  }
+
   /* ------------------------------------------------------------------ */
   /* All prompts at once — used by the concept checks                     */
   /* ------------------------------------------------------------------ */
@@ -347,6 +377,7 @@
   return {
     scale, SKILL_DEFINITIONS, FORMAT_SHAPES, contentAsText, documentBlock, metaSpec, contentSchema,
     buildTopicPrompt, buildContentPrompt, buildQuestionPrompt, buildReviewPrompt,
-    buildContentRevisionPrompt, buildQuestionRevisionPrompt, buildVocabParsePrompt, buildAllPrompts,
+    buildContentRevisionPrompt, buildQuestionRevisionPrompt, buildVocabParsePrompt,
+    buildUnitDetectPrompt, buildUnitTopicPrompt, buildAllPrompts,
   };
 });

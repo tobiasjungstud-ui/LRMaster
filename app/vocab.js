@@ -157,6 +157,53 @@
     return parseRows(table, opts);
   }
 
+  /** All words of the parsed units, in order. */
+  function allWords(units) {
+    const out = [];
+    for (const u of units || []) for (const w of u.words) out.push(w);
+    return out;
+  }
+
+  /** Put every word into one unit (used for "everything in a single new unit"). */
+  function flattenUnits(units, name, topic) {
+    return [{ name: (name || 'Unit 1').trim(), topic: (topic || '').trim(), words: allWords(units) }];
+  }
+
+  /**
+   * Regroup the words by the ranges Claude returned. Ranges are sorted, clamped
+   * and closed so that no word is lost: a gap extends the previous group, and
+   * anything after the last group is appended to it.
+   */
+  function applyGroups(units, groups) {
+    const words = allWords(units);
+    if (!words.length) return { units: [], warnings: ['Keine Einträge zum Gruppieren.'] };
+    const warnings = [];
+    const ranges = (groups || [])
+      .map((g, i) => ({
+        name: String(g.name || '').trim(),
+        topic: String(g.topic || '').trim(),
+        from: Math.max(1, Math.round(Number(g.from) || 0) || 1),
+        to: Math.round(Number(g.to) || 0) || words.length,
+        i,
+      }))
+      .filter(g => g.to >= g.from && g.from <= words.length)
+      .sort((a, b) => a.from - b.from || a.i - b.i);
+    if (!ranges.length) return { units: flattenUnits(units, (units[0] && units[0].name) || 'Unit 1'), warnings: ['Keine Gruppen erkannt.'] };
+    const out = [];
+    let cursor = 1;
+    ranges.forEach((g, idx) => {
+      const from = cursor;
+      const next = ranges[idx + 1];
+      const to = next ? Math.max(from, Math.min(words.length, next.from - 1)) : words.length;
+      if (g.from > from) warnings.push(`Lücke vor „${g.name}“ aufgefüllt.`);
+      const slice = words.slice(from - 1, to);
+      if (!slice.length) return;
+      out.push({ name: g.name || 'Unit ' + (out.length + 1), topic: g.topic, words: slice });
+      cursor = to + 1;
+    });
+    return { units: out, warnings };
+  }
+
   function makeId(prefix) {
     return prefix + '_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
   }
@@ -186,5 +233,5 @@
     return m ? Number(m[1]) : 9999;
   }
 
-  return { parseText, parseRows, fromParsedRows, mergeUnits, makeId, detectDelimiter, splitRow, UNIT_HEADING };
+  return { parseText, parseRows, fromParsedRows, mergeUnits, makeId, detectDelimiter, splitRow, allWords, flattenUnits, applyGroups, UNIT_HEADING };
 });

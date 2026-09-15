@@ -2,7 +2,7 @@
 
 Erzeugt von `npm run coverage`. Jede Zeile ist eine Anforderung aus `docs/Konzept_Listening_Reading_Creator.md`, gebunden an die Stelle im Code, die sie umsetzt, und das Ergebnis der automatischen Prüfung (`npm test`).
 
-**Ergebnis: 195 von 195 Anforderungen bestanden.**
+**Ergebnis: 202 von 202 Anforderungen bestanden.**
 
 Prüfarten: **setting** – Steuerelement vorhanden und Änderung des Werts verändert nachweislich den Prompt an Claude · **function** – Verhalten wird mit echten Eingaben ausgeführt und verglichen · **rule** – Qualitätsregel existiert als Messung oder Claude-Review-Kriterium · **render** – Ausgabe wird auf einer Fixture gerendert und inhaltlich geprüft · **ui** – Navigations-/Strukturelement existiert.
 
@@ -14,7 +14,7 @@ Prüfarten: **setting** – Steuerelement vorhanden und Änderung des Werts ver�
 | ✅ | `S01.unit_selection` | Beim Erstellen wird eine Unit gewählt; Thema, Sprache und Zielvokabeln orientieren sich daran | function | Funktion (siehe Check im Manifest) |
 | ✅ | `S01.independent_difficulty` | Textschwierigkeit und Frageschwierigkeit unabhängig steuerbar | function | Funktion (siehe Check im Manifest) |
 
-## §2 Hauptnavigation (7/7)
+## §2 Hauptnavigation (14/14)
 
 | Status | ID | Anforderung | Art | Umsetzung |
 |---|---|---|---|---|
@@ -24,6 +24,13 @@ Prüfarten: **setting** – Steuerelement vorhanden und Änderung des Werts ver�
 | ✅ | `S02.textbook_create` | Lehrmittel anlegen | ui | Element `#btn-new-textbook` |
 | ✅ | `S02.vocab_import` | Vocabulary-Dateien importieren (CSV/TSV/XLSX/Text) | function | Funktion (siehe Check im Manifest) |
 | ✅ | `S02.vocab_update_replace` | Vocabulary aktualisieren oder ersetzen | function | Funktion (siehe Check im Manifest) |
+| ✅ | `S02.new_list_button` | Neues Lehrmittel (neue Vokabelliste) anlegen – ohne vorhandene Liste | ui | Element `#btn-new-textbook` |
+| ✅ | `S02.new_list_in_import` | Import kann direkt in ein NEU anzulegendes Lehrmittel gehen | function | Funktion (siehe Check im Manifest) |
+| ✅ | `S02.unit_modes` | Unit-Zuordnung wählbar: aus der Liste erkennen / alles in eine neue Unit / von Claude erkennen lassen | function | Funktion (siehe Check im Manifest) |
+| ✅ | `S02.claude_detects_units` | Fehlen Unit-Titel, erkennt Claude die Units aus dem Inhalt der Liste | function | Funktion (siehe Check im Manifest) |
+| ✅ | `S02.claude_no_word_lost` | Unit-Erkennung verliert keine Vokabel (Lücken und Überlappungen werden geschlossen) | function | Funktion (siehe Check im Manifest) |
+| ✅ | `S02.claude_derives_topics` | Themen der Units werden von Claude aus dem Wortschatz abgeleitet | function | Funktion (siehe Check im Manifest) |
+| ✅ | `S02.dialogs_in_page` | Anlegen, Umbenennen und Löschen laufen über seiteneigene Dialoge (im Artifact-Frame sind window.prompt/confirm nicht verlässlich) | function | Funktion (siehe Check im Manifest) |
 | ✅ | `S02.unit_listing` | Lehrmittel zeigt Units (Unit 1, Unit 2, …) | ui | Element `#textbook-list` |
 
 ## §3 Grundaufbau des Creators (9/9)

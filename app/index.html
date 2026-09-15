@@ -97,16 +97,45 @@
   <section class="view" id="view-vocab" hidden>
     <div class="creator-head"><h1>Vocabulary / Lehrmittel verwalten</h1><div class="creator-actions"><button type="button" class="btn primary" id="btn-new-textbook">Lehrmittel anlegen</button></div></div>
     <div class="two-col">
-      <div id="textbook-list" class="textbook-list"></div>
+      <div>
+        <div id="textbook-empty" class="empty-hint" hidden></div>
+        <div id="textbook-list" class="textbook-list"></div>
+      </div>
       <div class="import card">
         <h2>Vocabulary importieren</h2>
-        <div class="field"><label for="import-textbook">Lehrmittel</label><select id="import-textbook"></select></div>
-        <div class="field"><label for="import-mode">Modus</label><select id="import-mode"><option value="add">Hinzufügen (neue Units/Wörter ergänzen)</option><option value="update">Aktualisieren (bestehende Units zusammenführen)</option><option value="replace">Ersetzen (Wortlisten gleichnamiger Units überschreiben)</option></select></div>
-        <div class="field"><label for="import-unit">Unit-Name, falls die Datei keine Unit-Angabe enthält</label><input type="text" id="import-unit" placeholder="z. B. Unit 3"></div>
+
+        <div class="field">
+          <label for="import-textbook">Ziel-Lehrmittel</label>
+          <select id="import-textbook"><option value="__new__">➕ Neues Lehrmittel anlegen …</option></select>
+        </div>
+        <div class="field" id="field-new-textbook" hidden>
+          <label for="import-new-textbook">Name des neuen Lehrmittels</label>
+          <input type="text" id="import-new-textbook" placeholder="z. B. English Plus 4">
+          <p class="help">Wird beim Import angelegt. Die Beispieldaten bleiben unverändert.</p>
+        </div>
+
+        <div class="field">
+          <label for="import-unit-mode">Units</label>
+          <select id="import-unit-mode">
+            <option value="auto">Aus der Liste erkennen (Überschriften wie „Unit 3: Movies“ oder eine Unit-Spalte)</option>
+            <option value="single">Alles in eine einzige neue Unit</option>
+            <option value="claude">Claude soll Units und Themen erkennen</option>
+          </select>
+        </div>
+        <div class="field" id="field-import-unit">
+          <label for="import-unit">Name der Unit</label>
+          <input type="text" id="import-unit" placeholder="z. B. Unit 3">
+          <p class="help">Wird verwendet, wenn die Liste selbst keine Unit-Angabe enthält.</p>
+        </div>
+
+        <div class="field"><label for="import-mode">Wenn eine Unit gleichen Namens schon existiert</label><select id="import-mode"><option value="add">Hinzufügen (neue Units/Wörter ergänzen)</option><option value="update">Aktualisieren (Wörter zusammenführen)</option><option value="replace">Ersetzen (Wortliste überschreiben)</option></select></div>
+
         <div class="field"><label for="import-file">Datei (CSV, TSV, TXT, XLSX)</label><input type="file" id="import-file" accept=".csv,.tsv,.txt,.xlsx,.xls,.ods,text/plain,text/csv"></div>
-        <div class="field"><label for="import-text">… oder Liste einfügen</label><textarea id="import-text" rows="8" placeholder="Unit 3: Movies&#10;box office - Kinokasse&#10;cast - Besetzung"></textarea></div>
-        <div class="row"><button type="button" class="btn secondary" id="btn-parse-text">Liste erkennen</button><button type="button" class="btn secondary" id="btn-parse-claude" title="Unstrukturierte Listen (z. B. aus einem PDF kopiert) mit Claude strukturieren">Mit Claude strukturieren</button></div>
+        <div class="field"><label for="import-text">… oder Liste einfügen</label><textarea id="import-text" rows="8" placeholder="box office - Kinokasse&#10;cast - Besetzung&#10;plot - Handlung"></textarea></div>
+        <div class="row"><button type="button" class="btn secondary" id="btn-parse-text">Liste einlesen</button><button type="button" class="btn secondary" id="btn-parse-claude" title="Unstrukturierte Listen (z. B. aus einem PDF kopiert) mit Claude in Wort und Übersetzung zerlegen">Rohtext mit Claude zerlegen</button></div>
+
         <div id="import-preview" class="import-preview"></div>
+        <div class="row"><button type="button" class="btn secondary" id="btn-detect-units" disabled title="Claude gruppiert die eingelesene Liste in Units und benennt deren Themen">Units &amp; Themen von Claude erkennen</button></div>
         <button type="button" class="btn primary" id="btn-import-confirm" disabled>Import übernehmen</button>
       </div>
     </div>
@@ -126,6 +155,17 @@
     <div id="check-results"></div>
   </section>
 </main>
+
+<dialog id="dlg" class="dialog" aria-labelledby="dlg-title">
+  <form id="dlg-form" method="dialog">
+    <h3 id="dlg-title"></h3>
+    <div id="dlg-body"></div>
+    <div class="dlg-actions">
+      <button type="button" class="btn ghost" id="dlg-cancel">Abbrechen</button>
+      <button type="submit" class="btn primary" id="dlg-ok">OK</button>
+    </div>
+  </form>
+</dialog>
 
 <div id="toast" class="toast" hidden></div>
 

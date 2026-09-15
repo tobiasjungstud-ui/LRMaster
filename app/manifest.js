@@ -60,6 +60,69 @@
       const rep = env.vocab.mergeUnits(tb, [{ name: 'Unit 1', words: [{ word: 'new', translation: 'neu' }] }], 'replace');
       return ok(upd.units[0].words.length === 2 && rep.units[0].words.length === 1 && rep.units[0].words[0].word === 'new');
     } });
+  add({ id: 'S02.new_list_button', section: 2, title: 'Neues Lehrmittel (neue Vokabelliste) anlegen – ohne vorhandene Liste', kind: 'ui', selector: '#btn-new-textbook' });
+  add({ id: 'S02.new_list_in_import', section: 2, title: 'Import kann direkt in ein NEU anzulegendes Lehrmittel gehen', kind: 'function',
+    check(env) {
+      const hasOption = env.hasControl('[value="__new__"]') && env.hasControl('#import-new-textbook') && env.hasControl('#import-textbook');
+      // Building a list from scratch: merging into an empty textbook creates it.
+      const fresh = { id: 'tb_new', name: 'Brand new book', units: [] };
+      const built = env.vocab.mergeUnits(fresh, [{ name: 'Unit 1', topic: 'Movies', words: [{ word: 'cast', translation: 'Besetzung' }, { word: 'plot', translation: 'Handlung' }] }], 'add');
+      const ok2 = built.units.length === 1 && built.units[0].words.length === 2 && built.units[0].topic === 'Movies' && !!built.units[0].id;
+      return ok(hasOption && ok2, hasOption ? 'merging into an empty textbook failed' : 'no "new textbook" option in the import form');
+    } });
+  add({ id: 'S02.unit_modes', section: 2, title: 'Unit-Zuordnung wählbar: aus der Liste erkennen / alles in eine neue Unit / von Claude erkennen lassen', kind: 'function',
+    check(env) {
+      const hasSelect = env.hasControl('#import-unit-mode') && env.hasControl('[value="single"]') && env.hasControl('[value="claude"]') && env.hasControl('[value="auto"]');
+      const parsed = env.vocab.parseText('Unit 1: A\nalpha - eins\nbeta - zwei\nUnit 2: B\ngamma - drei').units;
+      const flat = env.vocab.flattenUnits(parsed, 'Unit 9');
+      const ok2 = parsed.length === 2 && flat.length === 1 && flat[0].name === 'Unit 9' && flat[0].words.length === 3;
+      return ok(hasSelect && ok2, hasSelect ? 'flattening into one unit failed' : 'unit mode select missing');
+    } });
+  add({ id: 'S02.claude_detects_units', section: 2, title: 'Fehlen Unit-Titel, erkennt Claude die Units aus dem Inhalt der Liste', kind: 'function',
+    check(env) {
+      const words = [{ word: 'cast', translation: 'Besetzung' }, { word: 'plot', translation: 'Handlung' }, { word: 'backpack', translation: 'Rucksack' }, { word: 'delay', translation: 'Verspätung' }];
+      const prompt = env.prompts.buildUnitDetectPrompt(words, 'Unit 8');
+      const asksGroups = /"from"/.test(prompt) && /"to"/.test(prompt) && /"name"/.test(prompt) && /"topic"/.test(prompt)
+        && /without gaps or overlaps/.test(prompt) && words.every(w => prompt.includes(w.word)) && /JSON object/.test(prompt);
+      // The returned groups regroup the list without losing or reordering a word.
+      const single = [{ name: 'Unit 1', topic: '', words }];
+      const grouped = env.vocab.applyGroups(single, [{ name: 'Unit 8', topic: 'Films', from: 1, to: 2 }, { name: 'Unit 9', topic: 'Travel', from: 3, to: 4 }]);
+      const flat = grouped.units.flatMap(u => u.words.map(w => w.word));
+      const ok2 = grouped.units.length === 2 && grouped.units[0].topic === 'Films' && grouped.units[1].name === 'Unit 9'
+        && JSON.stringify(flat) === JSON.stringify(words.map(w => w.word));
+      return ok(asksGroups && ok2 && env.hasControl('#btn-detect-units'), asksGroups ? (ok2 ? 'button missing' : 'regrouping lost entries') : 'detection prompt incomplete');
+    } });
+  add({ id: 'S02.claude_no_word_lost', section: 2, title: 'Unit-Erkennung verliert keine Vokabel (Lücken und Überlappungen werden geschlossen)', kind: 'function',
+    check(env) {
+      const words = Array.from({ length: 12 }, (_, i) => ({ word: 'w' + (i + 1), translation: '' }));
+      const src = [{ name: 'Unit 1', topic: '', words }];
+      const cases = [
+        [{ name: 'A', from: 1, to: 3 }, { name: 'B', from: 7, to: 9 }],            // gap in the middle and at the end
+        [{ name: 'A', from: 1, to: 8 }, { name: 'B', from: 4, to: 12 }],           // overlap
+        [{ name: 'A', from: 5, to: 12 }],                                          // starts late
+        [],                                                                        // nothing recognised
+      ];
+      for (const groups of cases) {
+        const r = env.vocab.applyGroups(src, groups);
+        const flat = r.units.flatMap(u => u.words.map(w => w.word));
+        if (JSON.stringify(flat) !== JSON.stringify(words.map(w => w.word))) return 'words lost or reordered for ' + JSON.stringify(groups);
+      }
+      return true;
+    } });
+  add({ id: 'S02.claude_derives_topics', section: 2, title: 'Themen der Units werden von Claude aus dem Wortschatz abgeleitet', kind: 'function',
+    check(env) {
+      const units = [{ name: 'Unit 3', topic: '', words: [{ word: 'box office' }, { word: 'sequel' }] }];
+      const prompt = env.prompts.buildUnitTopicPrompt(units);
+      return ok(/Unit 3/.test(prompt) && /box office/.test(prompt) && /2–5 words/.test(prompt) && /JSON array/.test(prompt) && /"topic"/.test(prompt), 'topic prompt incomplete');
+    } });
+  add({ id: 'S02.dialogs_in_page', section: 2, title: 'Anlegen, Umbenennen und Löschen laufen über seiteneigene Dialoge (im Artifact-Frame sind window.prompt/confirm nicht verlässlich)', kind: 'function',
+    check(env) {
+      const hasDialog = env.hasControl('#dlg') && env.hasControl('#dlg-ok') && env.hasControl('#dlg-cancel');
+      const src = env.uiSource || '';
+      const usesOwn = /askText/.test(src) && /askConfirm/.test(src);
+      const native = /(^|[^\w.$])(window\.)?(prompt|confirm|alert)\s*\(/m.test(src);
+      return ok(hasDialog && usesOwn && !native, !hasDialog ? 'dialog element missing' : native ? 'a native prompt/confirm/alert is still used' : 'own dialog helpers missing');
+    } });
   add({ id: 'S02.unit_listing', section: 2, title: 'Lehrmittel zeigt Units (Unit 1, Unit 2, …)', kind: 'ui', selector: '#textbook-list' });
 
   /* §3 Grundaufbau */

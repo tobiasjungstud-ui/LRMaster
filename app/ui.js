@@ -33,6 +33,8 @@
     if (caps.sample) { el.textContent = 'Claude verbunden – Generierung möglich'; el.dataset.state = 'ok'; }
     else { el.textContent = 'Claude ist in dieser Ansicht nicht verfügbar. Öffne das Artifact in Claude.ai, um Material zu generieren.'; el.dataset.state = 'off'; }
     $$('#btn-generate, #btn-suggest-topics, #btn-parse-claude').forEach(b => { b.disabled = !caps.sample; });
+    const detect = $('#btn-detect-units');
+    if (detect) detect.disabled = !caps.sample || !importState.units;
   }
 
   const ERROR_COPY = {
@@ -606,6 +608,59 @@
   }
 
   /* ------------------------------------------------------------------ */
+  /* Dialogs (the page runs framed, so no window.prompt/confirm)          */
+  /* ------------------------------------------------------------------ */
+
+  function openDialog(opts) {
+    return new Promise(resolve => {
+      const dlg = $('#dlg'), form = $('#dlg-form'), cancel = $('#dlg-cancel'), okBtn = $('#dlg-ok');
+      $('#dlg-title').textContent = opts.title || '';
+      $('#dlg-body').innerHTML = opts.bodyHTML || '';
+      okBtn.textContent = opts.okLabel || 'OK';
+      okBtn.classList.toggle('danger', !!opts.danger);
+      cancel.textContent = opts.cancelLabel || 'Abbrechen';
+      let done = false;
+      const collect = () => {
+        const values = {};
+        $$('#dlg-body [name]').forEach(el => { values[el.name] = el.type === 'checkbox' ? el.checked : el.value; });
+        return values;
+      };
+      const cleanup = () => {
+        form.removeEventListener('submit', onSubmit);
+        cancel.removeEventListener('click', onCancel);
+        dlg.removeEventListener('cancel', onEsc);
+        dlg.removeEventListener('close', onCancel);
+      };
+      const finish = (v) => { if (done) return; done = true; cleanup(); try { dlg.close(); } catch (e) { dlg.removeAttribute('open'); } resolve(v); };
+      const onSubmit = (e) => { e.preventDefault(); finish(collect()); };
+      const onCancel = () => finish(null);
+      const onEsc = (e) => { e.preventDefault(); finish(null); };
+      form.addEventListener('submit', onSubmit);
+      cancel.addEventListener('click', onCancel);
+      dlg.addEventListener('cancel', onEsc);
+      dlg.addEventListener('close', onCancel);
+      if (typeof dlg.showModal === 'function') dlg.showModal(); else dlg.setAttribute('open', '');
+      const first = $('#dlg-body input, #dlg-body textarea, #dlg-body select');
+      if (first) { first.focus(); if (first.select) first.select(); }
+    });
+  }
+
+  async function askText(o) {
+    const r = await openDialog({
+      title: o.title, okLabel: o.okLabel || 'Speichern', danger: o.danger,
+      bodyHTML: (o.note ? `<p class="help">${esc(o.note)}</p>` : '')
+        + `<label class="dlg-field"><span>${esc(o.label || '')}</span><input type="text" name="value" value="${esc(o.value || '')}" placeholder="${esc(o.placeholder || '')}" required></label>`,
+    });
+    const v = r ? String(r.value || '').trim() : '';
+    return v || null;
+  }
+
+  async function askConfirm(o) {
+    const r = await openDialog({ title: o.title, okLabel: o.okLabel || 'Ja', danger: o.danger, bodyHTML: `<p>${esc(o.text || '')}</p>` });
+    return !!r;
+  }
+
+  /* ------------------------------------------------------------------ */
   /* Vocabulary / textbook manager (concept §2)                            */
   /* ------------------------------------------------------------------ */
 
@@ -623,38 +678,109 @@
     if (!el) return;
     const units = app.textbooks.reduce((a, t) => a + (t.units || []).length, 0);
     const words = app.textbooks.reduce((a, t) => a + (t.units || []).reduce((b, u) => b + u.words.length, 0), 0);
-    el.textContent = `${app.textbooks.length} Lehrmittel · ${units} Units · ${words} Vokabeln · ${app.materials.length} gespeicherte Materialien` + (app.textbooks.some(t => t.example) && !app.textbooks.some(t => !t.example) ? ' · Beispieldaten aktiv' : '');
+    const onlyExamples = app.textbooks.every(t => t.example);
+    el.textContent = `${app.textbooks.length} Lehrmittel · ${units} Units · ${words} Vokabeln · ${app.materials.length} gespeicherte Materialien`
+      + (onlyExamples ? ' · nur Beispieldaten – lege unter „Vocabulary / Lehrmittel verwalten“ dein eigenes Lehrmittel an' : '');
   }
 
-  const importState = { units: null, warnings: [], sourceName: '' };
+  const importState = { units: null, warnings: [], sourceName: '', source: 'none' };
 
   function renderVocabManager() {
     const list = $('#textbook-list');
-    list.innerHTML = app.textbooks.map(t => `<div class="textbook" data-tb="${esc(t.id)}"><div class="tb-head"><h3>${esc(t.name)}${t.example ? ' <span class="badge">Beispiel</span>' : ''}</h3><div class="tb-actions"><button type="button" class="btn tiny" data-tb-rename="${esc(t.id)}">Umbenennen</button><button type="button" class="btn tiny danger" data-tb-delete="${esc(t.id)}">Löschen</button></div></div><ul class="units">` + (t.units || []).map(u => `<li><span class="unit-name">${esc(u.name)}</span><input type="text" class="unit-topic" data-topic="${esc(t.id)}:${esc(u.id)}" value="${esc(u.topic || '')}" placeholder="Thema der Unit"><span class="muted">${u.words.length} Wörter</span><button type="button" class="btn tiny" data-unit-show="${esc(t.id)}:${esc(u.id)}">Anzeigen</button><button type="button" class="btn tiny danger" data-unit-delete="${esc(t.id)}:${esc(u.id)}">Löschen</button></li>`).join('') + '</ul><div class="unit-words" hidden></div></div>').join('') || '<p class="muted">Noch kein Lehrmittel angelegt.</p>';
-    const tbSel = $('#import-textbook');
-    tbSel.innerHTML = app.textbooks.map(t => `<option value="${esc(t.id)}">${esc(t.name)}</option>`).join('');
+    const empty = $('#textbook-empty');
+    const onlyExamples = app.textbooks.every(t => t.example);
+    empty.hidden = !onlyExamples;
+    if (onlyExamples) {
+      empty.innerHTML = '<h3>Noch kein eigenes Lehrmittel</h3><p>Die unten gezeigten Lehrmittel sind Beispieldaten. Lege rechts ein neues Lehrmittel an oder importiere direkt eine Vokabelliste in ein neues Lehrmittel – die Beispiele verschwinden, sobald du ein eigenes gespeichert hast.</p><button type="button" class="btn primary" id="btn-empty-new">Neues Lehrmittel anlegen</button>';
+      const b = $('#btn-empty-new');
+      if (b) b.addEventListener('click', newTextbook);
+    }
+    list.innerHTML = app.textbooks.map(t => {
+      const units = t.units || [];
+      const missing = units.filter(u => !u.topic).length;
+      return `<div class="textbook" data-tb="${esc(t.id)}"><div class="tb-head"><h3>${esc(t.name)}${t.example ? ' <span class="badge">Beispiel</span>' : ''}</h3>`
+        + `<div class="tb-actions">`
+        + `<button type="button" class="btn tiny" data-tb-import="${esc(t.id)}">Hierhin importieren</button>`
+        + (units.length ? `<button type="button" class="btn tiny" data-tb-topics="${esc(t.id)}"${missing ? '' : ' disabled'} title="Claude leitet die Themen der Units aus deren Wortschatz ab">Themen von Claude${missing ? ` (${missing})` : ''}</button>` : '')
+        + `<button type="button" class="btn tiny" data-tb-rename="${esc(t.id)}">Umbenennen</button>`
+        + `<button type="button" class="btn tiny danger" data-tb-delete="${esc(t.id)}">Löschen</button></div></div>`
+        + (units.length ? '<ul class="units">' + units.map(u => `<li><span class="unit-name">${esc(u.name)}</span><input type="text" class="unit-topic" data-topic="${esc(t.id)}:${esc(u.id)}" value="${esc(u.topic || '')}" placeholder="Thema der Unit"><span class="muted">${u.words.length} Wörter</span><button type="button" class="btn tiny" data-unit-show="${esc(t.id)}:${esc(u.id)}">Anzeigen</button><button type="button" class="btn tiny danger" data-unit-delete="${esc(t.id)}:${esc(u.id)}">Löschen</button></li>`).join('') + '</ul>'
+          : '<p class="muted">Noch keine Unit – importiere rechts eine Vokabelliste.</p>')
+        + '<div class="unit-words" hidden></div></div>';
+    }).join('') || '<p class="muted">Noch kein Lehrmittel angelegt.</p>';
+
+    $$('[data-tb-import]', list).forEach(b => b.addEventListener('click', () => {
+      $('#import-textbook').value = b.dataset.tbImport;
+      onImportTargetChange();
+      $('#import-file').scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }));
+    $$('[data-tb-topics]', list).forEach(b => b.addEventListener('click', async () => {
+      const tb = app.textbooks.find(t => t.id === b.dataset.tbTopics);
+      b.disabled = true;
+      const before = tb.units.filter(u => !u.topic).length;
+      try {
+        await deriveTopics(tb.units.filter(u => !u.topic));
+        await persistTextbook(tb, true);
+        const after = tb.units.filter(u => !u.topic).length;
+        toast(`${before - after} Thema/Themen von Claude ergänzt.`);
+      } catch (e) { toast(errorCopy(e)); b.disabled = false; }
+    }));
     $$('[data-tb-rename]', list).forEach(b => b.addEventListener('click', async () => {
-      const tb = app.textbooks.find(t => t.id === b.dataset.tbRename); const name = prompt('Neuer Name des Lehrmittels', tb.name); if (!name) return;
-      tb.name = name.trim(); await persistTextbook(tb);
+      const tb = app.textbooks.find(t => t.id === b.dataset.tbRename);
+      const name = await askText({ title: 'Lehrmittel umbenennen', label: 'Name', value: tb.name });
+      if (!name) return;
+      tb.name = name; await persistTextbook(tb);
     }));
     $$('[data-tb-delete]', list).forEach(b => b.addEventListener('click', async () => {
-      const tb = app.textbooks.find(t => t.id === b.dataset.tbDelete); if (!confirm(`Lehrmittel „${tb.name}“ mit allen Units löschen?`)) return;
+      const tb = app.textbooks.find(t => t.id === b.dataset.tbDelete);
+      if (!await askConfirm({ title: 'Lehrmittel löschen', text: `„${tb.name}“ mit allen Units und Vokabeln löschen? Das lässt sich nicht rückgängig machen.`, okLabel: 'Löschen', danger: true })) return;
       if (!tb.example) await store.remove('textbooks', tb.id); else app.textbooks = app.textbooks.filter(t => t.id !== tb.id);
       await refreshTextbooks(); renderVocabManager();
     }));
     $$('[data-unit-delete]', list).forEach(b => b.addEventListener('click', async () => {
-      const [tid, uid] = b.dataset.unitDelete.split(':'); const tb = app.textbooks.find(t => t.id === tid); const u = tb.units.find(x => x.id === uid);
-      if (!confirm(`Unit „${u.name}“ löschen?`)) return; tb.units = tb.units.filter(x => x.id !== uid); await persistTextbook(tb);
+      const [tid, uid] = b.dataset.unitDelete.split(':');
+      const tb = app.textbooks.find(t => t.id === tid); const u = tb.units.find(x => x.id === uid);
+      if (!await askConfirm({ title: 'Unit löschen', text: `Unit „${u.name}“ mit ${u.words.length} Vokabeln löschen?`, okLabel: 'Löschen', danger: true })) return;
+      tb.units = tb.units.filter(x => x.id !== uid); await persistTextbook(tb);
     }));
     $$('[data-unit-show]', list).forEach(b => b.addEventListener('click', () => {
-      const [tid, uid] = b.dataset.unitShow.split(':'); const tb = app.textbooks.find(t => t.id === tid); const u = tb.units.find(x => x.id === uid);
+      const [tid, uid] = b.dataset.unitShow.split(':');
+      const tb = app.textbooks.find(t => t.id === tid); const u = tb.units.find(x => x.id === uid);
       const box = b.closest('.textbook').querySelector('.unit-words'); box.hidden = false;
-      box.innerHTML = `<h4>${esc(u.name)}</h4><table class="words"><tbody>` + u.words.map(w => `<tr><td>${esc(w.word)}</td><td>${esc(w.translation)}</td><td class="muted">${esc(w.note)}</td></tr>`).join('') + '</tbody></table>';
+      box.innerHTML = `<h4>${esc(u.name)}</h4><div class="table-wrap"><table class="words"><tbody>` + u.words.map(w => `<tr><td>${esc(w.word)}</td><td>${esc(w.translation)}</td><td class="muted">${esc(w.note)}</td></tr>`).join('') + '</tbody></table></div>';
     }));
     $$('input[data-topic]', list).forEach(inp => inp.addEventListener('change', async () => {
-      const [tid, uid] = inp.dataset.topic.split(':'); const tb = app.textbooks.find(t => t.id === tid); const u = tb.units.find(x => x.id === uid); u.topic = inp.value.trim(); await persistTextbook(tb, true);
+      const [tid, uid] = inp.dataset.topic.split(':');
+      const tb = app.textbooks.find(t => t.id === tid); const u = tb.units.find(x => x.id === uid);
+      u.topic = inp.value.trim(); await persistTextbook(tb, true);
     }));
+
+    fillImportTargets();
     renderImportPreview();
+  }
+
+  /** The import target list: every textbook plus "create a new one". */
+  function fillImportTargets() {
+    const sel = $('#import-textbook');
+    const keep = sel.value;
+    sel.innerHTML = app.textbooks.map(t => `<option value="${esc(t.id)}">${esc(t.name)}${t.example ? ' (Beispiel)' : ''}</option>`).join('')
+      + '<option value="__new__">➕ Neues Lehrmittel anlegen …</option>';
+    const onlyExamples = app.textbooks.every(t => t.example);
+    sel.value = (keep && Array.from(sel.options).some(o => o.value === keep)) ? keep : (onlyExamples ? '__new__' : app.textbooks[0].id);
+    onImportTargetChange();
+  }
+
+  function onImportTargetChange() {
+    const isNew = $('#import-textbook').value === '__new__';
+    $('#field-new-textbook').hidden = !isNew;
+    $('#import-mode').closest('.field').hidden = isNew;
+  }
+
+  function onUnitModeChange() {
+    const mode = $('#import-unit-mode').value;
+    $('#field-import-unit').hidden = mode === 'claude';
+    $('#import-unit').placeholder = mode === 'single' ? 'z. B. Unit 3' : 'Fallback, z. B. Unit 3';
+    if (importState.units) applyUnitMode();
   }
 
   async function persistTextbook(tb, quiet) {
@@ -663,21 +789,51 @@
     await refreshTextbooks();
     if (app.view === 'vocab') renderVocabManager();
     if (!quiet) toast('Lehrmittel gespeichert.');
+    return tb;
   }
 
+  /** Create an empty textbook (no import needed). */
   async function newTextbook() {
-    const name = prompt('Name des Lehrmittels (z. B. English Plus 4)');
-    if (!name || !name.trim()) return;
-    const tb = { id: vocab.makeId('tb'), name: name.trim(), units: [] };
+    const name = await askText({
+      title: 'Neues Lehrmittel', label: 'Name des Lehrmittels', placeholder: 'z. B. English Plus 4',
+      note: 'Leeres Lehrmittel anlegen. Die Units entstehen beim Import der Vokabelliste.', okLabel: 'Anlegen',
+    });
+    if (!name) return null;
+    const tb = { id: vocab.makeId('tb'), name, units: [] };
     await store.put('textbooks', tb);
     await refreshTextbooks(); renderVocabManager();
     $('#import-textbook').value = tb.id;
+    onImportTargetChange();
+    toast(`Lehrmittel „${tb.name}“ angelegt.`);
+    return tb;
+  }
+
+  /* ---------------- import ---------------- */
+
+  function unitNameField() { return $('#import-unit').value.trim(); }
+
+  /** Apply the chosen unit handling to the freshly parsed list. */
+  function applyUnitMode() {
+    const mode = $('#import-unit-mode').value;
+    if (mode === 'single') {
+      importState.units = vocab.flattenUnits(importState.parsed, unitNameField() || 'Unit 1');
+    } else {
+      importState.units = JSON.parse(JSON.stringify(importState.parsed));
+    }
+    renderImportPreview();
+    if (mode === 'claude') detectUnits();
+  }
+
+  function afterParse(r, sourceName) {
+    importState.parsed = r.units;
+    importState.warnings = r.warnings || [];
+    importState.sourceName = sourceName;
+    applyUnitMode();
   }
 
   async function readImportFile(file) {
-    importState.sourceName = file.name;
     const ext = (file.name.split('.').pop() || '').toLowerCase();
-    const opts = { defaultUnit: $('#import-unit').value.trim() || undefined };
+    const opts = { defaultUnit: unitNameField() || undefined };
     if (ext === 'xlsx' || ext === 'xls' || ext === 'ods') {
       if (!window.XLSX) { toast('Tabellenkalkulations-Import nicht geladen – bitte als CSV exportieren.'); return; }
       const buf = await file.arrayBuffer();
@@ -688,61 +844,152 @@
         if (wb.SheetNames.length > 1 && /unit|einheit|lektion/i.test(name)) rows.push([name]);
         rows.push(...sheetRows);
       }
-      const r = vocab.parseRows(rows, opts);
-      importState.units = r.units; importState.warnings = r.warnings;
+      afterParse(vocab.parseRows(rows, opts), file.name);
     } else {
       const text = await file.text();
       $('#import-text').value = text;
-      const r = vocab.parseText(text, opts);
-      importState.units = r.units; importState.warnings = r.warnings;
+      afterParse(vocab.parseText(text, opts), file.name);
     }
-    renderImportPreview();
   }
 
   function parsePasted() {
     const text = $('#import-text').value;
-    if (!text.trim()) { toast('Bitte Text einfügen oder Datei wählen.'); return; }
-    const r = vocab.parseText(text, { defaultUnit: $('#import-unit').value.trim() || undefined });
-    importState.units = r.units; importState.warnings = r.warnings; importState.sourceName = 'Eingefügter Text';
-    renderImportPreview();
+    if (!text.trim()) { toast('Bitte Text einfügen oder eine Datei wählen.'); return; }
+    afterParse(vocab.parseText(text, { defaultUnit: unitNameField() || undefined }), 'Eingefügter Text');
   }
 
   async function parseWithClaude() {
     const text = $('#import-text').value;
     if (!text.trim()) { toast('Bitte Text einfügen.'); return; }
     const btn = $('#btn-parse-claude'); btn.disabled = true;
-    $('#import-preview').innerHTML = '<p class="muted">Claude strukturiert die Liste …</p>';
+    $('#import-preview').innerHTML = '<p class="muted">Claude zerlegt die Liste in Wort und Übersetzung …</p>';
     try {
-      const rows = await askJSON(prompts.buildVocabParsePrompt(text, $('#import-unit').value.trim()), { tier: 'quick' });
-      const r = vocab.fromParsedRows(Array.isArray(rows) ? rows : [], { defaultUnit: $('#import-unit').value.trim() || undefined });
-      importState.units = r.units; importState.warnings = r.warnings; importState.sourceName = 'Claude-Import';
-      renderImportPreview();
+      const rows = await askJSON(prompts.buildVocabParsePrompt(text, unitNameField()), { tier: 'quick' });
+      afterParse(vocab.fromParsedRows(Array.isArray(rows) ? rows : [], { defaultUnit: unitNameField() || undefined }), 'Claude-Import');
     } catch (e) { $('#import-preview').innerHTML = `<p class="error">${esc(errorCopy(e))}</p>`; }
     finally { btn.disabled = !caps.sample; }
   }
 
+  /** Let Claude find the unit boundaries of an unstructured list and name them. */
+  async function detectUnits() {
+    if (!importState.units || !importState.units.length) { toast('Bitte zuerst eine Liste einlesen.'); return; }
+    if (!caps.sample) { toast(ERROR_COPY.not_granted); return; }
+    const words = vocab.allWords(importState.units);
+    if (words.length < 4) { toast('Zu wenige Einträge für eine Unit-Erkennung.'); return; }
+    if (words.length > 800) { toast('Die Liste ist zu lang für die automatische Unit-Erkennung (max. 800 Einträge).'); return; }
+    const btn = $('#btn-detect-units');
+    btn.disabled = true;
+    const status = $('#import-detect-status');
+    if (status) status.textContent = 'Claude liest die Liste …';
+    try {
+      const single = importState.units.length <= 1;
+      if (single) {
+        const res = await askJSON(prompts.buildUnitDetectPrompt(words, unitNameField()), {});
+        const groups = Array.isArray(res) ? res : (res && res.units) || [];
+        const r = vocab.applyGroups(importState.units, groups);
+        importState.units = r.units;
+        importState.warnings = importState.warnings.concat(r.warnings);
+        toast(`${r.units.length} Unit(s) von Claude erkannt.`);
+      } else {
+        const missing = importState.units.filter(u => !u.topic);
+        await deriveTopics(missing.length ? missing : importState.units);
+        toast('Themen von Claude ergänzt.');
+      }
+      renderImportPreview();
+    } catch (e) {
+      toast(errorCopy(e));
+      renderImportPreview();
+    }
+  }
+
+  /** Fill in the topic of units that have none; mutates the units in place. */
+  async function deriveTopics(units) {
+    if (!units || !units.length) return;
+    if (!caps.sample) throw { code: 'not_granted', message: 'sample unavailable' };
+    const res = await askJSON(prompts.buildUnitTopicPrompt(units), { tier: 'quick' });
+    const rows = Array.isArray(res) ? res : (res && (res.topics || res.units)) || [];
+    for (const row of rows) {
+      if (!row) continue;
+      const name = String(row.unit || row.name || '').trim().toLowerCase();
+      const topic = String(row.topic || '').trim();
+      if (!topic) continue;
+      const hit = units.find(u => u.name.trim().toLowerCase() === name) || (rows.length === units.length ? units[rows.indexOf(row)] : null);
+      if (hit) hit.topic = topic;
+    }
+  }
+
   function renderImportPreview() {
     const box = $('#import-preview');
-    if (!importState.units) { box.innerHTML = '<p class="muted">Noch nichts importiert. Unterstützt: CSV, TSV, TXT (Wort – Übersetzung), XLSX; Unit-Überschriften wie „Unit 3: Movies“ oder eine Unit-Spalte werden erkannt.</p>'; $('#btn-import-confirm').disabled = true; return; }
+    const detectBtn = $('#btn-detect-units');
+    if (!importState.units) {
+      box.innerHTML = '<p class="muted">Noch nichts eingelesen. Unterstützt: CSV, TSV, TXT („Wort – Übersetzung“), XLSX. Unit-Überschriften wie „Unit 3: Movies“ oder eine Unit-Spalte werden automatisch erkannt; fehlen sie, kann Claude die Units aus dem Inhalt ableiten.</p>';
+      $('#btn-import-confirm').disabled = true;
+      detectBtn.disabled = true;
+      return;
+    }
     const total = importState.units.reduce((a, u) => a + u.words.length, 0);
-    box.innerHTML = `<p><strong>${esc(importState.sourceName)}</strong>: ${importState.units.length} Unit(s), ${total} Einträge.</p>` + (importState.warnings.length ? `<p class="muted">${importState.warnings.length} Zeile(n) übersprungen.</p>` : '') + '<ul class="import-units">' + importState.units.map((u, i) => `<li><input type="text" data-imp-name="${i}" value="${esc(u.name)}"> <input type="text" data-imp-topic="${i}" value="${esc(u.topic || '')}" placeholder="Thema"> <span class="muted">${u.words.length} Wörter: ${esc(u.words.slice(0, 6).map(w => w.word).join(', '))}${u.words.length > 6 ? ' …' : ''}</span></li>`).join('') + '</ul>';
+    const single = importState.units.length <= 1;
+    detectBtn.textContent = single ? 'Units & Themen von Claude erkennen' : 'Fehlende Themen von Claude ergänzen';
+    detectBtn.disabled = !caps.sample || total < 4;
+    box.innerHTML = `<p><strong>${esc(importState.sourceName)}</strong>: ${importState.units.length} Unit(s), ${total} Einträge.</p>`
+      + (importState.warnings.length ? `<p class="muted">${importState.warnings.length} Hinweis(e) beim Einlesen: ${esc(importState.warnings.slice(0, 2).join(' · '))}</p>` : '')
+      + '<p class="muted" id="import-detect-status"></p>'
+      + '<ul class="import-units">' + importState.units.map((u, i) => `<li>`
+        + `<input type="text" data-imp-name="${i}" value="${esc(u.name)}" aria-label="Unit-Name">`
+        + `<input type="text" data-imp-topic="${i}" value="${esc(u.topic || '')}" placeholder="Thema (optional)" aria-label="Thema">`
+        + `<button type="button" class="btn tiny danger" data-imp-remove="${i}" title="Diese Unit nicht importieren">✕</button>`
+        + `<span class="muted">${u.words.length} Wörter: ${esc(u.words.slice(0, 6).map(w => w.word).join(', '))}${u.words.length > 6 ? ' …' : ''}</span></li>`).join('')
+      + '</ul>';
     $$('input[data-imp-name]', box).forEach(inp => inp.addEventListener('input', () => { importState.units[Number(inp.dataset.impName)].name = inp.value; }));
     $$('input[data-imp-topic]', box).forEach(inp => inp.addEventListener('input', () => { importState.units[Number(inp.dataset.impTopic)].topic = inp.value; }));
+    $$('[data-imp-remove]', box).forEach(b => b.addEventListener('click', () => {
+      importState.units.splice(Number(b.dataset.impRemove), 1);
+      renderImportPreview();
+    }));
     $('#btn-import-confirm').disabled = total === 0;
   }
 
   async function confirmImport() {
-    const tid = $('#import-textbook').value;
-    let tb = app.textbooks.find(t => t.id === tid);
-    if (!tb) { toast('Bitte ein Lehrmittel wählen oder anlegen.'); return; }
-    const mode = $('#import-mode').value;
-    const units = importState.units.map(u => ({ name: (u.name || 'Unit 1').trim(), topic: (u.topic || '').trim(), words: u.words.map(w => ({ word: String(w.word).trim(), translation: String(w.translation || '').trim(), note: String(w.note || '').trim() })) }));
-    tb = vocab.mergeUnits(tb, units, mode);
-    for (const u of tb.units) if (!u.id) u.id = vocab.makeId('unit');
-    await persistTextbook(tb);
-    importState.units = null; $('#import-text').value = ''; $('#import-file').value = '';
+    if (!importState.units || !importState.units.length) { toast('Bitte zuerst eine Liste einlesen.'); return; }
+    const targetId = $('#import-textbook').value;
+    const isNew = targetId === '__new__';
+    let tb;
+    if (isNew) {
+      const name = $('#import-new-textbook').value.trim();
+      if (!name) { toast('Bitte einen Namen für das neue Lehrmittel eingeben.'); $('#import-new-textbook').focus(); return; }
+      if (app.textbooks.some(t => !t.example && t.name.toLowerCase() === name.toLowerCase())
+        && !await askConfirm({ title: 'Name schon vergeben', text: `Es gibt bereits ein Lehrmittel „${name}“. Trotzdem ein zweites anlegen?`, okLabel: 'Anlegen' })) return;
+      tb = { id: vocab.makeId('tb'), name, units: [] };
+    } else {
+      tb = app.textbooks.find(t => t.id === targetId);
+      if (!tb) { toast('Bitte ein Ziel-Lehrmittel wählen.'); return; }
+    }
+    const mode = isNew ? 'add' : $('#import-mode').value;
+    const units = importState.units.map(u => ({
+      name: (u.name || 'Unit 1').trim(),
+      topic: (u.topic || '').trim(),
+      words: u.words.map(w => ({ word: String(w.word).trim(), translation: String(w.translation || '').trim(), note: String(w.note || '').trim() })),
+    })).filter(u => u.words.length);
+    const merged = vocab.mergeUnits(tb, units, mode);
+    for (const u of merged.units) if (!u.id) u.id = vocab.makeId('unit');
+    const saved = await persistTextbook(merged, true);
+
+    // A new textbook becomes the creator's selection if that still points at example data.
+    const current = app.textbooks.find(t => t.id === app.state.textbookId);
+    if (isNew || !current || current.example) {
+      const fresh = app.textbooks.find(t => t.id === saved.id) || app.textbooks[0];
+      if (fresh) {
+        app.state.textbookId = fresh.id;
+        app.state.unitId = fresh.units[0] ? fresh.units[0].id : '';
+        if ($('#set-textbookId')) fillTextbookSelect();
+        saveDraft();
+      }
+    }
+    importState.units = null; importState.parsed = null; importState.warnings = [];
+    $('#import-text').value = ''; $('#import-file').value = ''; $('#import-new-textbook').value = '';
     renderVocabManager();
-    toast(`Import abgeschlossen (${mode === 'replace' ? 'ersetzt' : mode === 'update' ? 'aktualisiert' : 'hinzugefügt'}).`);
+    const wordCount = units.reduce((a, u) => a + u.words.length, 0);
+    toast(`${wordCount} Vokabeln in ${units.length} Unit(s) ${isNew ? 'als neues Lehrmittel „' + saved.name + '“ angelegt' : mode === 'replace' ? 'ersetzt' : mode === 'update' ? 'aktualisiert' : 'hinzugefügt'}.`);
   }
 
   /* ------------------------------------------------------------------ */
@@ -754,7 +1001,11 @@
     const list = app.materials.slice().sort((a, b) => b.createdAt - a.createdAt);
     el.innerHTML = list.length ? list.map(m => { const s = quality.summarize((m.quality && m.quality.findings) || []); return `<div class="material-row"><div><strong>${esc(m.title)}</strong><div class="muted small">${m.kind === 'listening' ? 'Listening' : 'Reading'} · ${esc(m.plan.unitName)} · ${esc(m.plan.cefr)} · ${new Date(m.createdAt).toLocaleString()} · QC ${s.pass}/${s.pass + s.warn + s.fail + s.unverified}</div></div><div class="tb-actions"><button type="button" class="btn tiny" data-open="${esc(m.id)}">Öffnen</button><button type="button" class="btn tiny danger" data-del="${esc(m.id)}">Löschen</button></div></div>`; }).join('') : '<p class="muted">Noch keine Materialien gespeichert.</p>';
     $$('[data-open]', el).forEach(b => b.addEventListener('click', () => { const m = app.materials.find(x => x.id === b.dataset.open); app.material = m; openCreator(m.kind); renderOutput(m); }));
-    $$('[data-del]', el).forEach(b => b.addEventListener('click', async () => { if (!confirm('Material löschen?')) return; await store.remove('materials', b.dataset.del); app.materials = await store.list('materials'); renderMaterials(); }));
+    $$('[data-del]', el).forEach(b => b.addEventListener('click', async () => {
+      const m = app.materials.find(x => x.id === b.dataset.del);
+      if (!await askConfirm({ title: 'Material löschen', text: `„${m ? m.title : ''}“ endgültig löschen?`, okLabel: 'Löschen', danger: true })) return;
+      await store.remove('materials', b.dataset.del); app.materials = await store.list('materials'); renderMaterials();
+    }));
   }
 
   /* ------------------------------------------------------------------ */
@@ -763,7 +1014,12 @@
 
   function runConceptCheck() {
     const el = $('#check-results');
-    const res = checks.run({ hasControl: sel => { try { return !!document.querySelector(sel); } catch (e) { return false; } }, pipelineSource: generate.toString(), pipeline: generate });
+    const res = checks.run({
+      hasControl: sel => { try { return !!document.querySelector(sel); } catch (e) { return false; } },
+      pipelineSource: generate.toString(),
+      uiSource: Object.values(window.LR.ui).map(v => typeof v === 'function' ? v.toString() : '').join('\n'),
+      pipeline: generate,
+    });
     const bySection = {};
     for (const r of res.results) (bySection[r.section] = bySection[r.section] || []).push(r);
     const SECTION_NAMES = { 0: 'Vollständigkeit', 1: 'Ziel der Anwendung', 2: 'Hauptnavigation', 3: 'Grundaufbau des Creators', 4: 'Source & Unit', 5: 'Content', 6: 'Language Level', 7: 'Vocabulary Settings', 8: 'Listening – Audio Structure', 9: 'Listening Presets', 10: 'Speaker Distribution', 11: 'Turn Length', 12: 'Audio Length', 13: 'Speaker Profiles', 14: 'Emotion & Delivery Tags', 15: 'Natural Speech Settings', 16: 'Information Explicitness', 17: 'Reading – Text Structure', 18: 'Worksheet', 19: 'Number of Questions', 20: 'Listening / Reading Skills', 21: 'Higher-Order Thinking', 22: 'Question Difficulty', 23: 'Automatic Skill Mix', 24: 'Manual Skill Mix', 25: 'Question Formats', 26: 'Question Order', 27: 'Pre-Listening / Pre-Reading', 28: 'Output', 29: 'Quality Check', 30: 'Advanced Settings', 31: 'Simple vs. Advanced Mode', 32: 'Beispielkonfiguration', 33: 'Word-Export (formatiert, typgerecht)' };
@@ -792,9 +1048,18 @@
     $$('[data-download]').forEach(b => b.addEventListener('click', () => download(b.dataset.download)));
     $('#btn-print').addEventListener('click', () => window.print());
     $('#btn-load-example').addEventListener('click', () => { app.state = core.applyExampleConfig(app.state, app.textbooks); if (app.kind !== 'listening') { app.kind = 'listening'; document.body.dataset.kind = 'listening'; $('#creator-kind').textContent = 'Listening erstellen'; } fillForm(); onStateChange('preset'); setMode('advanced'); toast('Beispielkonfiguration aus dem Konzept (§32) geladen.'); });
-    $('#btn-reset').addEventListener('click', () => { if (!confirm('Alle Einstellungen dieses Creators zurücksetzen?')) return; app.state = core.defaults(app.kind); if (app.textbooks[0]) { app.state.textbookId = app.textbooks[0].id; app.state.unitId = app.textbooks[0].units[0] ? app.textbooks[0].units[0].id : ''; } fillForm(); saveDraft(); });
+    $('#btn-reset').addEventListener('click', async () => {
+      if (!await askConfirm({ title: 'Zurücksetzen', text: 'Alle Einstellungen dieses Creators auf die Standardwerte zurücksetzen?', okLabel: 'Zurücksetzen', danger: true })) return;
+      app.state = core.defaults(app.kind);
+      if (app.textbooks[0]) { app.state.textbookId = app.textbooks[0].id; app.state.unitId = app.textbooks[0].units[0] ? app.textbooks[0].units[0].id : ''; }
+      fillForm(); saveDraft();
+    });
     $('#btn-new-textbook').addEventListener('click', newTextbook);
     $('#import-file').addEventListener('change', e => { const f = e.target.files && e.target.files[0]; if (f) readImportFile(f).catch(err => toast('Datei konnte nicht gelesen werden: ' + err.message)); });
+    $('#import-textbook').addEventListener('change', onImportTargetChange);
+    $('#import-unit-mode').addEventListener('change', onUnitModeChange);
+    $('#import-unit').addEventListener('input', () => { if ($('#import-unit-mode').value === 'single' && importState.parsed) applyUnitMode(); });
+    $('#btn-detect-units').addEventListener('click', detectUnits);
     $('#btn-parse-text').addEventListener('click', parsePasted);
     $('#btn-parse-claude').addEventListener('click', parseWithClaude);
     $('#btn-import-confirm').addEventListener('click', confirmImport);
@@ -810,5 +1075,5 @@
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init); else init();
 
-  window.LR.ui = { app, generate, store, caps, showView, openCreator };
+  window.LR.ui = { app, generate, store, caps, showView, openCreator, importState, detectUnits, deriveTopics, confirmImport, newTextbook, askText, askConfirm };
 })();

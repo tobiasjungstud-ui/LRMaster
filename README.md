@@ -17,7 +17,7 @@ app/
   docx.js       Word-Writer (OOXML + ZIP, ohne Abhängigkeiten): Absätze, Tabellen, Spalten, Initialen, Seitenzahlen
   word.js       Dokument-Designs je Texttyp (Artikel, E-Mail, Forum, Tagebuch …), Arbeitsblatt und Lehrerversion als .docx
   ooxml.js      Validator für die erzeugten Word-Pakete (Teile, Content-Types, Beziehungen, Elementreihenfolge)
-  vocab.js      Import von CSV/TSV/TXT/XLSX-Wortlisten, Unit-Erkennung, Zusammenführen/Ersetzen
+  vocab.js      Import von CSV/TSV/TXT/XLSX-Wortlisten, Unit-Erkennung, Gruppierung nach Claudes Vorschlag, Zusammenführen/Ersetzen
   controls.js   Rendert das Creator-Formular aus dem Schema (jedes Setting → data-setting-Steuerelement)
   manifest.js   Konzept-Manifest: jede Anforderung aus §1–§32 mit ID, Art und maschineller Prüfung
   checks.js     Führt das Manifest gegen den echten Code aus (Node + Browser)
@@ -67,7 +67,7 @@ Das Arbeitsblatt ist ein echtes Arbeitsblatt: Name-/Klasse-/Datum-Zeile, Aufgabe
 
 ## Kontrollmechanismen
 
-- **Konzept-Manifest** (`app/manifest.js`): 195 Anforderungen aus dem Konzeptdokument, jede mit Prüfart:
+- **Konzept-Manifest** (`app/manifest.js`): 202 Anforderungen aus dem Konzeptdokument, jede mit Prüfart:
   - `setting` – Steuerelement existiert **und** die Änderung des Werts verändert nachweislich mindestens einen Prompt (Prompt-Sensitivitätstest; tote Einstellungen fallen durch).
   - `function` – Verhalten wird mit echten Eingaben ausgeführt (z. B. Preset *Interview* ⇒ Anteile 25/75, Skill-Mix verschiebt sich mit der Schwierigkeit, Beispielkonfiguration §32 reproduziert alle Werte).
   - `rule` – Qualitätsregel existiert als Messfunktion oder als Review-Kriterium und wird im Review-Prompt an Claude übergeben.
@@ -88,4 +88,23 @@ npm run serve     # lokale Vorschau (ohne Claude: Import, Einstellungen, Konzept
 
 Das Artifact deklariert die Capabilities `sample` (Claude), `db` (Lehrmittel und Materialien werden serverseitig gespeichert; Fallback localStorage) und `downloads` (Export). Beim ersten Generieren fragt Claude.ai um Erlaubnis; die Generierung nutzt das Kontingent des jeweiligen Nutzers. Ein Listening mit Worksheet benötigt drei bis fünf Claude-Aufrufe (Content, Fragen, Review, ggf. Revisionen).
 
-Vocabulary-Import: CSV/TSV/TXT (Spalten *word/translation/unit/note* oder „Wort – Übersetzung“-Listen mit Überschriften wie „Unit 3: Movies“), XLSX über SheetJS, oder unstrukturierten Text mit „Mit Claude strukturieren“. Modi: Hinzufügen, Aktualisieren, Ersetzen.
+## Lehrmittel und Vokabellisten
+
+Ein Lehrmittel ist eine eigene Vokabelliste mit Units. Neue Listen entstehen auf zwei Wegen, beide ohne vorhandene Liste:
+
+- **Lehrmittel anlegen** – legt ein leeres Lehrmittel an; die Units entstehen beim Import.
+- **Import direkt in ein neues Lehrmittel** – im Import-Formular steht „➕ Neues Lehrmittel anlegen …“ als Ziel; Name eingeben, Liste einlesen, übernehmen. Das neue Lehrmittel wird anschließend automatisch im Creator ausgewählt.
+
+Die Unit-Zuordnung ist wählbar:
+
+| Modus | Verhalten |
+|---|---|
+| Aus der Liste erkennen | Überschriften wie „Unit 3: Movies“, eine Unit-Spalte oder Tabellenblattnamen |
+| Alles in eine einzige neue Unit | Die ganze Liste wird zu einer Unit mit dem eingegebenen Namen |
+| Claude soll Units und Themen erkennen | Claude gruppiert eine unstrukturierte Liste in Units, benennt sie fortlaufend und leitet je ein Thema ab |
+
+Enthält die Liste zwar Units, aber keine Themen, ergänzt Claude die Themen aus dem Wortschatz – im Import über „Fehlende Themen von Claude ergänzen“, für bereits gespeicherte Lehrmittel über „Themen von Claude“ direkt am Lehrmittel. Die Zuordnung ist verlustfrei: Lücken und Überlappungen in Claudes Gruppen werden geschlossen, keine Vokabel geht verloren (im Test über mehrere Grenzfälle geprüft). Jede Unit lässt sich in der Vorschau vor dem Import umbenennen, mit einem Thema versehen oder ganz weglassen.
+
+Dateiformate: CSV, TSV, TXT (Spalten *word/translation/unit/note* oder „Wort – Übersetzung“-Listen), XLSX über SheetJS. Unstrukturierter Rohtext (z. B. aus einem PDF kopiert) lässt sich mit „Rohtext mit Claude zerlegen“ in Wort und Übersetzung trennen. Modi beim Import in ein bestehendes Lehrmittel: Hinzufügen, Aktualisieren, Ersetzen.
+
+Anlegen, Umbenennen und Löschen laufen über seiteneigene Dialoge, nicht über `window.prompt`/`confirm` – im Artifact-Frame sind die nicht verlässlich verfügbar. Ein Test stellt sicher, dass keine native Dialogfunktion mehr im Code steht.

@@ -22,6 +22,7 @@
       core, prompts, quality, render, vocab, word, ooxml, textbooks, ctx,
       hasControl: opts.hasControl || (() => false),
       pipelineSource: opts.pipelineSource || '',
+      uiSource: opts.uiSource || '',
       pipeline: opts.pipeline,
       state(overrides) {
         const kind = overrides && overrides.kind === 'reading' ? 'reading' : 'listening';
