@@ -2,7 +2,7 @@
 <meta name="description" content="Listening & Reading Creator: CEFR-kontrollierte Listenings, Readings und Worksheets aus dem Vokabular eines Lehrmittels, erstellt mit Claude.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Source+Sans+3:ital,wght@0,400;0,600;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Source+Sans+3:ital,wght@0,400;0,600;1,400&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;1,8..60,400&family=Caveat:wght@400;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
 <link rel="stylesheet" href="styles.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 
@@ -76,6 +76,8 @@
           <button type="button" class="tab" data-tab="json">JSON</button>
         </div>
         <div class="output-actions">
+          <button type="button" class="btn tiny primary" data-download="docx-student">Word: Schülerversion</button>
+          <button type="button" class="btn tiny primary" data-download="docx-teacher">Word: Lehrerversion</button>
           <button type="button" class="btn tiny" id="btn-print">Drucken</button>
           <button type="button" class="btn tiny" data-download="student">Student .html</button>
           <button type="button" class="btn tiny" data-download="teacher">Teacher .html</button>
@@ -128,7 +130,7 @@
 <div id="toast" class="toast" hidden></div>
 
 <script id="print-css" type="text/plain">
-body{font-family:Georgia,serif;margin:2cm;color:#111;line-height:1.45}.sheet h1{font-size:1.6rem;margin:0 0 .25rem}.meta{color:#555;font-size:.9rem}.instructions{font-style:italic}.block{margin:1.4rem 0}.block h2{font-size:1.1rem;border-bottom:1px solid #bbb;padding-bottom:.2rem}.qlist>li{margin:.9rem 0}.q-format{font-size:.75rem;color:#666;text-transform:uppercase;letter-spacing:.04em}.options{margin:.3rem 0 .3rem 1.2rem}.answer-line{color:#999}.table-wrap{overflow-x:auto}.matching td,.completion td,.completion th,.keytable td,.keytable th{border:1px solid #bbb;padding:.25rem .5rem;vertical-align:top}table{border-collapse:collapse;width:100%;font-size:.92rem}.line-no{display:inline-block;min-width:2rem;color:#999;font-size:.8rem}.speaker{font-weight:700}.tag{font-family:monospace;color:#7a4b00}mark.vocab{background:#fde68a}.rationale{font-size:.85rem;color:#444}.badge{font-size:.7rem;border:1px solid #999;border-radius:4px;padding:0 .3rem;vertical-align:middle}.stats,.muted{color:#666;font-size:.85rem}.qc-list{list-style:none;padding:0}.qc-status{font-family:monospace;text-transform:uppercase;font-size:.75rem}.teacher-note{font-size:.85rem;color:#444}.pretask{margin:.6rem 0}
+body{font-family:Georgia,serif;margin:2cm;color:#111;line-height:1.45}.sheet h1{font-size:1.6rem;margin:0 0 .25rem}.meta{color:#555;font-size:.9rem}.instructions{font-style:italic}.block{margin:1.4rem 0}.block h2{font-size:1.1rem;border-bottom:1px solid #bbb;padding-bottom:.2rem}.qlist>li{margin:.9rem 0}.q-format{font-size:.75rem;color:#666;text-transform:uppercase;letter-spacing:.04em}.options{margin:.3rem 0 .3rem 1.2rem}.answer-line{color:#999}.table-wrap{overflow-x:auto}.matching td,.completion td,.completion th,.keytable td,.keytable th{border:1px solid #bbb;padding:.25rem .5rem;vertical-align:top}table{border-collapse:collapse;width:100%;font-size:.92rem}.line-no{display:inline-block;min-width:2rem;color:#999;font-size:.8rem}.speaker{font-weight:700}.tag{font-family:monospace;color:#7a4b00}mark.vocab{background:#fde68a}.rationale{font-size:.85rem;color:#444}.badge{font-size:.7rem;border:1px solid #999;border-radius:4px;padding:0 .3rem;vertical-align:middle}.stats,.muted{color:#666;font-size:.85rem}.qc-list{list-style:none;padding:0}.qc-status{font-family:monospace;text-transform:uppercase;font-size:.75rem}.teacher-note{font-size:.85rem;color:#444}.pretask{margin:.6rem 0}.doc{max-width:34em}.doc .kicker{font-size:.7rem;letter-spacing:.12em;text-transform:uppercase;color:#7a4b00;font-weight:700;margin:0}.doc .doc-title{font-size:1.5rem;margin:.1em 0 .2em}.doc .standfirst{font-style:italic;color:#555;margin:.2em 0}.doc .doc-meta{font-size:.8rem;color:#666;border-top:1px solid #bbb;border-bottom:1px solid #ddd;padding:.25em 0;margin:.4em 0 1em}.doc .pull{border-top:2px solid #999;border-bottom:2px solid #999;font-size:1.15em;font-style:italic;text-align:center;margin:1em 0;padding:.5em 0}.doc .callout{background:#f2f2f2;padding:.5em .8em;margin:1em 0}.doc .callout h4{margin:0 0 .2em;font-size:.72rem;text-transform:uppercase;letter-spacing:.08em}.doc .mail-head{border:1px solid #ccc;margin-bottom:1em}.doc .mail-head th{background:#f2f2f2;text-align:left;font-size:.72rem;text-transform:uppercase;width:5em}.doc .post{border-top:1px solid #ccc;padding:.4em 0}.doc .post header{font-size:.78rem;color:#666}.doc .post .user{font-weight:700;color:#333;margin-right:.6em}.doc .turn .who{font-weight:700;text-transform:uppercase;font-size:.78em;letter-spacing:.04em;margin-right:.5em}.doc .tags span{font-size:.78rem;color:#555;margin-right:.6em}.doc .source{font-size:.75rem;color:#777;font-style:italic}.doc .para-no{color:#aaa;font-size:.7em;margin-right:.4em}
 </script>
 
 <script src="core.js"></script>
@@ -136,6 +138,9 @@ body{font-family:Georgia,serif;margin:2cm;color:#111;line-height:1.45}.sheet h1{
 <script src="quality.js"></script>
 <script src="render.js"></script>
 <script src="vocab.js"></script>
+<script src="docx.js"></script>
+<script src="ooxml.js"></script>
+<script src="word.js"></script>
 <script src="controls.js"></script>
 <script src="fixture.js"></script>
 <script src="manifest.js"></script>

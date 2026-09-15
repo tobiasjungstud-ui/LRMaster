@@ -6,7 +6,7 @@
  */
 (function () {
   'use strict';
-  const { core, prompts, quality, render, vocab, controls, checks, fixture } = window.LR;
+  const { core, prompts, quality, render, vocab, controls, checks, fixture, word, ooxml } = window.LR;
   const $ = (sel, root) => (root || document).querySelector(sel);
   const $$ = (sel, root) => Array.from((root || document).querySelectorAll(sel));
   const esc = render.esc;
@@ -568,18 +568,40 @@
 
   async function download(kind) {
     const m = app.material; if (!m) return;
-    const slug = (m.title || 'material').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 60) || 'material';
+    const slug = word.slug(m.title);
     let filename, data;
-    if (kind === 'md') { filename = slug + '.md'; data = render.renderMarkdown(m); }
+    if (kind === 'docx-student' || kind === 'docx-teacher') {
+      const which = kind === 'docx-student' ? 'student' : 'teacher';
+      // Never hand out a document that would open as damaged.
+      const problems = ooxml.validate(word.partsFor(m, which));
+      if (problems.length) {
+        console.error('LRMaster: invalid Word package', problems);
+        toast('Word-Datei konnte nicht erzeugt werden: ' + problems[0]);
+        return;
+      }
+      filename = word.filename(m, which);
+      data = new Blob([which === 'teacher' ? word.buildTeacher(m) : word.buildStudent(m)],
+        { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
+    } else if (kind === 'md') { filename = slug + '.md'; data = render.renderMarkdown(m); }
     else if (kind === 'student') { filename = slug + '-student.html'; data = fullDocument(m.title, render.renderStudentHTML(m)); }
     else if (kind === 'teacher') { filename = slug + '-teacher.html'; data = fullDocument(m.title + ' (teacher)', render.renderTeacherHTML(m)); }
     else { filename = slug + '.json'; data = JSON.stringify(m, null, 2); }
+
     if (caps.downloads) {
       try { await caps.downloads.save({ filename, data }); toast('Gespeichert: ' + filename); }
       catch (e) { if (e.code !== 'declined') toast('Download nicht möglich: ' + (e.message || e.code)); }
-    } else {
-      // Outside the Claude viewer: copy to clipboard as fallback.
-      try { await navigator.clipboard.writeText(data); toast('Download hier nicht verfügbar – Inhalt in die Zwischenablage kopiert.'); } catch (e) { toast('Download hier nicht verfügbar.'); }
+      return;
+    }
+    // Outside the Claude viewer (local preview): save through the browser.
+    try {
+      const blob = data instanceof Blob ? data : new Blob([data], { type: 'text/plain;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = filename; document.body.appendChild(a); a.click();
+      setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 1000);
+      toast('Gespeichert: ' + filename);
+    } catch (e) {
+      toast('Download in dieser Ansicht nicht verfügbar.');
     }
   }
 
@@ -744,7 +766,7 @@
     const res = checks.run({ hasControl: sel => { try { return !!document.querySelector(sel); } catch (e) { return false; } }, pipelineSource: generate.toString(), pipeline: generate });
     const bySection = {};
     for (const r of res.results) (bySection[r.section] = bySection[r.section] || []).push(r);
-    const SECTION_NAMES = { 0: 'Vollständigkeit', 1: 'Ziel der Anwendung', 2: 'Hauptnavigation', 3: 'Grundaufbau des Creators', 4: 'Source & Unit', 5: 'Content', 6: 'Language Level', 7: 'Vocabulary Settings', 8: 'Listening – Audio Structure', 9: 'Listening Presets', 10: 'Speaker Distribution', 11: 'Turn Length', 12: 'Audio Length', 13: 'Speaker Profiles', 14: 'Emotion & Delivery Tags', 15: 'Natural Speech Settings', 16: 'Information Explicitness', 17: 'Reading – Text Structure', 18: 'Worksheet', 19: 'Number of Questions', 20: 'Listening / Reading Skills', 21: 'Higher-Order Thinking', 22: 'Question Difficulty', 23: 'Automatic Skill Mix', 24: 'Manual Skill Mix', 25: 'Question Formats', 26: 'Question Order', 27: 'Pre-Listening / Pre-Reading', 28: 'Output', 29: 'Quality Check', 30: 'Advanced Settings', 31: 'Simple vs. Advanced Mode', 32: 'Beispielkonfiguration' };
+    const SECTION_NAMES = { 0: 'Vollständigkeit', 1: 'Ziel der Anwendung', 2: 'Hauptnavigation', 3: 'Grundaufbau des Creators', 4: 'Source & Unit', 5: 'Content', 6: 'Language Level', 7: 'Vocabulary Settings', 8: 'Listening – Audio Structure', 9: 'Listening Presets', 10: 'Speaker Distribution', 11: 'Turn Length', 12: 'Audio Length', 13: 'Speaker Profiles', 14: 'Emotion & Delivery Tags', 15: 'Natural Speech Settings', 16: 'Information Explicitness', 17: 'Reading – Text Structure', 18: 'Worksheet', 19: 'Number of Questions', 20: 'Listening / Reading Skills', 21: 'Higher-Order Thinking', 22: 'Question Difficulty', 23: 'Automatic Skill Mix', 24: 'Manual Skill Mix', 25: 'Question Formats', 26: 'Question Order', 27: 'Pre-Listening / Pre-Reading', 28: 'Output', 29: 'Quality Check', 30: 'Advanced Settings', 31: 'Simple vs. Advanced Mode', 32: 'Beispielkonfiguration', 33: 'Word-Export (formatiert, typgerecht)' };
     $('#check-summary').innerHTML = `<span class="big">${res.summary.pass} / ${res.summary.total}</span> Anforderungen bestanden` + (res.summary.fail ? ` · <span class="bad">${res.summary.fail} nicht bestanden</span>` : ' · alle Konzeptpunkte mit echten Funktionen belegt');
     el.innerHTML = Object.keys(bySection).sort((a, b) => Number(a) - Number(b)).map(sec => `<section class="check-section"><h3>§${sec} ${esc(SECTION_NAMES[sec] || '')} <span class="muted">${bySection[sec].filter(r => r.status === 'pass').length}/${bySection[sec].length}</span></h3><div class="table-wrap"><table class="check-table"><tbody>` + bySection[sec].map(r => `<tr class="qc-${r.status}"><td class="qc-status">${r.status}</td><td><code>${esc(r.id)}</code></td><td>${esc(r.title)}<div class="muted small">${esc(r.kind)}${r.key ? ' · ' + esc(r.key) : ''}</div></td><td class="muted">${esc(r.detail)}</td></tr>`).join('') + '</tbody></table></div></section>').join('');
   }

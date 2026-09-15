@@ -29,7 +29,7 @@
   };
 
   const FORMAT_SHAPES = {
-    multiple_choice: '"options": ["A …","B …","C …","D …"], "answer": "letter"',
+    multiple_choice: '"options": ["first option", "second option", "third option", "fourth option"] — WITHOUT letters, the worksheet adds A, B, C itself; "answer": the letter of the correct option, e.g. "B"',
     true_false: '"statement": "…", "answer": "True" | "False"',
     true_false_correction: '"statement": "…", "answer": "True" | "False", "correction": "corrected statement if false, otherwise empty"',
     short_answer: '"answer": "model answer (a few words)", "acceptable": ["variant", …]',
@@ -37,11 +37,11 @@
     sentence_completion: '"prompt" contains a sentence with ____ to complete, "answer": "the missing words"',
     gap_fill: '"prompt" contains a short passage with numbered gaps (1)…, "answer": ["gap 1", "gap 2", …]',
     matching: '"items": [{"left": "…", "right": "…"}, …] (3–6 pairs, correct pairing; the student version shuffles the right column), "answer": "see items"',
-    who_said_it: '"statement": "paraphrased statement", "options": [speaker names], "answer": "speaker name"',
+    who_said_it: '"statement": "paraphrased statement", "options": [speaker names, without letters], "answer": "speaker name"',
     ordering: '"items": ["event 1", "event 2", …] in the CORRECT order (the student version shuffles them), "answer": "see items"',
     table_completion: '"table": {"headers": ["…"], "rows": [["…", "___", "…"], …]}, "answer": ["cell 1", "cell 2", …] in reading order of the blanks',
-    select_all: '"options": ["A …","B …","C …","D …","E …"], "answer": ["A","C"]',
-    best_summary: '"options": ["A summary …","B summary …","C summary …"], "answer": "letter"',
+    select_all: '"options": [five options, WITHOUT letters], "answer": ["A","C"] (the letters of every correct option)',
+    best_summary: '"options": [three candidate summaries, WITHOUT letters], "answer": the letter of the best one',
     note_taking: '"prompt" gives a notes template with numbered gaps, "answer": ["note 1", "note 2", …]',
   };
 
@@ -172,10 +172,31 @@
   /* ------------------------------------------------------------------ */
 
   function contentSchema(state) {
+    const meta = metaSchema(state);
     if (state.kind === 'listening') {
-      return '{"title": "…", "summary": "one-sentence summary for the teacher", "vocabularyUsed": ["…"], "lines": [{"speaker": "label from the list", "emotion": "tag or null", "text": "what is said"}]}';
+      return `{"title": "…", "summary": "one-sentence summary for the teacher", "meta": ${meta}, "vocabularyUsed": ["…"], "lines": [{"speaker": "label from the list", "emotion": "tag or null", "text": "what is said"}]}`;
     }
-    return '{"title": "…", "summary": "one-sentence summary for the teacher", "vocabularyUsed": ["…"], "paragraphs": ["paragraph 1", "paragraph 2", …]}';
+    return `{"title": "…", "summary": "one-sentence summary for the teacher", "meta": ${meta}, "vocabularyUsed": ["…"], "paragraphs": ["paragraph 1", "paragraph 2", …]}`;
+  }
+
+  function metaSpec(state) { return core.META_SPECS[core.designIdFor(state)] || core.META_SPECS.custom; }
+
+  function metaSchema(state) {
+    return '{' + metaSpec(state).fields.map(([k]) => `"${k}": …`).join(', ') + '}';
+  }
+
+  /**
+   * The document details the material is laid out with (byline, From/To/Subject,
+   * usernames, star rating …). They make the printed document look like the real
+   * text type, so they are written by Claude, never filled in by the app.
+   */
+  function documentBlock(state) {
+    const spec = metaSpec(state);
+    const lines = [`The material is published as: ${spec.label}. Return a "meta" object with exactly these fields, written in the language of the text and consistent with its content:`];
+    for (const [key, desc] of spec.fields) lines.push(`- "${key}": ${desc}`);
+    lines.push('Invent plausible names, dates and publications; never use real people\'s names. Leave a field as an empty string only if it genuinely does not apply.');
+    if (spec.headings) lines.push('You may structure the text with short subheadings: a subheading is its own entry in "paragraphs", at most 8 words long and without a full stop at the end.');
+    return lines.join('\n');
   }
 
   function buildContentPrompt(state, plan) {
@@ -185,6 +206,7 @@
       '## Language level\n' + languageBlock(state, plan),
       '## Target vocabulary\n' + vocabularyBlock(state, plan),
       (state.kind === 'listening' ? '## Audio structure\n' + listeningStructureBlock(state, plan) : '## Text structure\n' + readingStructureBlock(state, plan)),
+      '## Document details\n' + documentBlock(state),
       '## Quality requirements\n- The text is coherent and reads naturally.\n- The topic fits the unit.\n- Speakers are clearly distinguishable by what they say and how they say it.' + (state.kind === 'listening' ? '\n- Do not put the emotion tag inside "text"; use the "emotion" field only.\n- One turn per line object; do not merge two speakers into one line.' : ''),
       'Reply with only a JSON object of this shape:\n' + contentSchema(state),
     ];
@@ -323,7 +345,7 @@
   }
 
   return {
-    scale, SKILL_DEFINITIONS, FORMAT_SHAPES, contentAsText,
+    scale, SKILL_DEFINITIONS, FORMAT_SHAPES, contentAsText, documentBlock, metaSpec, contentSchema,
     buildTopicPrompt, buildContentPrompt, buildQuestionPrompt, buildReviewPrompt,
     buildContentRevisionPrompt, buildQuestionRevisionPrompt, buildVocabParsePrompt, buildAllPrompts,
   };

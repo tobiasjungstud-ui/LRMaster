@@ -13,7 +13,10 @@ app/
   core.js       Settings-Schema, Defaults, Ableitungen (Wortzahl, Sprechanteile, Skill-Mix, Formate, Plan), Validierung, Presets, Beispielkonfiguration
   prompts.js    Prompt-Builder: jede Einstellung wird in eine Anweisung an Claude übersetzt (Topic, Content, Fragen, Review, Revision, Vokabel-Import)
   quality.js    Normalisierung der Claude-Antworten + Qualitätsregeln (§29): deterministisch gemessen oder per Claude-Review beurteilt
-  render.js     Student Version / Teacher Version / Markdown-Export
+  render.js     Student Version / Teacher Version / Markdown-Export, Textlayout je Texttyp
+  docx.js       Word-Writer (OOXML + ZIP, ohne Abhängigkeiten): Absätze, Tabellen, Spalten, Initialen, Seitenzahlen
+  word.js       Dokument-Designs je Texttyp (Artikel, E-Mail, Forum, Tagebuch …), Arbeitsblatt und Lehrerversion als .docx
+  ooxml.js      Validator für die erzeugten Word-Pakete (Teile, Content-Types, Beziehungen, Elementreihenfolge)
   vocab.js      Import von CSV/TSV/TXT/XLSX-Wortlisten, Unit-Erkennung, Zusammenführen/Ersetzen
   controls.js   Rendert das Creator-Formular aus dem Schema (jedes Setting → data-setting-Steuerelement)
   manifest.js   Konzept-Manifest: jede Anforderung aus §1–§32 mit ID, Art und maschineller Prüfung
@@ -33,11 +36,38 @@ scripts/coverage-report.js  schreibt CONCEPT_COVERAGE.md (npm run coverage)
 5. **Aufgaben-Prüfung** – gemessen: Anzahl, Skill-Verteilung, erlaubte Formate, Chronologie über Evidenz-Positionen, Duplikate, auffindbare Evidenz, Higher-Order getrennt, Pre-Task-Typen.
 6. **Claude-Review** – Beurteilung der Regeln, die Lesen erfordern (Eindeutigkeit, Ableitbarkeit, Distraktoren, Niveau, echte Inferenz, Natürlichkeit, Thema, keine Spoiler im Pre-Task).
 7. **Revision** – bei blockierenden Befunden einmalige Überarbeitung, danach erneutes Messen und erneutes Review.
-8. **Ausgabe** – Student Version (ohne Skript beim Listening), Teacher Version (Skript mit Zeilennummern und Vokabel-Highlight, verwendete Items, Lösungsschlüssel mit Skill/Difficulty/Evidenz/Begründung, Qualitätsbericht), Prompts und JSON; Druck, Download (.html/.md/.json), Speicherung.
+8. **Ausgabe** – Student Version (ohne Skript beim Listening), Teacher Version (Skript mit Zeilennummern und Vokabel-Highlight, verwendete Items, Lösungsschlüssel mit Skill/Difficulty/Evidenz/Begründung, Qualitätsbericht), Prompts und JSON; Download als **Word (.docx)**, HTML, Markdown oder JSON, Druck, Speicherung.
+
+## Word-Export
+
+Zwei Downloads: **Schülerversion** und **Lehrerversion**, beide als fertig formatierte `.docx`-Datei (A4, Kopf-/Fußzeile mit Seitenzahl, Word-eigene Absatz- und Tabellenformate – kein HTML in einer Word-Hülle).
+
+Der Text wird im Layout seines Texttyps gesetzt, nicht als neutraler Fließtext:
+
+| Texttyp | Gestaltung |
+|---|---|
+| Story | Buchsatz, Garamond, kapitälchenartiger Titel, Initiale, Blocksatz mit Einzug |
+| Article | Magazin: Kicker, große Headline, Vorspann, Autorenzeile zwischen Haarlinien, Pull-Quote |
+| News Article | Zeitung: Zeitungskopf mit Doppellinie, Ressortzeile, **zwei Spalten**, Ortsmarke im ersten Absatz |
+| Blog Post | Serifenlos, Blogname, „von X · Datum · 4 min read“, Tag-Leiste am Ende |
+| Email | Kopftabelle From / To / Subject / Sent, Signaturblock nach `--` |
+| Forum Discussion | Thread-Balken, Beiträge als Karten mit Username und Zeitstempel |
+| Interview | Frage fett mit Sprecherkürzel, hängender Einzug |
+| Review | Kategorie-Kicker, Sternewertung, Verdict-Kasten |
+| Report | Titelband in Akzentfarbe, Empfänger/Autor/Datum-Tabelle, Summary-Kasten, nummerierte Zwischentitel |
+| Diary Entry | Handschrift-Schrift, Datum rechts, gepunktete Schreiblinien |
+| Informational Text | Akzentlinie unter dem Titel, „Did you know?“-Faktenkasten, Quellenangabe |
+| Opinion Text | „OPINION“-Eyebrow, Initiale, Pull-Quote |
+| Dialogue | Zweispaltige Sprechertabelle |
+| Listening | Aufnahme-Skript: Zeilennummern, Sprecherspalte, Emotion-Tags, Setting und Sprechanteile im Kopf |
+
+Die dafür nötigen Angaben (Byline, Publikation, Datum, From/To/Subject, Usernames, Sternewertung, Verdict, Faktenkasten …) fordert die Anwendung pro Texttyp bei Claude an (`META_SPECS` in `core.js` → Prompt → `meta`-Objekt der Antwort). Es gibt dafür keine Textbausteine im Code; fehlende Felder werden schlicht weggelassen.
+
+Das Arbeitsblatt ist ein echtes Arbeitsblatt: Name-/Klasse-/Datum-Zeile, Aufgabenblöcke nach Antwortformat gruppiert, Ankreuzkästchen, Zuordnungstabellen mit gemischter rechter Spalte, Schreiblinien, Seitenzahl. Die Lehrerversion enthält Metadaten, Skript bzw. Text mit ¶-Nummern und hervorgehobenem Zielvokabular, Vokabeltabelle, Lösungsschlüssel (Skill, Format, Niveau, Antwort, Evidenz, Begründung) und den Qualitätsbericht.
 
 ## Kontrollmechanismen
 
-- **Konzept-Manifest** (`app/manifest.js`): 167 Anforderungen aus dem Konzeptdokument, jede mit Prüfart:
+- **Konzept-Manifest** (`app/manifest.js`): 195 Anforderungen aus dem Konzeptdokument, jede mit Prüfart:
   - `setting` – Steuerelement existiert **und** die Änderung des Werts verändert nachweislich mindestens einen Prompt (Prompt-Sensitivitätstest; tote Einstellungen fallen durch).
   - `function` – Verhalten wird mit echten Eingaben ausgeführt (z. B. Preset *Interview* ⇒ Anteile 25/75, Skill-Mix verschiebt sich mit der Schwierigkeit, Beispielkonfiguration §32 reproduziert alle Werte).
   - `rule` – Qualitätsregel existiert als Messfunktion oder als Review-Kriterium und wird im Review-Prompt an Claude übergeben.
@@ -45,6 +75,7 @@ scripts/coverage-report.js  schreibt CONCEPT_COVERAGE.md (npm run coverage)
   - `ui` – Navigations-/Strukturelement existiert.
 - **Vollständigkeit**: jedes Setting im Schema muss einer Anforderung zugeordnet sein, jede Qualitätsregel wird gelistet.
 - **Kein hartkodierter Inhalt**: Titel, Instruktion, Fragen, Pre-Tasks und Themenvorschläge werden nachweislich von Claude angefordert; die Pipeline wird auf literale Instruktionstexte geprüft.
+- **Word-Export**: der Generator schreibt OOXML selbst, deshalb prüft `ooxml.js` jedes erzeugte Paket vor dem Download – vorhandene Teile, Content-Types, auflösbare Beziehungen, Schema-Reihenfolge der Elemente, Tabellenstruktur. Schlägt die Prüfung fehl, wird keine Datei ausgeliefert. In den Tests wird das Paket zusätzlich von einem unabhängigen ZIP-/XML-Leser (`python3 zipfile`) geöffnet, und für jeden der 14 Texttypen wird geprüft, dass die typischen Gestaltungselemente tatsächlich im Dokument stehen.
 - **Drei Ausführungsorte derselben Prüfung**: `npm test` (lokal), GitHub Actions (`.github/workflows/test.yml`, inkl. Aktualität von `CONCEPT_COVERAGE.md`) und die Seite **Konzept-Check** in der App selbst, die gegen das laufende DOM und die echte `generate()`-Funktion prüft.
 
 ```bash

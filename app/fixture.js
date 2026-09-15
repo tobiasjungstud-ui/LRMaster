@@ -62,6 +62,26 @@
     ];
   }
 
+  /* Document details as Claude returns them, one sample per design. */
+  const META = {
+    story: { byline: 'Fixture Author' },
+    article: { publication: 'Fixture Weekly', byline: 'Fixture Reporter', dateline: '14 March 2026', standfirst: 'Fixture stand-first sentence.', pullQuote: 'found it under a bench' },
+    news: { publication: 'Fixture Post', byline: 'Fixture Reporter', dateline: '14 March 2026', location: 'FIXTURETOWN', standfirst: 'Fixture summary sentence.' },
+    blog: { blogName: 'Fixture Blog', byline: 'fixture_user', dateline: '14 March 2026', readingTime: '4 min read', tags: ['fixture', 'friends'] },
+    email: { from: 'Sam Fixture <sam@example.org>', to: 'Priya Fixture <priya@example.org>', subject: 'Fixture subject line', sent: 'Monday, 09:12', signature: 'Sam\nFixture club' },
+    forum: { forumName: 'Fixture Board', threadTitle: 'Fixture thread title', authors: ['fixture_mia', 'fixture_leo', 'fixture_sam'], timestamps: ['2 h ago', '1 h ago', '20 min ago'] },
+    interview: { publication: 'Fixture Voices', byline: 'Fixture Interviewer', standfirst: 'Fixture introduction.', speakers: ['Fixture Interviewer', 'Fixture Guest', 'Fixture Interviewer'] },
+    review: { subject: 'Fixture film', category: 'Film', rating: 4, byline: 'Fixture Critic', verdict: 'Fixture verdict sentence.' },
+    report: { subtitle: 'Fixture subtitle', author: 'Fixture Class', dateline: '14 March 2026', recipient: 'Fixture Head teacher', summary: 'Fixture executive summary.' },
+    diary: { dateline: 'Tuesday, 14 March', place: 'Fixture town' },
+    informational: { subtitle: 'Fixture subtitle', source: 'Fixture source', factBox: ['Fixture fact one', 'Fixture fact two'] },
+    opinion: { publication: 'Fixture Voice', byline: 'Fixture Columnist', dateline: '14 March 2026', pullQuote: 'found it under a bench' },
+    dialogue: { setting: 'Fixture bus stop', speakers: ['Fixture Sam', 'Fixture Priya', 'Fixture Sam'] },
+    custom: { byline: 'Fixture Author', standfirst: 'Fixture introduction.' },
+    script: { setting: 'Fixture school corridor', programme: 'Fixture Talk' },
+  };
+  function meta(designId) { return JSON.parse(JSON.stringify(META[designId] || META.custom)); }
+
   function content(kind) {
     if (kind === 'reading') {
       return {
@@ -95,7 +115,7 @@
       title: 'Fixture worksheet title', instructions: 'Fixture instruction sentence.',
       preTasks: [{ type: 'prediction', title: 'Guess', prompt: 'Fixture prediction prompt', items: [], teacherNote: '' }],
       questions: [
-        { n: 1, skill: 'gist', format: 'multiple_choice', difficulty: 'B1.1', prompt: 'What is the conversation mainly about?', options: ['A Fixture option one', 'B Fixture option two', 'C Fixture option three'], answer: 'B', evidenceQuote: quotes[0], evidenceRef: refs[0], rationale: '' },
+        { n: 1, skill: 'gist', format: 'multiple_choice', difficulty: 'B1.1', prompt: 'What is the conversation mainly about?', options: ['Fixture option one', 'Fixture option two', 'Fixture option three'], answer: 'B', evidenceQuote: quotes[0], evidenceRef: refs[0], rationale: '' },
         { n: 2, skill: 'specific', format: 'short_answer', difficulty: 'B1.1', prompt: 'Fixture specific question?', answer: 'Fixture specific answer', evidenceQuote: quotes[0], evidenceRef: refs[0], rationale: '' },
         { n: 3, skill: 'detail', format: 'true_false', difficulty: 'B1.1', prompt: 'Fixture detail statement.', answer: 'True', evidenceQuote: quotes[1], evidenceRef: refs[1], rationale: '' },
         { n: 4, skill: 'inference', format: 'short_answer', difficulty: 'B1.2', prompt: 'Fixture inference question?', answer: 'Fixture inference answer', evidenceQuote: quotes[2], evidenceRef: refs[2], rationale: 'Fixture inference rationale sentence.' },
@@ -109,6 +129,7 @@
     kind = kind || 'listening';
     const settings = core.normalizeState(Object.assign(core.defaults(kind), { questionCount: 'custom', questionCountCustom: 4, targetVocabMin: 2, targetVocabMax: 3, skillMixMode: 'custom', customSkillMix: { gist: 1, specific: 1, detail: 1, connecting: 0, inference: 1, attitude: 0, purpose: 0, context: 0 }, questionFormats: ['multiple_choice', 'short_answer', 'true_false'], autoFormatMix: false }, overrides || {}));
     const c = content(kind);
+    c.meta = meta(core.designIdFor(settings));
     const ws = worksheet(kind);
     if (settings.higherOrder) ws.higherOrder = [{ n: 1, type: 'evaluation', prompt: 'Fixture higher-order prompt', answer: 'Fixture model answer', rationale: '' }];
     if (!settings.preTask) ws.preTasks = [];
@@ -120,5 +141,5 @@
     };
   }
 
-  return { textbooks, content, worksheet, material };
+  return { textbooks, content, worksheet, material, meta, META };
 });

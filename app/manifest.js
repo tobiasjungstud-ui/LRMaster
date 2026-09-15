@@ -385,6 +385,156 @@
       return ok(s.cefr === 'B1.2' && s.preset === 'podcast' && plan.seconds === 180 && deepEq(plan.shares, [30, 70]) && plan.questionCount === 10 && deepEq(plan.skillMix, { gist: 1, specific: 3, detail: 2, connecting: 1, inference: 1, attitude: 1, purpose: 1, context: 0 }) && deepEq(s.questionFormats, ['multiple_choice', 'short_answer', 'matching']) && s.followChronology && s.turnVariability >= 75 && s.emotionTags === 'medium' && env.hasControl('#btn-load-example'), 'example config does not reproduce §32');
     } });
 
+  /* §33 Word-Export (Auftragserweiterung): herunterladbar, formatiert, typgerecht) */
+  const docParts = (env, m, which) => env.word.partsFor(m, which);
+  const docXml = (env, m, which) => String(docParts(env, m, which).find(p => p.name === 'word/document.xml').data);
+  const docText = (env, m, which) => env.ooxml.textOf(docParts(env, m, which)).replace(/\s+/g, ' ');
+  const squash = (x) => String(x).replace(/\s+/g, '');
+
+  add({ id: 'S33.button_student', section: 33, title: 'Download „Word: Schülerversion“', kind: 'ui', selector: '[data-download="docx-student"]' });
+  add({ id: 'S33.button_teacher', section: 33, title: 'Download „Word: Lehrerversion“', kind: 'ui', selector: '[data-download="docx-teacher"]' });
+  add({ id: 'S33.filename', section: 33, title: 'Datei wird als .docx mit sprechendem Namen ausgeliefert', kind: 'function',
+    check(env) {
+      const m = env.fixture.material();
+      const f = env.word.filename(m, 'student'), t = env.word.filename(m, 'teacher');
+      return ok(/\.docx$/.test(f) && /\.docx$/.test(t) && f !== t && /[a-z]/.test(f), f + ' / ' + t);
+    } });
+  add({ id: 'S33.valid_package', section: 33, title: 'Erzeugte Word-Datei ist ein gültiges OOXML-Paket (Teile, Content-Types, Beziehungen, Elementreihenfolge)', kind: 'function',
+    check(env) {
+      const problems = [];
+      for (const type of env.core.TEXT_TYPES) {
+        const m = env.fixture.material({ textType: type, customTextType: 'Show notes', higherOrder: true, preTask: true }, 'reading');
+        for (const which of ['student', 'teacher']) problems.push(...env.ooxml.validate(docParts(env, m, which)).map(x => type + '/' + which + ': ' + x));
+      }
+      const l = env.fixture.material({ higherOrder: true, preTask: true }, 'listening');
+      for (const which of ['student', 'teacher']) problems.push(...env.ooxml.validate(docParts(env, l, which)).map(x => 'listening/' + which + ': ' + x));
+      return ok(problems.length === 0, problems.slice(0, 3).join(' | '));
+    } });
+  add({ id: 'S33.design_per_type', section: 33, title: 'Jeder Texttyp hat ein eigenes Dokument-Design (Schrift, Akzentfarbe, Satzspiegel)', kind: 'function',
+    check(env) {
+      const seen = new Set();
+      for (const type of env.core.TEXT_TYPES) {
+        const id = env.core.TEXT_TYPE_DESIGN[type];
+        const d = env.word.DESIGNS[id];
+        if (!d) return 'no design for ' + type;
+        const m = env.fixture.material({ textType: type }, 'reading');
+        const xml = docXml(env, m, 'student');
+        if (!xml.includes('w:ascii="' + d.fonts.body + '"')) return type + ': body font ' + d.fonts.body + ' not used';
+        if (!xml.includes('w:val="' + d.accent + '"') && !xml.includes('w:fill="' + d.accent + '"')) return type + ': accent ' + d.accent + ' not used';
+        seen.add(d.fonts.body + '/' + d.accent + '/' + JSON.stringify(d.page));
+      }
+      return ok(seen.size >= 10, 'only ' + seen.size + ' distinct designs');
+    } });
+
+  const DESIGN_MARKERS = {
+    story: { type: 'Story', text: ['Fixture Author'], xml: ['w:ascii="Garamond"', 'w:smallCaps', 'w:dropCap="drop"'] },
+    article: { type: 'Article', text: ['Fixture Weekly', 'Fixture stand-first sentence.', 'found it under a bench'], xml: ['w:ascii="Cambria"'] },
+    news: { type: 'News Article', text: ['Fixture Post', 'FIXTURETOWN'], xml: ['w:num="2"', 'w:val="double"', 'w:ascii="Georgia"'] },
+    blog: { type: 'Blog Post', text: ['Fixture Blog', '4 min read', '#fixture'], xml: ['w:ascii="Segoe UI"'] },
+    email: { type: 'Email', text: ['From', 'To', 'Subject', 'Fixture subject line', 'Fixture club'], xml: [] },
+    forum: { type: 'Forum Discussion', text: ['Fixture thread title', 'fixture_mia', '2 h ago'], xml: [] },
+    interview: { type: 'Interview', text: ['Fixture Guest', 'Fixture Voices'], xml: ['w:hanging'] },
+    review: { type: 'Review', text: ['★★★★☆', 'Fixture verdict sentence.'], xml: [] },
+    report: { type: 'Report', text: ['Fixture Head teacher', 'Fixture executive summary.'], xml: ['w:fill="274060"'] },
+    diary: { type: 'Diary Entry', text: ['Tuesday, 14 March'], xml: ['w:ascii="Segoe Script"', 'w:val="dotted"'] },
+    informational: { type: 'Informational Text', text: ['Fixture fact one', 'Fixture source'], xml: [] },
+    opinion: { type: 'Opinion Text', text: ['Opinion', 'Fixture Columnist'], xml: ['w:dropCap="drop"'] },
+    dialogue: { type: 'Dialogue', text: ['Fixture Sam', 'Fixture bus stop'], xml: [] },
+    custom: { type: 'Custom', text: ['Fixture Author', 'Fixture introduction.'], xml: [] },
+  };
+  for (const [id, spec] of Object.entries(DESIGN_MARKERS)) {
+    add({ id: 'S33.design_' + id, section: 33, title: `Design „${id}“ (${spec.type}) enthält die typischen Elemente`, kind: 'function',
+      check(env) {
+        const m = env.fixture.material({ textType: spec.type, customTextType: 'Show notes' }, 'reading');
+        const text = docText(env, m, 'student');
+        const xml = docXml(env, m, 'student');
+        const missingText = spec.text.filter(t => !squash(text).includes(squash(t)));
+        const missingXml = spec.xml.filter(x => !xml.includes(x));
+        return ok(!missingText.length && !missingXml.length, 'missing ' + missingText.concat(missingXml).join(', '));
+      } });
+  }
+  add({ id: 'S33.design_script', section: 33, title: 'Listening-Skript wird als Aufnahme-Skript gesetzt (Zeilennummern, Sprecher, Emotion-Tags, Setting)', kind: 'function',
+    check(env) {
+      const m = env.fixture.material({}, 'listening');
+      const text = squash(docText(env, m, 'teacher'));
+      const need = ['Audio script', 'Fixture school corridor', 'Fixture Talk', '[hesitant]', 'Speaker A'];
+      const missing = need.filter(n => !text.includes(squash(n)));
+      return ok(!missing.length, 'missing ' + missing.join(', '));
+    } });
+  add({ id: 'S33.student_no_script', section: 33, title: 'Word-Schülerversion enthält beim Listening kein Skript', kind: 'function',
+    check(env) {
+      const m = env.fixture.material({}, 'listening');
+      const text = squash(docText(env, m, 'student'));
+      const leaked = m.content.lines.filter(l => text.includes(squash(l.text)));
+      return ok(leaked.length === 0, leaked.length + ' script line(s) leaked');
+    } });
+  add({ id: 'S33.student_worksheet', section: 33, title: 'Word-Schülerversion ist ein echtes Arbeitsblatt (Name/Klasse/Datum, Ankreuzkästchen, Schreiblinien, Seitenzahl)', kind: 'function',
+    check(env) {
+      const m = env.fixture.material({ preTask: true, higherOrder: true }, 'listening');
+      const text = docText(env, m, 'student');
+      const xml = docXml(env, m, 'student');
+      const parts = docParts(env, m, 'student');
+      const footer = String((parts.find(p => p.name === 'word/footer1.xml') || {}).data || '');
+      const hasLines = /<w:pBdr><w:bottom [^>]*w:color="C9CDD3"/.test(xml);
+      const missing = [];
+      for (const t of ['Name:', 'Class:', 'Date:', '☐']) if (!text.includes(t)) missing.push(t);
+      if (!hasLines) missing.push('Schreiblinien');
+      if (!/PAGE/.test(footer) || !/NUMPAGES/.test(footer)) missing.push('Seitenzahl');
+      if (!m.worksheet.questions.every(q => squash(text).includes(squash(q.prompt)))) missing.push('Fragen');
+      return ok(!missing.length, 'missing ' + missing.join(', '));
+    } });
+  add({ id: 'S33.teacher_key', section: 33, title: 'Word-Lehrerversion enthält Skript/Text, Vokabeln, Lösungsschlüssel mit Skill, Difficulty, Evidenz und Qualitätsbericht', kind: 'function',
+    check(env) {
+      const m = env.fixture.material({ higherOrder: true }, 'listening');
+      m.quality = { findings: [{ id: 'x', group: 'content', title: 'Fixture finding', kind: 'deterministic', status: 'pass', detail: 'Fixture detail' }] };
+      const text = squash(docText(env, m, 'teacher'));
+      const q = m.worksheet.questions[3];
+      const missing = [];
+      for (const t of ['Teacher version', 'Answer key', 'Target vocabulary used', 'Quality check', 'Fixture finding', q.evidenceQuote, q.rationale, String(q.answer), 'Inference', q.difficulty]) {
+        if (!text.includes(squash(t))) missing.push(t);
+      }
+      if (!m.content.lines.every(l => text.includes(squash(l.text)))) missing.push('Skript');
+      return ok(!missing.length, 'missing ' + missing.join(' | '));
+    } });
+  add({ id: 'S33.teacher_highlight', section: 33, title: 'Zielvokabular wird in der Word-Lehrerversion hervorgehoben (Schalter wirkt)', kind: 'function',
+    check(env) {
+      const on = docXml(env, env.fixture.material({ highlightVocab: true }, 'listening'), 'teacher');
+      const off = docXml(env, env.fixture.material({ highlightVocab: false }, 'listening'), 'teacher');
+      return ok(on.includes('w:fill="FDE68A"') && !off.includes('w:fill="FDE68A"'), 'highlight switch has no effect');
+    } });
+  add({ id: 'S33.meta_from_claude', section: 33, title: 'Dokument-Angaben (Byline, From/To/Subject, Usernames, Rating …) stammen von Claude, nicht aus dem Code', kind: 'function',
+    check(env) {
+      const spec = env.core.META_SPECS.email;
+      const st = env.state({ kind: 'reading', textType: 'Email' });
+      const prompt = env.prompts.buildContentPrompt(st, env.core.buildPlan(st, env.ctx));
+      const asked = spec.fields.every(([k]) => prompt.includes('"' + k + '"'));
+      const a = env.fixture.material({ textType: 'Email' }, 'reading');
+      const b = env.fixture.material({ textType: 'Email' }, 'reading');
+      b.content.meta = Object.assign({}, b.content.meta, { subject: 'Completely different subject' });
+      const xa = docXml(env, a, 'student'), xb = docXml(env, b, 'student');
+      const emptyMeta = env.fixture.material({ textType: 'Email' }, 'reading');
+      emptyMeta.content.meta = {};
+      const xEmpty = docXml(env, emptyMeta, 'student');
+      return ok(asked && xa !== xb && xb.includes('Completely different subject') && !xEmpty.includes('Fixture subject line'),
+        'meta not requested from Claude or not used verbatim');
+    } });
+  add({ id: 'S33.reading_text_in_student', section: 33, title: 'Word-Schülerversion enthält beim Reading den Text im Layout des Texttyps und danach das Arbeitsblatt', kind: 'function',
+    check(env) {
+      const m = env.fixture.material({ textType: 'Article' }, 'reading');
+      const text = squash(docText(env, m, 'student'));
+      const xml = docXml(env, m, 'student');
+      const hasText = m.content.paragraphs.every(p => text.includes(squash(p)));
+      const hasQuestions = m.worksheet.questions.every(q => text.includes(squash(q.prompt)));
+      const pageBreak = /w:type w:val="nextPage"|<w:type w:val="nextPage"\/>/.test(xml);
+      return ok(hasText && hasQuestions && pageBreak, `text ${hasText}, questions ${hasQuestions}, section break ${pageBreak}`);
+    } });
+  add({ id: 'S33.html_matches', section: 33, title: 'Die Bildschirmvorschau zeigt denselben Texttyp-Aufbau wie das Word-Dokument', kind: 'function',
+    check(env) {
+      const m = env.fixture.material({ textType: 'Forum Discussion' }, 'reading');
+      const html = env.render.renderTextHTML(m, {});
+      return ok(/data-design="forum"/.test(html) && html.includes('fixture_mia') && html.includes(env.render.esc(m.content.meta.threadTitle)), 'html preview does not follow the design');
+    } });
+
   /* No hard-coded content */
   add({ id: 'X.no_hardcoded_content', section: 28, title: 'Kontrolle: keine hartkodierten Textbausteine für Titel, Instruktion, Fragen, Pre-Tasks oder Themen', kind: 'function',
     check(env) {

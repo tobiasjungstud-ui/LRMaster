@@ -18,6 +18,11 @@ const quality = require(path.join(APP, 'quality.js'));
 const render = require(path.join(APP, 'render.js'));
 const vocab = require(path.join(APP, 'vocab.js'));
 const controls = require(path.join(APP, 'controls.js'));
+const word = require(path.join(APP, 'word.js'));
+const ooxml = require(path.join(APP, 'ooxml.js'));
+const docx = require(path.join(APP, 'docx.js'));
+const os = require('node:os');
+const { execFileSync } = require('node:child_process');
 const checks = require(path.join(APP, 'checks.js'));
 const fixture = require(path.join(APP, 'fixture.js'));
 
@@ -119,6 +124,112 @@ test('every prompt stays well under the 64 KiB limit with a large unit', () => {
   const s = core.normalizeState({ kind: 'listening', textbookId: tb.id, unitId: unit.id, preTask: true, higherOrder: true, questionCount: '15', questionFormats: core.FORMAT_KEYS.slice() });
   const p = prompts.buildAllPrompts(s, { textbook: tb, unit });
   for (const k of Object.keys(p)) assert.ok(Buffer.byteLength(p[k], 'utf8') < 40000, k + ' ' + Buffer.byteLength(p[k], 'utf8'));
+});
+
+/* ---------------- Word export ---------------- */
+console.log('\nWord export');
+const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'lrmaster-docx-'));
+
+test('generated package is a ZIP that an independent reader accepts', () => {
+  const m = fixture.material({ preTask: true, higherOrder: true }, 'listening');
+  const files = { student: word.buildStudent(m), teacher: word.buildTeacher(m) };
+  for (const [which, bytes] of Object.entries(files)) fs.writeFileSync(path.join(tmp, which + '.docx'), Buffer.from(bytes));
+  const script = [
+    'import sys, zipfile, xml.etree.ElementTree as ET, json',
+    'out = []',
+    'for p in sys.argv[1:]:',
+    '    z = zipfile.ZipFile(p)',
+    '    assert z.testzip() is None, p',
+    '    names = z.namelist()',
+    '    assert names[0] == "[Content_Types].xml", names[0]',
+    '    for n in names:',
+    '        if n.endswith(".xml") or n.endswith(".rels"): ET.fromstring(z.read(n))',
+    '    out.append(len(names))',
+    'print(json.dumps(out))',
+  ].join('\n');
+  const res = execFileSync('python3', ['-c', script, path.join(tmp, 'student.docx'), path.join(tmp, 'teacher.docx')], { encoding: 'utf8' });
+  assert.deepEqual(JSON.parse(res), [7, 7]);
+});
+
+test('every text type produces a valid package for both versions', () => {
+  for (const type of core.TEXT_TYPES) {
+    const m = fixture.material({ textType: type, customTextType: 'Show notes', preTask: true, higherOrder: true }, 'reading');
+    for (const which of ['student', 'teacher']) {
+      const problems = ooxml.validate(word.partsFor(m, which));
+      assert.deepEqual(problems, [], type + '/' + which + ': ' + problems.join(' | '));
+    }
+  }
+});
+
+test('the validator rejects a document with elements out of schema order', () => {
+  const bad = [
+    { name: '[Content_Types].xml', data: '<?xml version="1.0"?><Types xmlns="x"><Default Extension="xml" ContentType="a"/><Default Extension="rels" ContentType="b"/><Override PartName="/word/document.xml" ContentType="c"/><Override PartName="/word/styles.xml" ContentType="d"/></Types>' },
+    { name: '_rels/.rels', data: '<?xml version="1.0"?><Relationships xmlns="x"><Relationship Id="rId1" Type="t" Target="word/document.xml"/></Relationships>' },
+    { name: 'word/styles.xml', data: '<?xml version="1.0"?><w:styles xmlns:w="w"/>' },
+    { name: 'word/_rels/document.xml.rels', data: '<?xml version="1.0"?><Relationships xmlns="x"/>' },
+    { name: 'word/document.xml', data: '<?xml version="1.0"?><w:document xmlns:w="w"><w:body><w:p><w:pPr><w:jc w:val="both"/><w:spacing w:after="20"/></w:pPr><w:r><w:t>x</w:t><w:rPr><w:b/></w:rPr></w:r></w:p><w:sectPr/></w:body></w:document>' },
+  ];
+  const problems = ooxml.validate(bad);
+  assert.ok(problems.some(p => /<w:spacing> must come before <w:jc>/.test(p)), problems.join(' | '));
+  assert.ok(problems.some(p => /<w:rPr> must be the first child/.test(p)), problems.join(' | '));
+});
+
+test('the validator rejects a dangling relationship and an empty table cell', () => {
+  const parts = word.partsFor(fixture.material(), 'student').map(p => Object.assign({}, p));
+  const doc = parts.find(p => p.name === 'word/document.xml');
+  doc.data = String(doc.data).replace('<w:body>', '<w:body><w:p><w:r><w:drawing r:id="rIdNope"/></w:r></w:p><w:tbl><w:tblPr><w:tblW w:w="100" w:type="dxa"/></w:tblPr><w:tblGrid><w:gridCol w:w="100"/></w:tblGrid><w:tr><w:tc><w:tcPr><w:tcW w:w="100" w:type="dxa"/></w:tcPr></w:tc></w:tr></w:tbl>');
+  const problems = ooxml.validate(parts);
+  assert.ok(problems.some(p => /rIdNope/.test(p)), problems.join(' | '));
+  assert.ok(problems.some(p => /empty <w:tc>/.test(p)), problems.join(' | '));
+});
+
+test('the same material always produces the same bytes', () => {
+  const m = fixture.material({}, 'reading');
+  assert.deepEqual(Array.from(word.buildStudent(m)), Array.from(word.buildStudent(m)));
+});
+
+test('documents stay small enough to send', () => {
+  const m = fixture.material({ preTask: true, higherOrder: true }, 'listening');
+  assert.ok(word.buildTeacher(m).length < 400000, 'teacher document too large');
+});
+
+test('the student document never contains answers, model answers or an answer key', () => {
+  for (const kind of ['listening', 'reading']) {
+    const m = fixture.material({ higherOrder: true }, kind);
+    const text = ooxml.textOf(word.partsFor(m, 'student')).replace(/\s+/g, '');
+    assert.ok(!text.includes('Answerkey'), kind);
+    assert.ok(!text.includes(m.worksheet.higherOrder[0].answer.replace(/\s+/g, '')), kind + ': higher-order model answer leaked');
+    assert.ok(!text.includes('Fixturespecificanswer'), kind + ': short answer leaked');
+    assert.ok(!text.includes(m.worksheet.questions[3].rationale.replace(/\s+/g, '')), kind + ': rationale leaked');
+    if (kind === 'listening') {
+      for (const q of m.worksheet.questions) assert.ok(!text.includes(q.evidenceQuote.replace(/\s+/g, '')), 'evidence leaked for Q' + q.n);
+    }
+  }
+});
+
+test('a listening worksheet with every response format stays valid', () => {
+  const m = fixture.material({}, 'listening');
+  m.worksheet.questions = core.FORMAT_KEYS.map((f, i) => ({
+    n: i + 1, skill: 'detail', format: f, difficulty: 'B1.1', prompt: 'Prompt ' + (i + 1),
+    options: ['one', 'two', 'three'], items: f === 'matching' ? [{ left: 'a', right: 'b' }, { left: 'c', right: 'd' }] : ['first', 'second'],
+    table: { headers: ['A', 'B'], rows: [['x', ''], ['', 'y']] },
+    answer: f === 'gap_fill' || f === 'note_taking' || f === 'select_all' ? ['one', 'two'] : 'one',
+    evidenceQuote: 'trust him', evidenceRef: '[4]', rationale: '',
+  }));
+  assert.deepEqual(ooxml.validate(word.partsFor(m, 'student')), []);
+  assert.deepEqual(ooxml.validate(word.partsFor(m, 'teacher')), []);
+});
+
+test('documents survive hostile text (XML metacharacters, control characters, emoji)', () => {
+  const m = fixture.material({}, 'reading');
+  m.content.title = 'A & B <tag> "quoted" \u0007bell';
+  m.content.paragraphs = ['Text with <w:p> and & and ]]> and emoji 🎧', 'Second & paragraph'];
+  m.worksheet.questions[0].prompt = '</w:t></w:r><w:r><w:t>injected';
+  const parts = word.partsFor(m, 'student');
+  assert.deepEqual(ooxml.validate(parts), []);
+  const xml = String(parts.find(p => p.name === 'word/document.xml').data);
+  assert.ok(!xml.includes('<w:t>injected'), 'injection not escaped');
+  assert.ok(xml.includes('&amp;'), 'ampersand not escaped');
 });
 
 /* ---------------- concept coverage ---------------- */

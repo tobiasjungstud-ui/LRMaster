@@ -80,16 +80,77 @@
     const found = [], missing = [];
     for (const item of items) {
       const raw = typeof item === 'string' ? item : item.word;
-      const base = normalizeForSearch(raw).replace(/^to /, '').replace(/^(sb|sth|somebody|something) /, '').replace(/\((.*?)\)/g, '').trim();
-      if (!base) continue;
-      const parts = base.split(' ').filter(p => !/^(sb|sth|somebody|something|s\.o\.|s\.th\.|one's|sb's)$/.test(p));
-      const content = parts.filter(p => p.length > 2 && !/^(a|an|the|to|of|in|on|at|for|with|and|or)$/.test(p));
-      const keys = content.length ? content : parts;
+      const keys = vocabKeys(raw);
+      if (!keys.length) continue;
       const ok = keys.every(k => new RegExp('\\b(?:' + wordVariants(k).map(escapeRe).join('|') + ')[a-z]{0,4}\\b').test(hay));
       (ok ? found : missing).push(raw);
     }
     return { found, missing };
   }
+
+  /** All words of a vocabulary entry, placeholders removed (particles kept). */
+  function vocabParts(raw) {
+    const base = normalizeForSearch(raw).replace(/^to /, '').replace(/^(sb|sth|somebody|something) /, '').replace(/\((.*?)\)/g, '').trim();
+    if (!base) return [];
+    return base.split(' ').filter(p => p && !/^(sb|sth|somebody|something|s\.o\.|s\.th\.|one's|sb's)$/.test(p));
+  }
+
+  /** The words of a vocabulary entry that must actually appear in the text. */
+  function vocabKeys(raw) {
+    const base = normalizeForSearch(raw).replace(/^to /, '').replace(/^(sb|sth|somebody|something) /, '').replace(/\((.*?)\)/g, '').trim();
+    if (!base) return [];
+    const parts = base.split(' ').filter(p => !/^(sb|sth|somebody|something|s\.o\.|s\.th\.|one's|sb's)$/.test(p));
+    const content = parts.filter(p => p.length > 2 && !/^(a|an|the|to|of|in|on|at|for|with|and|or)$/.test(p));
+    return content.length ? content : parts;
+  }
+
+  /** Character ranges in `text` covered by a target vocabulary item. */
+  function highlightRanges(text, items) {
+    const src = String(text || '');
+    const hits = [];
+    const search = (keys) => {
+      if (!keys.length) return [];
+      const pattern = keys.map(k => '(?:' + wordVariants(k).map(escapeRe).join('|') + ')[a-z]{0,4}').join("[\\s'\u2019-]+(?:\\w+[\\s'\u2019-]+)?");
+      let re;
+      try { re = new RegExp('\\b(?:' + pattern + ')\\b', 'gi'); } catch (e) { return []; }
+      const found = [];
+      let m;
+      while ((m = re.exec(src))) {
+        if (m[0]) found.push({ start: m.index, end: m.index + m[0].length });
+        if (m.index === re.lastIndex) re.lastIndex++;
+      }
+      return found;
+    };
+    for (const item of items || []) {
+      const raw = typeof item === 'string' ? item : item.word;
+      // Prefer the full phrase; fall back to the content words alone.
+      const full = search(vocabParts(raw));
+      hits.push(...(full.length ? full : search(vocabKeys(raw))));
+    }
+    hits.sort((a, b) => a.start - b.start || b.end - a.end);
+    const merged = [];
+    for (const h of hits) {
+      const last = merged[merged.length - 1];
+      if (last && h.start <= last.end) last.end = Math.max(last.end, h.end);
+      else merged.push({ start: h.start, end: h.end });
+    }
+    return merged;
+  }
+
+  /** `text` split into segments, each marked as target vocabulary or not. */
+  function highlightSegments(text, items) {
+    const src = String(text || '');
+    const out = [];
+    let pos = 0;
+    for (const r of highlightRanges(src, items)) {
+      if (r.start > pos) out.push({ text: src.slice(pos, r.start), hit: false });
+      out.push({ text: src.slice(r.start, r.end), hit: true });
+      pos = r.end;
+    }
+    if (pos < src.length) out.push({ text: src.slice(pos), hit: false });
+    return out.length ? out : [{ text: src, hit: false }];
+  }
+
   function escapeRe(s) { return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
 
   /** Word share, turn count, mean turn length and variability per speaker. */
@@ -122,9 +183,33 @@
   /* Normalisation of Claude output                                       */
   /* ------------------------------------------------------------------ */
 
+  const ARRAY_META = ['tags', 'authors', 'timestamps', 'speakers', 'factBox'];
+
+  /** Keep only the document details this text type asks for, as clean values. */
+  function normalizeMeta(raw, state) {
+    const spec = core.META_SPECS[core.designIdFor(state)] || core.META_SPECS.custom;
+    const src = (raw && typeof raw === 'object') ? raw : {};
+    const out = {};
+    for (const [key] of spec.fields) {
+      const v = src[key];
+      if (v === undefined || v === null) continue;
+      if (ARRAY_META.includes(key)) {
+        if (Array.isArray(v)) { const arr = v.map(x => String(x).trim()).filter(Boolean); if (arr.length) out[key] = arr; }
+        else if (String(v).trim()) out[key] = String(v).split(/[;,]\s*/).map(x => x.trim()).filter(Boolean);
+      } else if (key === 'rating') {
+        const n = Number(v);
+        if (Number.isFinite(n)) out.rating = Math.max(0, Math.min(5, Math.round(n)));
+      } else {
+        const t = String(v).replace(/\r/g, '').trim();
+        if (t) out[key] = t;
+      }
+    }
+    return out;
+  }
+
   function normalizeContent(raw, state, plan) {
     if (!raw || typeof raw !== 'object') throw new Error('Content: no JSON object returned.');
-    const out = { title: String(raw.title || '').trim(), summary: String(raw.summary || '').trim(), vocabularyUsed: Array.isArray(raw.vocabularyUsed) ? raw.vocabularyUsed.map(String) : [] };
+    const out = { title: String(raw.title || '').trim(), summary: String(raw.summary || '').trim(), meta: normalizeMeta(raw.meta, state), vocabularyUsed: Array.isArray(raw.vocabularyUsed) ? raw.vocabularyUsed.map(String) : [] };
     if (state.kind === 'listening') {
       const src = Array.isArray(raw.lines) ? raw.lines : Array.isArray(raw.script) ? raw.script : null;
       if (!src) throw new Error('Content: "lines" missing.');
@@ -223,6 +308,20 @@
         const t = ctx.plan.targetWords;
         const dev = t ? Math.abs(n - t) / t : 0;
         return finding(this, dev <= 0.2 ? 'pass' : dev <= 0.35 ? 'warn' : 'fail', `${n} words, target ${t} (deviation ${Math.round(dev * 100)} %).`, { measured: n, target: t });
+      } },
+    { id: 'content.meta_fields', group: 'content', kind: 'deterministic', title: 'Document details for the text type are complete', blocking: false,
+      check(ctx) {
+        const spec = core.META_SPECS[core.designIdFor(ctx.state)] || core.META_SPECS.custom;
+        const meta = ctx.content.meta || {};
+        const missing = (spec.required || []).filter(k => meta[k] === undefined || meta[k] === '' || (Array.isArray(meta[k]) && !meta[k].length));
+        const perPara = ['authors', 'speakers', 'timestamps'].filter(k => Array.isArray(meta[k]));
+        const n = ctx.state.kind === 'reading' ? (ctx.content.paragraphs || []).length : 0;
+        const misaligned = perPara.filter(k => meta[k].length !== n);
+        const status = missing.length ? 'warn' : misaligned.length ? 'warn' : 'pass';
+        return finding(this, status,
+          (missing.length ? 'Missing: ' + missing.join(', ') + '. ' : '')
+          + (misaligned.length ? misaligned.map(k => `${k} has ${meta[k].length} entries for ${n} paragraphs`).join('; ') + '.' : '')
+          || `${spec.label}: all details present.`);
       } },
     // Listening
     { id: 'listening.shares', group: 'listening', kind: 'deterministic', title: 'Speaking shares match the settings', only: 'listening', blocking: true,
@@ -406,8 +505,9 @@
   }
 
   return {
-    RULES, words, wordCount, normalizeForSearch, materialText, findQuotePosition, stem, wordVariants, vocabMatches,
-    speakerStats, tagStats, normalizeContent, normalizeWorksheet, applicableRules, runDeterministic,
+    RULES, words, wordCount, normalizeForSearch, materialText, findQuotePosition, stem, wordVariants, vocabKeys, vocabParts,
+    vocabMatches, highlightRanges, highlightSegments,
+    speakerStats, tagStats, normalizeContent, normalizeMeta, normalizeWorksheet, applicableRules, runDeterministic,
     runContentChecks, llmRules, mergeReview, blockingFailures, summarize,
   };
 });

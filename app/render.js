@@ -33,19 +33,82 @@
 
   /** Wrap occurrences of target vocabulary in <mark>. */
   function highlight(text, items) {
-    let html = esc(text);
-    const keys = [];
-    for (const it of items || []) {
-      const raw = typeof it === 'string' ? it : it.word;
-      const base = String(raw || '').replace(/^to /i, '').replace(/\(.*?\)/g, '').trim();
-      const parts = base.split(/\s+/).filter(p => p && !/^(sb|sth|somebody|something)$/i.test(p));
-      if (parts.length) keys.push(parts);
+    return quality.highlightSegments(text, items)
+      .map(seg => seg.hit ? `<mark class="vocab">${esc(seg.text)}</mark>` : esc(seg.text))
+      .join('');
+  }
+
+  /* ------------------------------------------------------------------ */
+  /* The reading text, in the layout of its text type                     */
+  /* ------------------------------------------------------------------ */
+
+  function isHeadingLike(t) {
+    const x = String(t || '').trim();
+    return x.length > 0 && x.length <= 70 && x.split(/\s+/).length <= 9 && !/[.!?…:;,]$/.test(x) && !/^["“'(]/.test(x);
+  }
+
+  function metaLine(parts) {
+    const line = parts.filter(Boolean).map(esc).join(' <span class="dot">·</span> ');
+    return line ? `<p class="doc-meta">${line}</p>` : '';
+  }
+
+  /** Student/teacher rendering of the reading text with its document details. */
+  function renderTextHTML(m, opts) {
+    opts = opts || {};
+    const design = core.designIdFor(m.settings);
+    const meta = (m.content && m.content.meta) || {};
+    const paragraphs = (m.content && m.content.paragraphs) || [];
+    const items = opts.highlight || null;
+    const body = (t) => (items ? highlight(t, items) : esc(t));
+    const num = (i) => (opts.numbered ? `<span class="para-no">¶${i + 1}</span>` : '');
+    const headings = ['article', 'blog', 'report', 'informational', 'custom'].includes(design);
+    let html = `<div class="doc" data-design="${esc(design)}">`;
+
+    if (design === 'email') {
+      html += '<table class="mail-head"><tbody>'
+        + [['From', meta.from], ['To', meta.to], ['Subject', meta.subject], ['Sent', meta.sent]]
+          .filter(r => r[1]).map(r => `<tr><th>${r[0]}</th><td${r[0] === 'Subject' ? ' class="subject"' : ''}>${esc(r[1])}</td></tr>`).join('')
+        + '</tbody></table>';
+      html += paragraphs.map((p, i) => `<p>${num(i)}${body(p)}</p>`).join('');
+      if (meta.signature) html += `<p class="signature">${esc(meta.signature).replace(/\n/g, '<br>')}</p>`;
+    } else if (design === 'forum') {
+      html += `<div class="thread-bar"><strong>${esc(meta.threadTitle || m.content.title)}</strong><span>${esc(meta.forumName || '')}</span></div>`;
+      html += paragraphs.map((p, i) => `<article class="post"><header><span class="user">${esc((meta.authors || [])[i] || 'user_' + (i + 1))}</span><span class="time">${esc((meta.timestamps || [])[i] || '')}</span></header><p>${num(i)}${body(p)}</p></article>`).join('');
+    } else if (design === 'interview' || design === 'dialogue') {
+      if (design === 'interview') {
+        html += `<h3 class="doc-title">${esc(m.content.title)}</h3>`;
+        if (meta.standfirst) html += `<p class="standfirst">${esc(meta.standfirst)}</p>`;
+        html += metaLine([meta.publication, meta.byline ? 'Interview: ' + meta.byline : '']);
+      } else {
+        html += `<h3 class="doc-title">${esc(m.content.title)}</h3>`;
+        if (meta.setting) html += `<p class="standfirst">${esc(meta.setting)}</p>`;
+      }
+      html += paragraphs.map((p, i) => {
+        const who = (meta.speakers || [])[i] || (design === 'interview' ? (i % 2 ? 'Guest' : 'Interviewer') : 'Speaker ' + String.fromCharCode(65 + (i % 2)));
+        return `<p class="turn">${num(i)}<span class="who">${esc(who)}</span>${body(p)}</p>`;
+      }).join('');
+    } else {
+      const kicker = meta.publication || meta.blogName || meta.category || (design === 'opinion' ? 'Opinion' : '');
+      if (kicker) html += `<p class="kicker">${esc(kicker)}</p>`;
+      html += `<h3 class="doc-title">${esc(m.content.title)}</h3>`;
+      if (meta.subtitle) html += `<p class="standfirst">${esc(meta.subtitle)}</p>`;
+      if (meta.standfirst) html += `<p class="standfirst">${esc(meta.standfirst)}</p>`;
+      if (meta.rating !== undefined) html += `<p class="rating" aria-label="${esc(meta.rating)} of 5">${'★'.repeat(Math.max(0, Math.min(5, meta.rating)))}<span class="dim">${'★'.repeat(Math.max(0, 5 - meta.rating))}</span></p>`;
+      html += metaLine([meta.byline ? (design === 'review' ? 'Reviewed by ' + meta.byline : 'By ' + meta.byline) : '', meta.author, meta.recipient ? 'For: ' + meta.recipient : '', meta.dateline, meta.place, meta.readingTime]);
+      if (meta.summary) html += `<div class="callout"><h4>Summary</h4><p>${esc(meta.summary)}</p></div>`;
+      const pullAt = meta.pullQuote ? Math.min(2, Math.max(1, Math.floor(paragraphs.length / 2))) : -1;
+      paragraphs.forEach((p, i) => {
+        if (i === pullAt) html += `<blockquote class="pull">${esc(meta.pullQuote)}</blockquote>`;
+        if (headings && isHeadingLike(p)) { html += `<h4 class="doc-h">${num(i)}${esc(p)}</h4>`; return; }
+        const lead = design === 'news' && i === 0 && meta.location ? `<span class="location">${esc(meta.location)} — </span>` : '';
+        html += `<p class="doc-p">${num(i)}${lead}${body(p)}</p>`;
+      });
+      if (meta.factBox && meta.factBox.length) html += `<div class="callout"><h4>Did you know?</h4><ul>${meta.factBox.map(f => `<li>${esc(f)}</li>`).join('')}</ul></div>`;
+      if (meta.verdict) html += `<div class="callout verdict"><h4>Verdict</h4><p>${esc(meta.verdict)}</p></div>`;
+      if (meta.tags && meta.tags.length) html += `<p class="tags">${meta.tags.map(t => `<span>#${esc(t)}</span>`).join('')}</p>`;
+      if (meta.source) html += `<p class="source">Source: ${esc(meta.source)}</p>`;
     }
-    for (const parts of keys) {
-      const re = new RegExp('\\b(' + parts.map(p => quality.stem(p).replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '[a-z]{0,3}').join('\\s+(?:\\w+\\s+)?') + ')\\b', 'gi');
-      html = html.replace(re, '<mark class="vocab">$1</mark>');
-    }
-    return html;
+    return html + '</div>';
   }
 
   /* ------------------------------------------------------------------ */
@@ -131,7 +194,7 @@
     html += '</header>';
     if (ws && ws.preTasks && ws.preTasks.length) html += `<section class="block"><h2>Before you ${isL ? 'listen' : 'read'}</h2>` + ws.preTasks.map(p => preTaskHtml(p, false)).join('') + '</section>';
     if (!isL) {
-      html += `<section class="block text"><h2>${esc(m.content.title)}</h2>` + (m.content.paragraphs || []).map(p => `<p>${esc(p)}</p>`).join('') + '</section>';
+      html += '<section class="block text">' + renderTextHTML(m, {}) + '</section>';
     }
     if (ws && ws.questions.length) {
       html += '<section class="block questions"><h2>Questions</h2><ol class="qlist">' + ws.questions.map(q => `<li class="q" value="${q.n}"><span class="q-format">${esc(formatLabel(q.format))}</span>${questionBody(q, { seed: m.id })}</li>`).join('') + '</ol></section>';
@@ -163,7 +226,7 @@
       const st = quality.speakerStats(m.content.lines);
       html += '<p class="stats">' + Object.keys(st.shares).map(k => `${esc(k)} ${st.shares[k]} %`).join(' · ') + ` · ${st.total} words</p>`;
     } else {
-      html += (m.content.paragraphs || []).map((p, i) => `<p class="para"><span class="line-no">¶${i + 1}</span>${hl ? highlight(p, vocabItems) : esc(p)}</p>`).join('');
+      html += renderTextHTML(m, { numbered: true, highlight: hl ? vocabItems : null });
       html += `<p class="stats">${quality.wordCount((m.content.paragraphs || []).join(' '))} words</p>`;
     }
     html += '</section>';
@@ -228,5 +291,5 @@
     return out.join('\n');
   }
 
-  return { esc, seededShuffle, highlight, renderStudentHTML, renderTeacherHTML, renderMarkdown, questionBody, answerText };
+  return { esc, seededShuffle, highlight, renderTextHTML, isHeadingLike, renderStudentHTML, renderTeacherHTML, renderMarkdown, questionBody, answerText };
 });

@@ -56,6 +56,113 @@
     'News Article', 'Report', 'Diary Entry', 'Informational Text', 'Opinion Text', 'Dialogue', 'Custom',
   ];
 
+  /*
+   * Document designs (§17 text types). Each text type maps to a visual design
+   * used by the Word export, and to the extra metadata Claude is asked for so
+   * the document can look like the real thing (byline, From/To/Subject, usernames,
+   * star rating, …). `fields` drives the prompt; `required` drives a quality warning.
+   */
+  const META_SPECS = {
+    story: { label: 'Story', fields: [
+      ['byline', 'the author name printed under the title'],
+    ], required: [] },
+    article: { label: 'Magazine article', headings: true, fields: [
+      ['publication', 'name of the magazine or website it appears in'],
+      ['byline', 'author name'],
+      ['dateline', 'publication date, e.g. 14 March 2026'],
+      ['standfirst', 'one-sentence stand-first printed under the headline'],
+      ['pullQuote', 'one short sentence copied verbatim from the text, to be printed as a pull quote'],
+    ], required: ['byline', 'standfirst'] },
+    news: { label: 'News article', fields: [
+      ['publication', 'name of the newspaper or news site'],
+      ['byline', 'reporter name'],
+      ['dateline', 'publication date'],
+      ['location', 'the place the report is filed from, in capitals, e.g. MANCHESTER'],
+      ['standfirst', 'one-sentence summary printed under the headline'],
+    ], required: ['byline', 'location'] },
+    blog: { label: 'Blog post', headings: true, fields: [
+      ['blogName', 'name of the blog'],
+      ['byline', 'the blogger\'s name or handle'],
+      ['dateline', 'posting date'],
+      ['readingTime', 'estimated reading time, e.g. "4 min read"'],
+      ['tags', 'an array of 3–5 short topic tags'],
+    ], required: ['byline', 'tags'] },
+    email: { label: 'Email', fields: [
+      ['from', 'sender as "Name <address>"'],
+      ['to', 'recipient as "Name <address>"'],
+      ['subject', 'the subject line'],
+      ['sent', 'date and time the mail was sent'],
+      ['signature', 'the sign-off block; use line breaks between name, role and contact'],
+    ], required: ['from', 'to', 'subject'] },
+    forum: { label: 'Forum discussion', fields: [
+      ['forumName', 'name of the forum or board'],
+      ['threadTitle', 'the thread title'],
+      ['authors', 'an array with one username per paragraph, same order and length as "paragraphs"'],
+      ['timestamps', 'an array with one short timestamp per paragraph, e.g. "2 h ago"'],
+    ], required: ['authors'] },
+    interview: { label: 'Interview', fields: [
+      ['publication', 'where the interview appears'],
+      ['byline', 'the interviewer\'s name'],
+      ['standfirst', 'one-sentence introduction to the interview'],
+      ['speakers', 'an array with one speaker name per paragraph, same order and length as "paragraphs" (questions come from the interviewer, answers from the guest)'],
+    ], required: ['speakers'] },
+    review: { label: 'Review', fields: [
+      ['subject', 'what is being reviewed'],
+      ['category', 'the kind of review, e.g. Film, Restaurant, Game'],
+      ['rating', 'the rating as an integer from 1 to 5'],
+      ['byline', 'reviewer name'],
+      ['verdict', 'one-sentence verdict printed in a box at the end'],
+    ], required: ['rating', 'verdict'] },
+    report: { label: 'Report', headings: true, fields: [
+      ['subtitle', 'the subtitle of the report'],
+      ['author', 'who wrote the report'],
+      ['dateline', 'the date of the report'],
+      ['recipient', 'who the report is addressed to'],
+      ['summary', 'a two- to three-sentence executive summary'],
+    ], required: ['summary'] },
+    diary: { label: 'Diary entry', fields: [
+      ['dateline', 'the diary date, e.g. Tuesday, 14 March'],
+      ['place', 'where the entry is written'],
+    ], required: ['dateline'] },
+    informational: { label: 'Informational text', headings: true, fields: [
+      ['subtitle', 'a subtitle for the text'],
+      ['source', 'where the information comes from'],
+      ['factBox', 'an array of 3–5 short facts for a fact box'],
+    ], required: ['factBox'] },
+    opinion: { label: 'Opinion piece', fields: [
+      ['publication', 'where the piece appears'],
+      ['byline', 'the columnist\'s name'],
+      ['dateline', 'publication date'],
+      ['pullQuote', 'one short sentence copied verbatim from the text, to be printed as a pull quote'],
+    ], required: ['byline', 'pullQuote'] },
+    dialogue: { label: 'Dialogue', fields: [
+      ['setting', 'one line describing where the conversation takes place'],
+      ['speakers', 'an array with one speaker name per paragraph, same order and length as "paragraphs"'],
+    ], required: ['speakers'] },
+    custom: { label: 'Text', fields: [
+      ['byline', 'author name, or an empty string if the text type has no author'],
+      ['standfirst', 'one-sentence introduction, or an empty string'],
+    ], required: [] },
+    script: { label: 'Audio script', fields: [
+      ['setting', 'one line: where and when the recording takes place'],
+      ['programme', 'the name of the podcast, programme or show, or an empty string if there is none'],
+    ], required: ['setting'] },
+  };
+
+  /** Text type (§17) → document design id. */
+  const TEXT_TYPE_DESIGN = {
+    'Story': 'story', 'Article': 'article', 'Blog Post': 'blog', 'Interview': 'interview',
+    'Email': 'email', 'Forum Discussion': 'forum', 'Review': 'review', 'News Article': 'news',
+    'Report': 'report', 'Diary Entry': 'diary', 'Informational Text': 'informational',
+    'Opinion Text': 'opinion', 'Dialogue': 'dialogue', 'Custom': 'custom',
+  };
+
+  /** The design a material uses: listening always uses the audio-script design. */
+  function designIdFor(state) {
+    if (!state || state.kind !== 'reading') return 'script';
+    return TEXT_TYPE_DESIGN[state.textType] || 'custom';
+  }
+
   const EMOTION_TAGS = [
     'excited', 'nervous', 'laughing', 'sarcastic', 'hesitant', 'surprised',
     'annoyed', 'quietly', 'confused', 'relieved', 'thoughtful', 'serious',
@@ -617,6 +724,7 @@
   return {
     CEFR_BANDS, SKILLS, SKILL_KEYS, HIGHER_ORDER_TYPES, QUESTION_FORMATS, FORMAT_KEYS, TEXT_TYPES,
     EMOTION_TAGS, PRE_TASK_TYPES, AUDIO_LENGTHS, QUESTION_COUNTS, PRESETS, TURN_PRESETS,
+    META_SPECS, TEXT_TYPE_DESIGN, designIdFor,
     SCHEMA, SCHEMA_BY_KEY, SIMPLE_MODE_KEYS, EXAMPLE_CONFIG, WORDS_PER_A4,
     defaults, normalizeState, clone,
     wordsPerMinute, audioSeconds, targetWordCount, effectiveSpeakerCount, speakerLabels,

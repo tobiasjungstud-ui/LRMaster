@@ -2,7 +2,7 @@
 
 Erzeugt von `npm run coverage`. Jede Zeile ist eine Anforderung aus `docs/Konzept_Listening_Reading_Creator.md`, gebunden an die Stelle im Code, die sie umsetzt, und das Ergebnis der automatischen Prüfung (`npm test`).
 
-**Ergebnis: 167 von 167 Anforderungen bestanden.**
+**Ergebnis: 195 von 195 Anforderungen bestanden.**
 
 Prüfarten: **setting** – Steuerelement vorhanden und Änderung des Werts verändert nachweislich den Prompt an Claude · **function** – Verhalten wird mit echten Eingaben ausgeführt und verglichen · **rule** – Qualitätsregel existiert als Messung oder Claude-Review-Kriterium · **render** – Ausgabe wird auf einer Fixture gerendert und inhaltlich geprüft · **ui** – Navigations-/Strukturelement existiert.
 
@@ -259,7 +259,7 @@ Prüfarten: **setting** – Steuerelement vorhanden und Änderung des Werts ver�
 | ✅ | `S28.teacher_rationale` | Teacher Version: Begründung für Inference-Fragen | render | render.js (renderStudentHTML / renderTeacherHTML) |
 | ✅ | `X.no_hardcoded_content` | Kontrolle: keine hartkodierten Textbausteine für Titel, Instruktion, Fragen, Pre-Tasks oder Themen | function | Funktion (siehe Check im Manifest) |
 
-## §29 Quality Check (27/27)
+## §29 Quality Check (28/28)
 
 | Status | ID | Anforderung | Art | Umsetzung |
 |---|---|---|---|---|
@@ -283,6 +283,7 @@ Prüfarten: **setting** – Steuerelement vorhanden und Änderung des Werts ver�
 | ✅ | `X.rule_content.vocab_natural` | Quality rule „content.vocab_natural“ (Vocabulary integrated naturally) – zusätzliche Regel über das Konzept hinaus | meta | `content.vocab_natural` — extra rule |
 | ✅ | `X.rule_content.level` | Quality rule „content.level“ (Language matches the CEFR level) – zusätzliche Regel über das Konzept hinaus | meta | `content.level` — extra rule |
 | ✅ | `X.rule_content.word_count` | Quality rule „content.word_count“ (Length matches the target) – zusätzliche Regel über das Konzept hinaus | meta | `content.word_count` — extra rule |
+| ✅ | `X.rule_content.meta_fields` | Quality rule „content.meta_fields“ (Document details for the text type are complete) – zusätzliche Regel über das Konzept hinaus | meta | `content.meta_fields` — extra rule |
 | ✅ | `X.rule_listening.speakers_present` | Quality rule „listening.speakers_present“ (All speakers present with the planned labels) – zusätzliche Regel über das Konzept hinaus | meta | `listening.speakers_present` — extra rule |
 | ✅ | `X.rule_listening.turns` | Quality rule „listening.turns“ (Turn length and variability match the settings) – zusätzliche Regel über das Konzept hinaus | meta | `listening.turns` — extra rule |
 | ✅ | `X.rule_questions.count` | Quality rule „questions.count“ (Number of questions matches) – zusätzliche Regel über das Konzept hinaus | meta | `questions.count` — extra rule |
@@ -332,6 +333,38 @@ Prüfarten: **setting** – Steuerelement vorhanden und Änderung des Werts ver�
 | Status | ID | Anforderung | Art | Umsetzung |
 |---|---|---|---|---|
 | ✅ | `S32.example` | Beispielkonfiguration (Podcast Interview, B1.2, 3 min, 30/70, 10 Fragen, Skill-Mix, MC/Short Answer/Matching) ladbar | function | Funktion (siehe Check im Manifest) |
+
+## §33 Word-Export (formatiert, typgerecht) (27/27)
+
+| Status | ID | Anforderung | Art | Umsetzung |
+|---|---|---|---|---|
+| ✅ | `S33.button_student` | Download „Word: Schülerversion“ | ui | Element `[data-download="docx-student"]` |
+| ✅ | `S33.button_teacher` | Download „Word: Lehrerversion“ | ui | Element `[data-download="docx-teacher"]` |
+| ✅ | `S33.filename` | Datei wird als .docx mit sprechendem Namen ausgeliefert | function | Funktion (siehe Check im Manifest) |
+| ✅ | `S33.valid_package` | Erzeugte Word-Datei ist ein gültiges OOXML-Paket (Teile, Content-Types, Beziehungen, Elementreihenfolge) | function | Funktion (siehe Check im Manifest) |
+| ✅ | `S33.design_per_type` | Jeder Texttyp hat ein eigenes Dokument-Design (Schrift, Akzentfarbe, Satzspiegel) | function | Funktion (siehe Check im Manifest) |
+| ✅ | `S33.design_story` | Design „story“ (Story) enthält die typischen Elemente | function | Funktion (siehe Check im Manifest) |
+| ✅ | `S33.design_article` | Design „article“ (Article) enthält die typischen Elemente | function | Funktion (siehe Check im Manifest) |
+| ✅ | `S33.design_news` | Design „news“ (News Article) enthält die typischen Elemente | function | Funktion (siehe Check im Manifest) |
+| ✅ | `S33.design_blog` | Design „blog“ (Blog Post) enthält die typischen Elemente | function | Funktion (siehe Check im Manifest) |
+| ✅ | `S33.design_email` | Design „email“ (Email) enthält die typischen Elemente | function | Funktion (siehe Check im Manifest) |
+| ✅ | `S33.design_forum` | Design „forum“ (Forum Discussion) enthält die typischen Elemente | function | Funktion (siehe Check im Manifest) |
+| ✅ | `S33.design_interview` | Design „interview“ (Interview) enthält die typischen Elemente | function | Funktion (siehe Check im Manifest) |
+| ✅ | `S33.design_review` | Design „review“ (Review) enthält die typischen Elemente | function | Funktion (siehe Check im Manifest) |
+| ✅ | `S33.design_report` | Design „report“ (Report) enthält die typischen Elemente | function | Funktion (siehe Check im Manifest) |
+| ✅ | `S33.design_diary` | Design „diary“ (Diary Entry) enthält die typischen Elemente | function | Funktion (siehe Check im Manifest) |
+| ✅ | `S33.design_informational` | Design „informational“ (Informational Text) enthält die typischen Elemente | function | Funktion (siehe Check im Manifest) |
+| ✅ | `S33.design_opinion` | Design „opinion“ (Opinion Text) enthält die typischen Elemente | function | Funktion (siehe Check im Manifest) |
+| ✅ | `S33.design_dialogue` | Design „dialogue“ (Dialogue) enthält die typischen Elemente | function | Funktion (siehe Check im Manifest) |
+| ✅ | `S33.design_custom` | Design „custom“ (Custom) enthält die typischen Elemente | function | Funktion (siehe Check im Manifest) |
+| ✅ | `S33.design_script` | Listening-Skript wird als Aufnahme-Skript gesetzt (Zeilennummern, Sprecher, Emotion-Tags, Setting) | function | Funktion (siehe Check im Manifest) |
+| ✅ | `S33.student_no_script` | Word-Schülerversion enthält beim Listening kein Skript | function | Funktion (siehe Check im Manifest) |
+| ✅ | `S33.student_worksheet` | Word-Schülerversion ist ein echtes Arbeitsblatt (Name/Klasse/Datum, Ankreuzkästchen, Schreiblinien, Seitenzahl) | function | Funktion (siehe Check im Manifest) |
+| ✅ | `S33.teacher_key` | Word-Lehrerversion enthält Skript/Text, Vokabeln, Lösungsschlüssel mit Skill, Difficulty, Evidenz und Qualitätsbericht | function | Funktion (siehe Check im Manifest) |
+| ✅ | `S33.teacher_highlight` | Zielvokabular wird in der Word-Lehrerversion hervorgehoben (Schalter wirkt) | function | Funktion (siehe Check im Manifest) |
+| ✅ | `S33.meta_from_claude` | Dokument-Angaben (Byline, From/To/Subject, Usernames, Rating …) stammen von Claude, nicht aus dem Code | function | Funktion (siehe Check im Manifest) |
+| ✅ | `S33.reading_text_in_student` | Word-Schülerversion enthält beim Reading den Text im Layout des Texttyps und danach das Arbeitsblatt | function | Funktion (siehe Check im Manifest) |
+| ✅ | `S33.html_matches` | Die Bildschirmvorschau zeigt denselben Texttyp-Aufbau wie das Word-Dokument | function | Funktion (siehe Check im Manifest) |
 
 ## Einstellungen (core.SCHEMA)
 
@@ -403,6 +436,7 @@ Prüfarten: **setting** – Steuerelement vorhanden und Änderung des Werts ver�
 | `content.natural` | content | llm | nein | Conversation/text sounds natural |
 | `content.level` | content | llm | ja | Language matches the CEFR level |
 | `content.word_count` | content | deterministic | ja | Length matches the target |
+| `content.meta_fields` | content | deterministic | nein | Document details for the text type are complete |
 | `listening.shares` | listening | deterministic | ja | Speaking shares match the settings |
 | `listening.speakers_present` | listening | deterministic | ja | All speakers present with the planned labels |
 | `listening.distinguishable` | listening | llm | nein | Speakers are clearly distinguishable |
