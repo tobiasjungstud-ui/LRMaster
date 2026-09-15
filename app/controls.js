@@ -22,6 +22,7 @@
     vocabSelectionMode: { auto: 'Automatic (Claude picks from the unit)', manual: 'Select vocabulary manually' },
     questionCount: { custom: 'Custom' },
     skillMixMode: { auto: 'Balanced Question Mix (automatic)', custom: 'Custom Question Mix' },
+    autoFix: { off: 'Aus – Befunde nur melden', fail: 'Fehler automatisch beheben', all: 'Fehler und Warnungen automatisch beheben' },
     audioLength: Object.fromEntries(core.AUDIO_LENGTHS.map(a => [a.key, a.label])),
     preset: Object.fromEntries(core.PRESETS.map(p => [p.key, p.label])),
     cefr: {},
@@ -61,6 +62,8 @@
     preTask: 'Prediction, vocabulary activation or a speaking prompt. Never gives away answers.',
     autoFormatMix: 'ON: the app assigns the enabled formats evenly to the questions. OFF: Claude chooses freely among the enabled formats.',
     speakingSpeed: 'Determines the words per minute used to convert the audio length into a word count.',
+    autoFix: 'Gefundene Probleme werden nicht nur gemeldet: Die Anwendung lässt die betroffenen Fragen gezielt ersetzen bzw. den Text überarbeiten und prüft danach erneut.',
+    autoFixRounds: 'Höchstzahl der Korrekturdurchgänge. Jede Runde kostet zwei zusätzliche Claude-Aufrufe (Korrektur und erneute Prüfung).',
   };
 
   function optionLabel(key, value) {
@@ -120,7 +123,7 @@
         'textType', 'customTextType', 'lengthMode', 'wordCount', 'a4Pages'],
     5: ['vocabUsage', 'targetVocabMin', 'targetVocabMax', 'vocabSelectionMode', 'selectedVocab', 'highlightVocab'],
     6: ['createWorksheet', 'questionCount', 'questionCountCustom', 'questionDifficulty', 'skillMixMode', 'customSkillMix', 'questionFormats', 'autoFormatMix', 'followChronology', 'higherOrder', 'higherOrderCount', 'higherOrderTypes', 'preTask', 'preTaskTypes'],
-    7: ['grammarComplexity', 'vocabularyDifficulty', 'idiomaticLanguage', 'paragraphLength', 'dialogueProportion', 'styleBalance', 'distractorDifficulty', 'inferenceLevel'],
+    7: ['grammarComplexity', 'vocabularyDifficulty', 'idiomaticLanguage', 'paragraphLength', 'dialogueProportion', 'styleBalance', 'distractorDifficulty', 'inferenceLevel', 'autoFix', 'autoFixRounds'],
   };
 
   const ADVANCED_GROUPS = [
@@ -128,6 +131,7 @@
     { title: 'Text', keys: ['wordCount', 'paragraphLength', 'dialogueProportion', 'styleBalance'] },
     { title: 'Language', keys: ['cefr', 'grammarComplexity', 'vocabularyDifficulty', 'vocabUsage', 'idiomaticLanguage'] },
     { title: 'Questions', keys: ['questionCount', 'questionDifficulty', 'skillMixMode', 'questionFormats', 'distractorDifficulty', 'inferenceLevel', 'followChronology'] },
+    { title: 'Qualität', keys: ['autoFix', 'autoFixRounds'] },
   ];
 
   function extras(sectionN) {

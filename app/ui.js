@@ -388,8 +388,8 @@
   /* ------------------------------------------------------------------ */
 
   const STEPS = [
-    ['plan', 'Plan & Validierung'], ['content', 'Skript / Text schreiben'], ['content-check', 'Content prüfen'], ['content-fix', 'Content überarbeiten'],
-    ['questions', 'Aufgaben erstellen'], ['question-check', 'Aufgaben prüfen'], ['review', 'Claude-Review'], ['question-fix', 'Aufgaben überarbeiten'], ['done', 'Ausgabe'],
+    ['plan', 'Plan & Validierung'], ['content', 'Skript / Text schreiben'], ['content-check', 'Content prüfen'], ['content-fix', 'Content korrigieren'],
+    ['questions', 'Aufgaben erstellen'], ['question-check', 'Aufgaben prüfen'], ['review', 'Claude-Review'], ['question-fix', 'Aufgaben korrigieren'], ['done', 'Ausgabe'],
   ];
   function progress(step, status, note) {
     const el = $('#progress');
@@ -406,6 +406,14 @@
     const pre = $('#stream'); pre.hidden = false; pre.textContent = text.slice(-1200);
   }
 
+  function summaryText(findings) {
+    const s = quality.summarize(findings);
+    return `${s.pass} ok · ${s.warn} Warnungen · ${s.fail} Fehler`;
+  }
+  function findingsLabel(items) {
+    return items.slice(0, 2).map(f => f.title).join(', ') + (items.length > 2 ? ` +${items.length - 2}` : '');
+  }
+
   async function generate() {
     const c = ctx();
     const state = core.clone(app.state);
@@ -418,99 +426,166 @@
     progress('reset');
     $('#output').hidden = true;
     const t0 = Date.now();
-    const log = [];
+    const repairs = [];
     const usedPrompts = {};
+    const maxRounds = state.autoFix === 'off' ? 0 : Math.max(1, Math.min(4, Number(state.autoFixRounds) || 2));
+    const stream = { onText: ({ text }) => streamPreview(text) };
+
     try {
-      // 1. Plan
+      /* 1. Plan */
       progress('plan', 'running');
       const plan = core.buildPlan(state, c);
       progress('plan', 'done', `${plan.targetWords} Wörter · ${plan.questionCount} Fragen`);
 
-      // 2. Content
+      /* 2. Content */
       progress('content', 'running', 'Claude schreibt …');
       usedPrompts.content = prompts.buildContentPrompt(state, plan);
-      let rawContent = await askJSON(usedPrompts.content, { signal: ctl.signal, onText: ({ text }) => streamPreview(text) });
-      let content = quality.normalizeContent(rawContent, state, plan);
+      let content = quality.normalizeContent(await askJSON(usedPrompts.content, Object.assign({ signal: ctl.signal }, stream)), state, plan);
       progress('content', 'done', `„${content.title}“`);
 
-      // 3. Deterministic content checks, one revision if blocking rules fail
+      /* 3. Measure the content and repair it until it stops improving */
       progress('content-check', 'running');
       let contentFindings = quality.runContentChecks(state, plan, content);
-      let blocking = quality.blockingFailures(contentFindings);
-      progress('content-check', blocking.length ? 'warn' : 'done', summaryText(contentFindings));
-      if (blocking.length) {
-        progress('content-fix', 'running', blocking.map(f => f.title).join(', '));
-        usedPrompts.contentRevision = prompts.buildContentRevisionPrompt(state, plan, content, blocking);
-        try {
-          const revised = quality.normalizeContent(await askJSON(usedPrompts.contentRevision, { signal: ctl.signal, onText: ({ text }) => streamPreview(text) }), state, plan);
-          const revisedFindings = quality.runContentChecks(state, plan, revised);
-          const better = quality.blockingFailures(revisedFindings).length <= blocking.length;
-          if (better) { content = revised; contentFindings = revisedFindings; }
-          log.push({ step: 'content-fix', accepted: better });
-          progress('content-fix', 'done', better ? summaryText(revisedFindings) : 'Erste Fassung beibehalten');
-        } catch (e) { if (e.code === 'cancelled') throw e; progress('content-fix', 'warn', errorCopy(e)); }
-      } else progress('content-fix', 'skip', 'nicht nötig');
+      progress('content-check', quality.repairable(contentFindings, state.autoFix).length ? 'warn' : 'done', summaryText(contentFindings));
+      for (let round = 1; round <= maxRounds; round++) {
+        const rp = quality.repairPlan(contentFindings, state.autoFix);
+        if (!rp.items.length) break;
+        progress('content-fix', 'running', `Runde ${round}: ${findingsLabel(rp.items)}`);
+        usedPrompts['contentRepair' + round] = prompts.buildContentRevisionPrompt(state, plan, content, rp.items);
+        let candidate;
+        try { candidate = quality.normalizeContent(await askJSON(usedPrompts['contentRepair' + round], Object.assign({ signal: ctl.signal }, stream)), state, plan); }
+        catch (e) { if (e.code === 'cancelled') throw e; progress('content-fix', 'warn', errorCopy(e)); break; }
+        const candFindings = quality.runContentChecks(state, plan, candidate);
+        const better = quality.problemScore(candFindings) < quality.problemScore(contentFindings);
+        repairs.push({ round, target: 'content', fixed: rp.items.map(f => f.title), accepted: better });
+        if (!better) { progress('content-fix', 'done', `Runde ${round}: keine Verbesserung, erste Fassung behalten`); break; }
+        content = candidate; contentFindings = candFindings;
+        progress('content-fix', 'done', `Runde ${round}: ${summaryText(contentFindings)}`);
+      }
+      if (!repairs.some(r => r.target === 'content')) progress('content-fix', 'skip', maxRounds ? 'nicht nötig' : 'automatische Korrektur aus');
 
-      // 4. Worksheet
+      /* 4. Worksheet */
       let worksheet = null, questionFindings = [], reviewFindings = [], review = null;
+      const reviewNow = async (ws, det, tag) => {
+        const rules = quality.llmRules(state, plan, ws);
+        usedPrompts['review' + tag] = prompts.buildReviewPrompt(state, plan, content, ws, rules, det);
+        const res = await askJSON(usedPrompts['review' + tag], { signal: ctl.signal });
+        return { review: res, findings: quality.mergeReview(rules, res) };
+      };
+
       if (state.createWorksheet) {
         progress('questions', 'running', 'Claude schreibt Aufgaben …');
         usedPrompts.questions = prompts.buildQuestionPrompt(state, plan, content);
-        worksheet = quality.normalizeWorksheet(await askJSON(usedPrompts.questions, { signal: ctl.signal, onText: ({ text }) => streamPreview(text) }));
+        worksheet = quality.normalizeWorksheet(await askJSON(usedPrompts.questions, Object.assign({ signal: ctl.signal }, stream)));
         progress('questions', 'done', `${worksheet.questions.length} Fragen`);
 
         progress('question-check', 'running');
         questionFindings = quality.runDeterministic(state, plan, content, worksheet).filter(f => f.group === 'questions');
-        progress('question-check', quality.blockingFailures(questionFindings).length ? 'warn' : 'done', summaryText(questionFindings));
+        progress('question-check', quality.repairable(questionFindings, state.autoFix).length ? 'warn' : 'done', summaryText(questionFindings));
 
-        // 5. Claude review of the rules that need reading
         progress('review', 'running', 'Claude prüft …');
-        const rules = quality.llmRules(state, plan, worksheet);
-        usedPrompts.review = prompts.buildReviewPrompt(state, plan, content, worksheet, rules, contentFindings.concat(questionFindings));
         try {
-          review = await askJSON(usedPrompts.review, { signal: ctl.signal });
-          reviewFindings = quality.mergeReview(rules, review);
-          progress('review', quality.blockingFailures(reviewFindings).length ? 'warn' : 'done', summaryText(reviewFindings));
-        } catch (e) { if (e.code === 'cancelled') throw e; reviewFindings = quality.mergeReview(rules, null); progress('review', 'warn', errorCopy(e)); }
+          const r = await reviewNow(worksheet, contentFindings.concat(questionFindings), '1');
+          review = r.review; reviewFindings = r.findings;
+          progress('review', quality.repairable(reviewFindings, state.autoFix).length ? 'warn' : 'done', summaryText(reviewFindings));
+        } catch (e) {
+          if (e.code === 'cancelled') throw e;
+          reviewFindings = quality.mergeReview(quality.llmRules(state, plan, worksheet), null);
+          progress('review', 'warn', errorCopy(e));
+        }
 
-        // 6. One revision of the worksheet if blocking findings remain
-        const qBlocking = quality.blockingFailures(questionFindings.concat(reviewFindings.filter(f => f.group === 'questions')));
-        if (qBlocking.length) {
-          progress('question-fix', 'running', qBlocking.map(f => f.title).join(', '));
-          usedPrompts.questionRevision = prompts.buildQuestionRevisionPrompt(state, plan, content, worksheet, qBlocking, review && review.fixInstructions);
+        /* 5. Repair loop: replace the questions a check complained about. */
+        let findings = questionFindings.concat(reviewFindings);
+        let contentRedone = false;
+        for (let round = 1; round <= maxRounds; round++) {
+          const rp = quality.repairPlan(findings, state.autoFix);
+          if (!rp.items.length) break;
+
+          // A failed content rule cannot be fixed by rewriting a question: redo
+          // the text and the whole worksheet once, then carry on.
+          const contentFails = rp.content.filter(f => f.status === 'fail');
+          if (contentFails.length && !contentRedone) {
+            contentRedone = true;
+            progress('content-fix', 'running', `Runde ${round}: ${findingsLabel(contentFails)} → Text und Aufgaben neu`);
+            try {
+              usedPrompts['contentRedo'] = prompts.buildContentRevisionPrompt(state, plan, content, contentFails);
+              const newContent = quality.normalizeContent(await askJSON(usedPrompts.contentRedo, Object.assign({ signal: ctl.signal }, stream)), state, plan);
+              const newContentFindings = quality.runContentChecks(state, plan, newContent);
+              usedPrompts['questionsRedo'] = prompts.buildQuestionPrompt(state, plan, newContent);
+              const newWorksheet = quality.normalizeWorksheet(await askJSON(usedPrompts.questionsRedo, Object.assign({ signal: ctl.signal }, stream)));
+              const newDet = quality.runDeterministic(state, plan, newContent, newWorksheet).filter(f => f.group === 'questions');
+              const r = await reviewNow(newWorksheet, newContentFindings.concat(newDet), 'Redo');
+              const candAll = newContentFindings.concat(newDet, r.findings);
+              const better = quality.problemScore(candAll) < quality.problemScore(contentFindings.concat(findings));
+              repairs.push({ round, target: 'content+worksheet', fixed: contentFails.map(f => f.title), accepted: better });
+              if (better) {
+                content = newContent; contentFindings = newContentFindings; worksheet = newWorksheet;
+                questionFindings = newDet; reviewFindings = r.findings; review = r.review;
+                findings = newDet.concat(r.findings);
+                progress('content-fix', 'done', `Runde ${round}: Text und Aufgaben ersetzt`);
+                continue;
+              }
+              progress('content-fix', 'done', `Runde ${round}: keine Verbesserung, erste Fassung behalten`);
+            } catch (e) { if (e.code === 'cancelled') throw e; progress('content-fix', 'warn', errorCopy(e)); }
+          }
+
+          if (!rp.questions.length && !rp.worksheet.length) break;
+          const targeted = rp.questions.length > 0 && rp.worksheet.length === 0;
+          progress('question-fix', 'running', `Runde ${round}: ${findingsLabel(rp.items)}` + (targeted ? ` · Q${rp.questions.join(', Q')}` : ' · Aufgaben neu'));
+          let candidate;
           try {
-            const revised = quality.normalizeWorksheet(await askJSON(usedPrompts.questionRevision, { signal: ctl.signal, onText: ({ text }) => streamPreview(text) }));
-            const revisedFindings = quality.runDeterministic(state, plan, content, revised).filter(f => f.group === 'questions');
-            if (quality.blockingFailures(revisedFindings).length <= quality.blockingFailures(questionFindings).length) {
-              worksheet = revised; questionFindings = revisedFindings;
-              // Re-run the review so the final state is verified, not assumed.
-              try {
-                usedPrompts.review2 = prompts.buildReviewPrompt(state, plan, content, worksheet, rules, contentFindings.concat(questionFindings));
-                review = await askJSON(usedPrompts.review2, { signal: ctl.signal });
-                reviewFindings = quality.mergeReview(rules, review);
-              } catch (e) { if (e.code === 'cancelled') throw e; }
-              log.push({ step: 'question-fix', accepted: true });
-              progress('question-fix', 'done', summaryText(revisedFindings.concat(reviewFindings)));
-            } else { log.push({ step: 'question-fix', accepted: false }); progress('question-fix', 'warn', 'Überarbeitung nicht besser – erste Fassung behalten'); }
-          } catch (e) { if (e.code === 'cancelled') throw e; progress('question-fix', 'warn', errorCopy(e)); }
-        } else progress('question-fix', 'skip', 'nicht nötig');
-      } else { for (const s of ['questions', 'question-check', 'review', 'question-fix']) progress(s, 'skip', 'kein Worksheet'); }
+            if (targeted) {
+              usedPrompts['questionRepair' + round] = prompts.buildQuestionRepairPrompt(state, plan, content, worksheet, rp.items, rp.questions, review && review.fixInstructions);
+              const patch = await askJSON(usedPrompts['questionRepair' + round], Object.assign({ signal: ctl.signal }, stream));
+              const list = Array.isArray(patch) ? patch : (patch && patch.questions) || [];
+              candidate = quality.applyQuestionPatch(worksheet, list);
+              if (candidate === worksheet) { progress('question-fix', 'warn', `Runde ${round}: keine Ersatzfragen erhalten`); break; }
+            } else {
+              usedPrompts['questionRevision' + round] = prompts.buildQuestionRevisionPrompt(state, plan, content, worksheet, rp.items, review && review.fixInstructions);
+              candidate = quality.normalizeWorksheet(await askJSON(usedPrompts['questionRevision' + round], Object.assign({ signal: ctl.signal }, stream)));
+            }
+          } catch (e) { if (e.code === 'cancelled') throw e; progress('question-fix', 'warn', errorCopy(e)); break; }
 
-      // 7. Assemble
+          const candDet = quality.runDeterministic(state, plan, content, candidate).filter(f => f.group === 'questions');
+          let candReview = review, candLlm = reviewFindings;
+          try {
+            const r = await reviewNow(candidate, contentFindings.concat(candDet), 'R' + round);
+            candReview = r.review; candLlm = r.findings;
+          } catch (e) { if (e.code === 'cancelled') throw e; }
+          const candFindings = candDet.concat(candLlm);
+          const changed = quality.changedQuestions(worksheet, candidate);
+          const better = quality.problemScore(candFindings) < quality.problemScore(findings);
+          repairs.push({ round, target: targeted ? 'questions' : 'worksheet', questions: changed, fixed: rp.items.map(f => f.title), accepted: better });
+          if (!better) { progress('question-fix', 'done', `Runde ${round}: keine Verbesserung, vorige Fassung behalten`); break; }
+          worksheet = candidate; questionFindings = candDet; reviewFindings = candLlm; review = candReview; findings = candFindings;
+          progress('question-check', quality.repairable(questionFindings, state.autoFix).length ? 'warn' : 'done', summaryText(questionFindings));
+          progress('review', quality.repairable(reviewFindings, state.autoFix).length ? 'warn' : 'done', summaryText(reviewFindings));
+          progress('question-fix', 'done', `Runde ${round}: ${changed.length ? 'Q' + changed.join(', Q') + ' ersetzt · ' : ''}${summaryText(findings)}`);
+        }
+        if (!repairs.some(r => r.target === 'questions' || r.target === 'worksheet')) {
+          progress('question-fix', 'skip', maxRounds ? 'nicht nötig' : 'automatische Korrektur aus');
+        }
+      } else {
+        for (const st of ['questions', 'question-check', 'review', 'question-fix']) progress(st, 'skip', 'kein Worksheet');
+      }
+
+      /* 6. Assemble */
       progress('done', 'running');
       const contentOnlyReview = !state.createWorksheet ? await reviewContentOnly(state, plan, content, contentFindings, ctl).catch(() => []) : [];
-      const findings = contentFindings.concat(questionFindings, reviewFindings, contentOnlyReview);
+      const findingsAll = contentFindings.concat(questionFindings, reviewFindings, contentOnlyReview);
       const vm = quality.vocabMatches(quality.materialText(content, state.kind).text, plan.vocabulary);
       const material = {
         id: vocab.makeId('mat'), createdAt: Date.now(), kind: state.kind, title: (worksheet && worksheet.title) || content.title,
         settings: state, plan, content, worksheet, vocabFound: vm.found, vocabMissing: vm.missing,
-        quality: { findings, review, log, durationMs: Date.now() - t0 }, prompts: usedPrompts,
+        quality: { findings: findingsAll, review, repairs, durationMs: Date.now() - t0 }, prompts: usedPrompts,
       };
       app.material = material;
       await store.put('materials', material);
       renderOutput(material);
-      progress('done', 'done', `${Math.round((Date.now() - t0) / 1000)} s`);
-      toast('Material erstellt und gespeichert.');
+      const open = quality.repairable(findingsAll, state.autoFix === 'off' ? 'all' : state.autoFix).length;
+      progress('done', open ? 'warn' : 'done', `${Math.round((Date.now() - t0) / 1000)} s · ${summaryText(findingsAll)}`);
+      const fixedCount = repairs.filter(r => r.accepted).length;
+      toast(fixedCount ? `Material erstellt · ${fixedCount} Korrekturrunde(n) angewendet.` : 'Material erstellt und gespeichert.');
     } catch (e) {
       if (e && e.code === 'cancelled') { toast('Generierung abgebrochen.'); progress('done', 'warn', 'abgebrochen'); }
       else { console.error(e); toast('Fehler: ' + errorCopy(e)); progress('done', 'fail', errorCopy(e)); }
@@ -524,11 +599,6 @@
     const rules = quality.llmRules(state, plan, null);
     const review = await askJSON(prompts.buildReviewPrompt(state, plan, content, null, rules, contentFindings), { signal: ctl.signal });
     return quality.mergeReview(rules, review);
-  }
-
-  function summaryText(findings) {
-    const s = quality.summarize(findings);
-    return `${s.pass} ok · ${s.warn} Warnungen · ${s.fail} Fehler`;
   }
 
   /* ------------------------------------------------------------------ */
@@ -557,6 +627,18 @@
       const list = f.filter(x => x.group === g);
       if (!list.length) continue;
       html += `<h3>${title}</h3><div class="table-wrap"><table class="qc-table"><tbody>` + list.map(x => `<tr class="qc-${x.status}"><td class="qc-status">${x.status}</td><td>${esc(x.title)}<div class="muted small">${x.kind === 'llm' ? 'Claude-Review' : 'gemessen'}${x.questions && x.questions.length ? ' · Q' + x.questions.join(', Q') : ''}</div></td><td class="muted">${esc(x.detail)}</td></tr>`).join('') + '</tbody></table></div>';
+    }
+    const repairs = (m.quality.repairs || []).filter(r => r.accepted);
+    if (repairs.length) {
+      html += '<h3>Automatische Korrektur</h3><ul class="qc-list">' + repairs.map(r => {
+        const what = r.target === 'content' ? 'Text überarbeitet'
+          : r.target === 'content+worksheet' ? 'Text und Aufgaben neu erstellt'
+          : r.questions && r.questions.length ? 'Fragen ersetzt: Q' + r.questions.join(', Q')
+          : 'Aufgaben überarbeitet';
+        return `<li class="qc-pass"><span class="qc-status">Runde ${r.round}</span> ${esc(what)} <span class="muted">— Auslöser: ${esc((r.fixed || []).join(', '))}</span></li>`;
+      }).join('') + '</ul>';
+    } else if (m.settings && m.settings.autoFix === 'off') {
+      html += '<p class="muted">Automatische Korrektur war ausgeschaltet.</p>';
     }
     if (m.quality.review && m.quality.review.fixInstructions) html += `<p class="muted"><strong>Reviewer:</strong> ${esc(m.quality.review.fixInstructions)}</p>`;
     return html;

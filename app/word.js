@@ -723,7 +723,8 @@
   function qualityBlocks(ctx) {
     const { m } = ctx;
     const findings = (m.quality && m.quality.findings) || [];
-    if (!findings.length) return [];
+    const repairs = ((m.quality && m.quality.repairs) || []).filter(r => r.accepted);
+    if (!findings.length && !repairs.length) return [];
     const s = quality.summarize(findings);
     const COLORS = { pass: '1B5E20', warn: '8A5A00', fail: 'A3282B', unverified: GREY };
     const c3 = cols(ctx.W, [0.11, 0.37, 0.52]);
@@ -737,7 +738,15 @@
           { text: f.title, props: { after: 0, run: { font: WS.body, size: 9, color: INK } } },
           { text: f.detail || '', props: { after: 0, run: { font: WS.body, size: 8.5, color: GREY } } },
         ] })) }),
-    ];
+    ].concat(repairs.length ? [
+      P('Automatische Korrektur', { before: 10, after: 4, keepNext: true, run: { font: WS.display, size: 10, bold: true, color: INK } }),
+      TBL({ width: ctx.W, widthType: 'dxa', cols: c3, cellMargin: { top: 0.06, left: 0, bottom: 0.06, right: 0.15 }, borders: { insideH: hairline('EDF0F3') },
+        rows: repairs.map(r => ({ cells: [
+          { text: 'Runde ' + r.round, props: { after: 0, run: { font: WS.body, size: 8.5, bold: true, color: GREY } } },
+          { text: render.repairLabel(r), props: { after: 0, run: { font: WS.body, size: 9, color: INK } } },
+          { text: 'Auslöser: ' + ((r.fixed || []).join(', ')), props: { after: 0, run: { font: WS.body, size: 8.5, color: GREY } } },
+        ] })) }),
+    ] : []);
   }
 
   /* ------------------------------------------------------------------ */

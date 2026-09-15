@@ -299,7 +299,7 @@
     return [
       buildContentPrompt(state, plan),
       '## Revision\nA previous draft did not meet the requirements. Revise it so that every finding below is fixed while keeping what already works. Return the complete revised material in the same JSON shape.',
-      '### Findings\n' + findings.map(f => `- ${f.title}: ${f.detail || f.status}`).join('\n'),
+      '### Findings\n' + findingsBlock(findings),
       '### Previous draft\n' + JSON.stringify(content).slice(0, 30000),
     ].join('\n\n');
   }
@@ -308,9 +308,63 @@
     return [
       buildQuestionPrompt(state, plan, content),
       '## Revision\nA previous worksheet draft failed the quality check. Fix every finding below, keep the questions that were fine, and return the complete worksheet in the same JSON shape (same number of questions, same skill per question number).',
-      '### Findings\n' + findings.map(f => `- ${f.title}: ${f.detail || f.status}` + (f.questions && f.questions.length ? ` (Q${f.questions.join(', Q')})` : '')).join('\n') + (fixInstructions ? '\n\nReviewer instructions: ' + fixInstructions : ''),
+      '### Findings\n' + findingsBlock(findings) + (fixInstructions ? '\n\nReviewer instructions: ' + fixInstructions : ''),
       '### Previous worksheet\n' + JSON.stringify(worksheet).slice(0, 30000),
     ].join('\n\n');
+  }
+
+  /**
+   * Targeted repair: rewrite only the questions a check complained about.
+   * Claude sees the whole worksheet (so the replacements test something new)
+   * but returns only the numbered questions it was asked to replace.
+   */
+  function buildQuestionRepairPrompt(state, plan, content, worksheet, findings, numbers, fixInstructions) {
+    const isL = state.kind === 'listening';
+    const targets = (numbers || []).slice().sort((a, b) => a - b);
+    const byNumber = new Map((worksheet.questions || []).map(q => [Number(q.n), q]));
+    const problemsFor = (n) => (findings || [])
+      .filter(f => (f.questions || []).map(Number).includes(Number(n)))
+      .map(f => `${f.title}: ${f.detail || ''}`.trim());
+    const otherLines = (worksheet.questions || [])
+      .filter(q => !targets.includes(Number(q.n)))
+      .map(q => `Q${q.n} (${skillLabel(q.skill)}): ${q.prompt || q.statement || ''} → ${Array.isArray(q.answer) ? q.answer.join(' / ') : q.answer}`);
+    const formats = [...new Set(targets.map(n => (byNumber.get(n) || {}).format).filter(Boolean))];
+
+    const lines = [];
+    lines.push(`You are revising a worksheet for the ${isL ? 'listening script' : 'reading text'} below. Replace ONLY the questions listed as "to replace"; every other question stays exactly as it is.`);
+    lines.push('## Material\nTitle: ' + content.title + '\n' + contentAsText(content, state));
+    lines.push('## Questions that stay (do not repeat what they already test)\n' + (otherLines.length ? otherLines.join('\n') : '– none –'));
+    lines.push('## To replace\n' + targets.map(n => {
+      const q = byNumber.get(n) || {};
+      const problems = problemsFor(n);
+      return [
+        `### Q${n}`,
+        `Required skill: ${skillLabel(q.skill)} — ${SKILL_DEFINITIONS[q.skill] || ''}`,
+        `Required response format: ${formatLabel(q.format)} ("format": "${q.format}")`,
+        `Required level: ${q.difficulty || plan.questionBand}`,
+        'Current version: ' + JSON.stringify(q),
+        'What is wrong: ' + (problems.length ? problems.join(' | ') : 'it must be replaced by a question that tests something different'),
+      ].join('\n');
+    }).join('\n\n'));
+    if (fixInstructions) lines.push('## Reviewer instructions\n' + String(fixInstructions));
+    lines.push('## Rules for the replacements\n'
+      + `- Keep the question number, the skill and the response format exactly as required above.\n`
+      + `- Each replacement must test a piece of information that NO other question on the sheet tests — a different fact, a different place in the ${isL ? 'audio' : 'text'}, a different reasoning step.\n`
+      + '- It must be answerable unambiguously and only from the material.\n'
+      + `- Give "evidenceQuote": a VERBATIM excerpt (5–20 words) from the material, and "evidenceRef": the line number ${isL ? '[n]' : '[¶n]'} where it stands. Use a different place in the material than the questions that stay, wherever the skill allows it.\n`
+      + '- For Inference, Connecting, Attitude and Purpose questions add "rationale": one sentence saying why the answer follows.\n'
+      + '- Inference questions must require reasoning beyond what is stated; do not restate another question as a generalisation.\n'
+      + `- Question difficulty: ${scale(state.questionDifficulty, ['easy', 'fairly easy', 'medium', 'challenging', 'very challenging'])}; distractors: ${scale(state.distractorDifficulty, ['obviously wrong', 'easy', 'plausible', 'demanding', 'very demanding'])}.`
+      + (state.followChronology ? `\n- Keep the ${isL ? 'audio' : 'text'} order: a replacement should point at roughly the same place in the material as the question it replaces, unless the problem was exactly that.` : ''));
+    if (formats.length) lines.push('## Format shapes\n' + formats.map(f => `- ${f}: ${FORMAT_SHAPES[f]}`).join('\n'));
+    lines.push('Reply with only a JSON object holding the replacements: {"questions": [' + targets.map(n => `{"n": ${n}, "skill": "…", "format": "…", "difficulty": "…", "prompt": "…", …format fields…, "answer": …, "evidenceQuote": "…", "evidenceRef": "…", "rationale": "…"}`).join(', ') + ']}');
+    return lines.join('\n\n');
+  }
+
+  /** What the repair round tells the reviewer/writer about the findings. */
+  function findingsBlock(findings) {
+    return (findings || []).map(f => `- [${f.status}] ${f.title}: ${f.detail || ''}`
+      + (f.questions && f.questions.length ? ` (Q${f.questions.join(', Q')})` : '')).join('\n');
   }
 
   /* ------------------------------------------------------------------ */
@@ -377,7 +431,7 @@
   return {
     scale, SKILL_DEFINITIONS, FORMAT_SHAPES, contentAsText, documentBlock, metaSpec, contentSchema,
     buildTopicPrompt, buildContentPrompt, buildQuestionPrompt, buildReviewPrompt,
-    buildContentRevisionPrompt, buildQuestionRevisionPrompt, buildVocabParsePrompt,
+    buildContentRevisionPrompt, buildQuestionRevisionPrompt, buildQuestionRepairPrompt, findingsBlock, buildVocabParsePrompt,
     buildUnitDetectPrompt, buildUnitTopicPrompt, buildAllPrompts,
   };
 });

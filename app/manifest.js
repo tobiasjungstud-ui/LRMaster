@@ -426,7 +426,77 @@
       const merged = env.quality.mergeReview(llm, { results: llm.map(r => ({ rule: r.id, pass: r.id !== 'questions.answerable', note: 'x', questions: [2] })) });
       const blocking = env.quality.blockingFailures(merged);
       const rp = env.prompts.buildReviewPrompt(m.settings, plan, m.content, m.worksheet, llm, det);
-      return ok(det.length >= 8 && llm.length >= 8 && blocking.length === 1 && blocking[0].id === 'questions.answerable' && llm.every(r => rp.includes('"' + r.id + '"')) && (env.pipelineSource ? /runDeterministic[\s\S]*buildReviewPrompt[\s\S]*RevisionPrompt/.test(env.pipelineSource) : true), 'quality pipeline incomplete');
+      const src = env.pipelineSource || '';
+      const pipelineOk = !src || (/runContentChecks/.test(src) && /runDeterministic/.test(src) && /buildReviewPrompt/.test(src) && /(buildQuestionRepairPrompt|RevisionPrompt)/.test(src));
+      return ok(det.length >= 8 && llm.length >= 8 && blocking.length === 1 && blocking[0].id === 'questions.answerable' && llm.every(r => rp.includes('"' + r.id + '"')) && pipelineOk, 'quality pipeline incomplete');
+    } });
+
+  /* §29 (Erweiterung): Befunde werden behoben, nicht nur gemeldet */
+  add({ id: 'S29.auto_repair', section: 29, title: 'Gefundene Probleme werden automatisch behoben (Aus / nur Fehler / Fehler und Warnungen)', kind: 'setting', key: 'autoFix', alt: 'off', promptSensitive: false,
+    extra(env) {
+      const findings = [
+        { id: 'questions.duplicates_llm', group: 'questions', status: 'fail', title: 'dup', questions: [6, 7] },
+        { id: 'questions.chronology', group: 'questions', status: 'warn', title: 'order', questions: [4] },
+        { id: 'content.word_count', group: 'content', status: 'pass', title: 'len' },
+      ];
+      const off = env.quality.repairable(findings, 'off');
+      const fail = env.quality.repairable(findings, 'fail');
+      const all = env.quality.repairable(findings, 'all');
+      const src = env.pipelineSource || '';
+      const usesSetting = !src || /state\.autoFix/.test(src);
+      return ok(off.length === 0 && fail.length === 1 && all.length === 2 && usesSetting,
+        usesSetting ? `repairable(): ${off.length}/${fail.length}/${all.length}` : 'the pipeline ignores the autoFix setting');
+    } });
+  add({ id: 'S29.auto_repair_rounds', section: 29, title: 'Mehrere Korrekturrunden, bis die Prüfung sauber ist (max. einstellbar)', kind: 'setting', key: 'autoFixRounds', alt: 4, promptSensitive: false,
+    extra(env) {
+      const src = env.pipelineSource || '';
+      if (!src) return true;
+      const loops = /for \(let round = 1; round <= maxRounds; round\+\+\)/.test(src);
+      const capped = /autoFixRounds/.test(src) && /Math\.min\(4/.test(src);
+      return ok(loops && capped, loops ? 'the round limit is not read from the setting' : 'no repair loop in the pipeline');
+    } });
+  add({ id: 'S29.targeted_repair', section: 29, title: 'Beanstandete Fragen werden gezielt ersetzt, der Rest des Arbeitsblatts bleibt unverändert', kind: 'function',
+    check(env) {
+      const m = env.fixture.material({}, 'listening');
+      const plan = env.core.buildPlan(m.settings, env.ctx);
+      const findings = [{ id: 'questions.duplicates_llm', group: 'questions', status: 'fail', title: 'No two questions test exactly the same information', detail: 'Q3 and Q4 use the same evidence', questions: [3, 4] }];
+      const rp = env.quality.repairPlan(findings, 'all');
+      if (JSON.stringify(rp.questions) !== '[3,4]') return 'affected questions not derived: ' + JSON.stringify(rp.questions);
+      if (rp.worksheet.length) return 'a per-question problem was treated as a full rewrite';
+      const prompt = env.prompts.buildQuestionRepairPrompt(m.settings, plan, m.content, m.worksheet, findings, rp.questions, 'fix it');
+      const asks = /Replace ONLY the questions/.test(prompt)
+        && /Q3/.test(prompt) && /Q4/.test(prompt)
+        && prompt.includes('Q3 and Q4 use the same evidence')
+        && /do not repeat what they already test/.test(prompt)
+        && /"questions"/.test(prompt)
+        && prompt.includes(m.worksheet.questions[0].prompt);
+      if (!asks) return 'the repair prompt does not carry the problem, the other questions or the output shape';
+      // the patch replaces only the named questions and keeps number, skill and format
+      const patched = env.quality.applyQuestionPatch(m.worksheet, [{ n: 4, prompt: 'A completely different question?', answer: 'new', skill: 'inference', format: 'short_answer', difficulty: 'B1.2', evidenceQuote: 'bus stop tomorrow morning', evidenceRef: '[6]', rationale: 'because' }]);
+      const untouched = patched.questions.filter((q, i) => q === m.worksheet.questions[i]).length;
+      const q4 = patched.questions.find(q => q.n === 4);
+      return ok(untouched === m.worksheet.questions.length - 1 && q4.prompt === 'A completely different question?' && q4.skill === 'inference' && q4.n === 4,
+        'the patch did not replace exactly one question');
+    } });
+  add({ id: 'S29.repair_never_worse', section: 29, title: 'Eine Korrektur wird nur übernommen, wenn die Prüfung danach besser ausfällt', kind: 'function',
+    check(env) {
+      const worse = [{ status: 'fail' }, { status: 'warn' }];
+      const better = [{ status: 'warn' }];
+      const clean = [{ status: 'pass' }];
+      const src = env.pipelineSource || '';
+      const compares = !src || /problemScore\(candFindings\) < quality\.problemScore\(findings\)/.test(src);
+      return ok(env.quality.problemScore(clean) < env.quality.problemScore(better)
+        && env.quality.problemScore(better) < env.quality.problemScore(worse) && compares,
+        compares ? 'problemScore does not rank failures above warnings' : 'the pipeline applies a repair without comparing');
+    } });
+  add({ id: 'S29.repair_reported', section: 29, title: 'Jede angewendete Korrektur wird im Qualitätsbericht ausgewiesen', kind: 'function',
+    check(env) {
+      const src = env.uiSource || '';
+      const shows = !src || (/Automatische Korrektur/.test(src) && /repairs/.test(src));
+      const m = env.fixture.material();
+      m.quality = { findings: [], repairs: [{ round: 1, target: 'questions', questions: [6, 7], fixed: ['dup'], accepted: true }] };
+      const html = env.render.renderTeacherHTML(m);
+      return ok(shows && /Korrektur/.test(html) && /Q6, Q7/.test(html), shows ? 'the teacher version does not list the repairs' : 'the quality panel does not show the repairs');
     } });
 
   /* §30 Advanced settings */

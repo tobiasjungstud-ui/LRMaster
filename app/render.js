@@ -248,12 +248,29 @@
       }
     }
 
-    if (m.quality && m.quality.findings) {
-      const s = quality.summarize(m.quality.findings);
-      html += `<section class="block qc"><h2>Quality check</h2><p class="stats">${s.pass} passed · ${s.warn} warnings · ${s.fail} failed · ${s.unverified} unverified</p><ul class="qc-list">` + m.quality.findings.map(f => `<li class="qc-${f.status}"><span class="qc-status">${f.status}</span> ${esc(f.title)}${f.detail ? ` — <span class="muted">${esc(f.detail)}</span>` : ''}</li>`).join('') + '</ul></section>';
+    if (m.quality && (m.quality.findings || m.quality.repairs)) {
+      const s = quality.summarize(m.quality.findings || []);
+      html += `<section class="block qc"><h2>Quality check</h2><p class="stats">${s.pass} passed · ${s.warn} warnings · ${s.fail} failed · ${s.unverified} unverified</p>`;
+      html += '<ul class="qc-list">' + (m.quality.findings || []).map(f => `<li class="qc-${f.status}"><span class="qc-status">${f.status}</span> ${esc(f.title)}${f.detail ? ` — <span class="muted">${esc(f.detail)}</span>` : ''}</li>`).join('') + '</ul>';
+      html += repairListHTML(m.quality.repairs);
+      html += '</section>';
     }
     html += '</article>';
     return html;
+  }
+
+  /** What the automatic correction changed, for the teacher version. */
+  function repairLabel(r) {
+    if (r.target === 'content') return 'Text überarbeitet';
+    if (r.target === 'content+worksheet') return 'Text und Aufgaben neu erstellt';
+    if (r.questions && r.questions.length) return 'Fragen ersetzt: Q' + r.questions.join(', Q');
+    return 'Aufgaben überarbeitet';
+  }
+  function repairListHTML(repairs) {
+    const applied = (repairs || []).filter(r => r.accepted);
+    if (!applied.length) return '';
+    return '<h3 class="qc-sub">Automatische Korrektur</h3><ul class="qc-list">' + applied.map(r =>
+      `<li class="qc-pass"><span class="qc-status">Runde ${r.round}</span> ${esc(repairLabel(r))}${(r.fixed || []).length ? ` — <span class="muted">Auslöser: ${esc((r.fixed || []).join(', '))}</span>` : ''}</li>`).join('') + '</ul>';
   }
 
   /** Plain-text/markdown export of both versions. */
@@ -287,9 +304,11 @@
     if (m.quality && m.quality.findings) {
       out.push('', '### Quality check');
       for (const f of m.quality.findings) out.push(`- [${f.status}] ${f.title}${f.detail ? ' — ' + f.detail : ''}`);
+      const applied = (m.quality.repairs || []).filter(r => r.accepted);
+      if (applied.length) { out.push('', '### Automatische Korrektur'); for (const r of applied) out.push(`- Runde ${r.round}: ${repairLabel(r)}${(r.fixed || []).length ? ' (Auslöser: ' + r.fixed.join(', ') + ')' : ''}`); }
     }
     return out.join('\n');
   }
 
-  return { esc, seededShuffle, highlight, renderTextHTML, isHeadingLike, renderStudentHTML, renderTeacherHTML, renderMarkdown, questionBody, answerText };
+  return { esc, seededShuffle, highlight, renderTextHTML, isHeadingLike, repairLabel, repairListHTML, renderStudentHTML, renderTeacherHTML, renderMarkdown, questionBody, answerText };
 });

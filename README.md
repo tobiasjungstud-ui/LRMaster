@@ -35,8 +35,22 @@ scripts/coverage-report.js  schreibt CONCEPT_COVERAGE.md (npm run coverage)
 4. **Aufgaben** – Claude erstellt Fragen mit fixem Skill je Fragenummer, Format, CEFR-Difficulty, wörtlichem Evidenz-Zitat, Referenz und Begründung; separat Higher-Order-Aufgaben und Pre-Tasks.
 5. **Aufgaben-Prüfung** – gemessen: Anzahl, Skill-Verteilung, erlaubte Formate, Chronologie über Evidenz-Positionen, Duplikate, auffindbare Evidenz, Higher-Order getrennt, Pre-Task-Typen.
 6. **Claude-Review** – Beurteilung der Regeln, die Lesen erfordern (Eindeutigkeit, Ableitbarkeit, Distraktoren, Niveau, echte Inferenz, Natürlichkeit, Thema, keine Spoiler im Pre-Task).
-7. **Revision** – bei blockierenden Befunden einmalige Überarbeitung, danach erneutes Messen und erneutes Review.
+7. **Automatische Korrektur** – siehe unten: beanstandete Fragen werden gezielt ersetzt, der Text bei Bedarf überarbeitet, danach wird erneut gemessen und geprüft.
 8. **Ausgabe** – Student Version (ohne Skript beim Listening), Teacher Version (Skript mit Zeilennummern und Vokabel-Highlight, verwendete Items, Lösungsschlüssel mit Skill/Difficulty/Evidenz/Begründung, Qualitätsbericht), Prompts und JSON; Download als **Word (.docx)**, HTML, Markdown oder JSON, Druck, Speicherung.
+
+## Automatische Korrektur statt Fehlerliste
+
+Befunde der Qualitätskontrolle werden nicht nur gemeldet, sondern behoben. Einstellbar unter *Advanced Settings → Qualität*: **Aus**, **Fehler beheben** oder **Fehler und Warnungen beheben** (Standard), mit einer Höchstzahl an Korrekturrunden (Standard 2).
+
+Ablauf pro Runde:
+
+1. Die Befunde werden aufgeteilt: Probleme, die einzelne Fragen betreffen (mit Fragenummern aus Messung oder Claude-Review), und Probleme, die Text oder ganzes Arbeitsblatt betreffen.
+2. **Gezielter Ersatz**: Claude bekommt das Material, alle übrigen Fragen samt Antworten („das testen die anderen schon – teste etwas anderes“), den konkreten Befund im Wortlaut, sowie Skill, Format und Niveau, die für diese Nummer vorgesehen sind. Zurück kommen nur die ersetzten Fragen; Nummerierung, Skill und Format bleiben erhalten, alle anderen Fragen bleiben unangetastet.
+3. Struktur- oder Textprobleme (falsche Fragenzahl, Skill-Verteilung, inkohärenter Text) lösen eine vollständige Überarbeitung aus; ein gescheiterter Text-Check erzeugt einmalig Text **und** Arbeitsblatt neu.
+4. Danach wird erneut gemessen und erneut von Claude geprüft. Die Korrektur wird nur übernommen, wenn die Prüfung danach besser ausfällt (Fehler zählen zehnfach gegenüber Warnungen); sonst bleibt die vorige Fassung stehen und die Schleife bricht ab.
+5. Jede übernommene Runde steht im Qualitätsbericht – auf dem Bildschirm, in der Teacher-HTML-Ausgabe, im Markdown und in der Word-Lehrerversion: „Runde 1 · Fragen ersetzt: Q4 · Auslöser: No two questions test exactly the same information“.
+
+Beispiel aus einem echten Durchlauf: Das Review meldet, dass Q3 (Connecting) und Q4 (Inference) dieselbe Information mit derselben Belegstelle prüfen. Die Anwendung ersetzt daraufhin nur Q4 durch eine Frage mit anderer Belegstelle, prüft erneut – und gibt das Material ohne offene Befunde aus.
 
 ## Word-Export
 
@@ -67,7 +81,7 @@ Das Arbeitsblatt ist ein echtes Arbeitsblatt: Name-/Klasse-/Datum-Zeile, Aufgabe
 
 ## Kontrollmechanismen
 
-- **Konzept-Manifest** (`app/manifest.js`): 203 Anforderungen aus dem Konzeptdokument, jede mit Prüfart:
+- **Konzept-Manifest** (`app/manifest.js`): 208 Anforderungen aus dem Konzeptdokument, jede mit Prüfart:
   - `setting` – Steuerelement existiert **und** die Änderung des Werts verändert nachweislich mindestens einen Prompt (Prompt-Sensitivitätstest; tote Einstellungen fallen durch).
   - `function` – Verhalten wird mit echten Eingaben ausgeführt (z. B. Preset *Interview* ⇒ Anteile 25/75, Skill-Mix verschiebt sich mit der Schwierigkeit, Beispielkonfiguration §32 reproduziert alle Werte).
   - `rule` – Qualitätsregel existiert als Messfunktion oder als Review-Kriterium und wird im Review-Prompt an Claude übergeben.

@@ -290,6 +290,8 @@
     { key: 'higherOrderTypes', type: 'multiselect', default: ['interpretation', 'transfer', 'evaluation'], options: HIGHER_ORDER_TYPES.map(t => t.key), section: 6, mode: 'both', simple: false, label: 'Higher-order types' },
     { key: 'distractorDifficulty', type: 'range', default: 50, min: 0, max: 100, section: 7, mode: 'both', simple: false, label: 'Distractor difficulty' },
     { key: 'inferenceLevel', type: 'range', default: 50, min: 0, max: 100, section: 7, mode: 'both', simple: false, label: 'Inference level' },
+    { key: 'autoFix', type: 'select', default: 'all', options: ['off', 'fail', 'all'], section: 7, mode: 'both', simple: false, label: 'Automatische Korrektur' },
+    { key: 'autoFixRounds', type: 'number', default: 2, min: 1, max: 4, section: 7, mode: 'both', simple: false, label: 'Korrekturrunden (max.)' },
     { key: 'preTask', type: 'toggle', default: false, section: 6, mode: 'both', simple: false, label: 'Create Pre-Task' },
     { key: 'preTaskTypes', type: 'multiselect', default: ['prediction', 'vocabulary'], options: PRE_TASK_TYPES.map(t => t.key), section: 6, mode: 'both', simple: false, label: 'Pre-task types' },
   ];

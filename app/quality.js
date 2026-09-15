@@ -493,6 +493,68 @@
     });
   }
 
+  /* ------------------------------------------------------------------ */
+  /* Repair: which findings can be fixed, and how to apply a fix          */
+  /* ------------------------------------------------------------------ */
+
+  /** Findings the app should act on at a given level ('off' | 'fail' | 'all'). */
+  function repairable(findings, level) {
+    if (!level || level === 'off') return [];
+    return (findings || []).filter(f => f.status === 'fail' || (level === 'all' && f.status === 'warn'));
+  }
+
+  /**
+   * Split the findings into the questions that must be rewritten and the
+   * problems that need the whole text or worksheet redone.
+   */
+  function repairPlan(findings, level) {
+    const items = repairable(findings, level);
+    const questions = new Set();
+    const global = [];
+    for (const f of items) {
+      const qs = (f.questions || []).map(Number).filter(n => Number.isFinite(n) && n > 0);
+      if (f.group === 'questions' && qs.length && !STRUCTURAL.includes(f.id)) qs.forEach(n => questions.add(n));
+      else global.push(f);
+    }
+    return { items, questions: [...questions].sort((a, b) => a - b), global, content: global.filter(f => f.group !== 'questions'), worksheet: global.filter(f => f.group === 'questions') };
+  }
+
+  /* Problems that a single replaced question cannot fix. */
+  const STRUCTURAL = ['questions.count', 'questions.skill_distribution', 'questions.higher_order_separate', 'pretask.present'];
+
+  /** Lower is better: failures weigh ten times a warning. */
+  function problemScore(findings) {
+    const s = summarize(findings);
+    return s.fail * 10 + s.warn + s.unverified * 0.1;
+  }
+
+  /** Replace individual questions by number, keeping plan and numbering intact. */
+  function applyQuestionPatch(worksheet, patch) {
+    const byN = new Map();
+    for (const q of patch || []) {
+      const n = Number(q && q.n);
+      if (Number.isFinite(n)) byN.set(n, normalizeQuestion(q, n - 1));
+    }
+    if (!byN.size) return worksheet;
+    const questions = worksheet.questions.map(q => {
+      const rep = byN.get(Number(q.n));
+      if (!rep) return q;
+      return Object.assign({}, rep, { n: q.n, skill: rep.skill || q.skill, format: rep.format || q.format });
+    });
+    return Object.assign({}, worksheet, { questions });
+  }
+
+  /** Which question numbers actually changed between two worksheets. */
+  function changedQuestions(before, after) {
+    const out = [];
+    const byN = new Map((after.questions || []).map(q => [Number(q.n), q]));
+    for (const q of before.questions || []) {
+      const b = byN.get(Number(q.n));
+      if (b && JSON.stringify(b) !== JSON.stringify(q)) out.push(Number(q.n));
+    }
+    return out;
+  }
+
   function blockingFailures(findings) {
     const byId = Object.fromEntries(RULES.map(r => [r.id, r]));
     return findings.filter(f => f.status === 'fail' && byId[f.id] && byId[f.id].blocking);
@@ -507,7 +569,8 @@
   return {
     RULES, words, wordCount, normalizeForSearch, materialText, findQuotePosition, stem, wordVariants, vocabKeys, vocabParts,
     vocabMatches, highlightRanges, highlightSegments,
-    speakerStats, tagStats, normalizeContent, normalizeMeta, normalizeWorksheet, applicableRules, runDeterministic,
+    speakerStats, tagStats, normalizeContent, normalizeMeta, normalizeWorksheet, normalizeQuestion,
+    repairable, repairPlan, problemScore, applyQuestionPatch, changedQuestions, STRUCTURAL, applicableRules, runDeterministic,
     runContentChecks, llmRules, mergeReview, blockingFailures, summarize,
   };
 });

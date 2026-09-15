@@ -2,7 +2,7 @@
 
 Erzeugt von `npm run coverage`. Jede Zeile ist eine Anforderung aus `docs/Konzept_Listening_Reading_Creator.md`, gebunden an die Stelle im Code, die sie umsetzt, und das Ergebnis der automatischen Prüfung (`npm test`).
 
-**Ergebnis: 203 von 203 Anforderungen bestanden.**
+**Ergebnis: 208 von 208 Anforderungen bestanden.**
 
 Prüfarten: **setting** – Steuerelement vorhanden und Änderung des Werts verändert nachweislich den Prompt an Claude · **function** – Verhalten wird mit echten Eingaben ausgeführt und verglichen · **rule** – Qualitätsregel existiert als Messung oder Claude-Review-Kriterium · **render** – Ausgabe wird auf einer Fixture gerendert und inhaltlich geprüft · **ui** – Navigations-/Strukturelement existiert.
 
@@ -267,7 +267,7 @@ Prüfarten: **setting** – Steuerelement vorhanden und Änderung des Werts ver�
 | ✅ | `S28.teacher_rationale` | Teacher Version: Begründung für Inference-Fragen | render | render.js (renderStudentHTML / renderTeacherHTML) |
 | ✅ | `X.no_hardcoded_content` | Kontrolle: keine hartkodierten Textbausteine für Titel, Instruktion, Fragen, Pre-Tasks oder Themen | function | Funktion (siehe Check im Manifest) |
 
-## §29 Quality Check (28/28)
+## §29 Quality Check (33/33)
 
 | Status | ID | Anforderung | Art | Umsetzung |
 |---|---|---|---|---|
@@ -288,6 +288,11 @@ Prüfarten: **setting** – Steuerelement vorhanden und Änderung des Werts ver�
 | ✅ | `S29.questions.difficulty` | Quality Check – Questions: Difficulty entspricht Stufe | rule | Quality rule `questions.difficulty` (Claude-Review über buildReviewPrompt) |
 | ✅ | `S29.questions.inference_genuine` | Quality Check – Questions: Inference-Fragen wirklich inferentiell | rule | Quality rule `questions.inference_genuine` (Claude-Review über buildReviewPrompt) |
 | ✅ | `S29.before_output` | Qualitätskontrolle läuft automatisch vor der Ausgabe (deterministisch + Claude-Review, Revision bei Fehlern) | function | Funktion (siehe Check im Manifest) |
+| ✅ | `S29.auto_repair` | Gefundene Probleme werden automatisch behoben (Aus / nur Fehler / Fehler und Warnungen) | setting | Setting `autoFix` (core.SCHEMA → Control `[data-setting="autoFix"]` → prompts.js) |
+| ✅ | `S29.auto_repair_rounds` | Mehrere Korrekturrunden, bis die Prüfung sauber ist (max. einstellbar) | setting | Setting `autoFixRounds` (core.SCHEMA → Control `[data-setting="autoFixRounds"]` → prompts.js) |
+| ✅ | `S29.targeted_repair` | Beanstandete Fragen werden gezielt ersetzt, der Rest des Arbeitsblatts bleibt unverändert | function | Funktion (siehe Check im Manifest) |
+| ✅ | `S29.repair_never_worse` | Eine Korrektur wird nur übernommen, wenn die Prüfung danach besser ausfällt | function | Funktion (siehe Check im Manifest) |
+| ✅ | `S29.repair_reported` | Jede angewendete Korrektur wird im Qualitätsbericht ausgewiesen | function | Funktion (siehe Check im Manifest) |
 | ✅ | `X.rule_content.vocab_natural` | Quality rule „content.vocab_natural“ (Vocabulary integrated naturally) – zusätzliche Regel über das Konzept hinaus | meta | `content.vocab_natural` — extra rule |
 | ✅ | `X.rule_content.level` | Quality rule „content.level“ (Language matches the CEFR level) – zusätzliche Regel über das Konzept hinaus | meta | `content.level` — extra rule |
 | ✅ | `X.rule_content.word_count` | Quality rule „content.word_count“ (Length matches the target) – zusätzliche Regel über das Konzept hinaus | meta | `content.word_count` — extra rule |
@@ -430,6 +435,8 @@ Prüfarten: **setting** – Steuerelement vorhanden und Änderung des Werts ver�
 | `higherOrderTypes` | multiselect | 6 | both | nein | `["interpretation","transfer","evaluation"]` |
 | `distractorDifficulty` | range | 7 | both | nein | `50` |
 | `inferenceLevel` | range | 7 | both | nein | `50` |
+| `autoFix` | select | 7 | both | nein | `"all"` |
+| `autoFixRounds` | number | 7 | both | nein | `2` |
 | `preTask` | toggle | 6 | both | nein | `false` |
 | `preTaskTypes` | multiselect | 6 | both | nein | `["prediction","vocabulary"]` |
 
