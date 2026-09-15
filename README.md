@@ -67,7 +67,7 @@ Das Arbeitsblatt ist ein echtes Arbeitsblatt: Name-/Klasse-/Datum-Zeile, Aufgabe
 
 ## Kontrollmechanismen
 
-- **Konzept-Manifest** (`app/manifest.js`): 202 Anforderungen aus dem Konzeptdokument, jede mit Prüfart:
+- **Konzept-Manifest** (`app/manifest.js`): 203 Anforderungen aus dem Konzeptdokument, jede mit Prüfart:
   - `setting` – Steuerelement existiert **und** die Änderung des Werts verändert nachweislich mindestens einen Prompt (Prompt-Sensitivitätstest; tote Einstellungen fallen durch).
   - `function` – Verhalten wird mit echten Eingaben ausgeführt (z. B. Preset *Interview* ⇒ Anteile 25/75, Skill-Mix verschiebt sich mit der Schwierigkeit, Beispielkonfiguration §32 reproduziert alle Werte).
   - `rule` – Qualitätsregel existiert als Messfunktion oder als Review-Kriterium und wird im Review-Prompt an Claude übergeben.
@@ -106,5 +106,7 @@ Die Unit-Zuordnung ist wählbar:
 Enthält die Liste zwar Units, aber keine Themen, ergänzt Claude die Themen aus dem Wortschatz – im Import über „Fehlende Themen von Claude ergänzen“, für bereits gespeicherte Lehrmittel über „Themen von Claude“ direkt am Lehrmittel. Die Zuordnung ist verlustfrei: Lücken und Überlappungen in Claudes Gruppen werden geschlossen, keine Vokabel geht verloren (im Test über mehrere Grenzfälle geprüft). Jede Unit lässt sich in der Vorschau vor dem Import umbenennen, mit einem Thema versehen oder ganz weglassen.
 
 Dateiformate: CSV, TSV, TXT (Spalten *word/translation/unit/note* oder „Wort – Übersetzung“-Listen), XLSX über SheetJS. Unstrukturierter Rohtext (z. B. aus einem PDF kopiert) lässt sich mit „Rohtext mit Claude zerlegen“ in Wort und Übersetzung trennen. Modi beim Import in ein bestehendes Lehrmittel: Hinzufügen, Aktualisieren, Ersetzen.
+
+Gespeicherte Lehrmittel kommen aus der `db`-Capability als **schreibgeschützte (eingefrorene) Dokumente** zurück. Jede Änderung – Themen ergänzen, Thema tippen, umbenennen, Unit löschen – erzeugt deshalb Kopien statt die Originale zu verändern (`withTopics`, `withUnitPatch` in `vocab.js`, Klon beim Lesen aus dem Speicher). Ein Test mit tiefgefrorenen Objekten und ein Browser-Durchlauf gegen eine eingefrorene Datenbank halten das fest; ohne diese Behandlung scheiterte das automatische Ergänzen der Themen mit „Cannot assign to read only property“.
 
 Anlegen, Umbenennen und Löschen laufen über seiteneigene Dialoge, nicht über `window.prompt`/`confirm` – im Artifact-Frame sind die nicht verlässlich verfügbar. Ein Test stellt sicher, dass keine native Dialogfunktion mehr im Code steht.

@@ -204,6 +204,36 @@
     return { units: out, warnings };
   }
 
+  /**
+   * Apply detected topics to units WITHOUT mutating the given objects: stored
+   * documents can be read-only (the db capability hands out frozen snapshots),
+   * so every edit returns fresh objects.
+   * `rows` are Claude's [{unit, topic}] pairs; with `onlyEmpty` a unit that
+   * already has a topic keeps it.
+   */
+  function withTopics(units, rows, onlyEmpty) {
+    const list = units || [];
+    const byName = new Map();
+    (rows || []).forEach(r => {
+      if (!r) return;
+      const name = String(r.unit || r.name || '').trim().toLowerCase();
+      const topic = String(r.topic || '').trim();
+      if (name && topic) byName.set(name, topic);
+    });
+    const sameLength = Array.isArray(rows) && rows.length === list.length;
+    return list.map((u, i) => {
+      if (onlyEmpty && u.topic) return u;
+      const fallback = sameLength && rows[i] && rows[i].topic ? String(rows[i].topic).trim() : '';
+      const topic = byName.get(String(u.name || '').trim().toLowerCase()) || fallback;
+      return topic ? Object.assign({}, u, { topic }) : u;
+    });
+  }
+
+  /** Replace one unit by id, returning a new units array (never mutates). */
+  function withUnitPatch(units, id, patch) {
+    return (units || []).map(u => (u.id === id ? Object.assign({}, u, patch) : u));
+  }
+
   function makeId(prefix) {
     return prefix + '_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
   }
@@ -233,5 +263,5 @@
     return m ? Number(m[1]) : 9999;
   }
 
-  return { parseText, parseRows, fromParsedRows, mergeUnits, makeId, detectDelimiter, splitRow, allWords, flattenUnits, applyGroups, UNIT_HEADING };
+  return { parseText, parseRows, fromParsedRows, mergeUnits, makeId, detectDelimiter, splitRow, allWords, flattenUnits, applyGroups, withTopics, withUnitPatch, UNIT_HEADING };
 });

@@ -71,7 +71,11 @@
     async init() { this.backend = caps.db ? 'db' : 'local'; },
     async list(coll) {
       if (this.backend === 'db') {
-        try { const snap = await caps.db.collection(coll).get(); return snap.docs.filter(d => d.exists).map(d => Object.assign({ id: d.id }, d.data())); }
+        try {
+          const snap = await caps.db.collection(coll).get();
+          // Snapshots are frozen; hand out mutable copies so the app can edit them.
+          return snap.docs.filter(d => d.exists).map(d => Object.assign(clone(d.data()), { id: d.id }));
+        }
         catch (e) { console.warn('db list failed, using local', e); this.backend = 'local'; }
       }
       try { return JSON.parse(localStorage.getItem('lr:' + coll) || '[]'); } catch (e) { return []; }
@@ -94,7 +98,8 @@
       try { localStorage.setItem('lr:' + coll, JSON.stringify(all)); } catch (e) { /* ignore */ }
     },
   };
-  function stripId(o) { const c = Object.assign({}, o); delete c.id; return c; }
+  function stripId(o) { const c = clone(o); delete c.id; return c; }
+  function clone(v) { try { return JSON.parse(JSON.stringify(v === undefined ? null : v)); } catch (e) { return Object.assign({}, v); } }
 
   /* ------------------------------------------------------------------ */
   /* App state                                                            */
@@ -717,19 +722,22 @@
     $$('[data-tb-topics]', list).forEach(b => b.addEventListener('click', async () => {
       const tb = app.textbooks.find(t => t.id === b.dataset.tbTopics);
       b.disabled = true;
-      const before = tb.units.filter(u => !u.topic).length;
+      b.textContent = 'Claude liest den Wortschatz …';
+      const missing = tb.units.filter(u => !u.topic);
       try {
-        await deriveTopics(tb.units.filter(u => !u.topic));
-        await persistTextbook(tb, true);
-        const after = tb.units.filter(u => !u.topic).length;
-        toast(`${before - after} Thema/Themen von Claude ergänzt.`);
-      } catch (e) { toast(errorCopy(e)); b.disabled = false; }
+        const rows = await fetchTopics(missing);
+        const units = vocab.withTopics(tb.units, rows, true);
+        const added = units.filter((u, i) => u.topic && !tb.units[i].topic).length;
+        if (!added) { toast('Claude hat kein Thema geliefert.'); renderVocabManager(); return; }
+        await persistTextbook(Object.assign({}, tb, { units }), true);
+        toast(`${added} Thema/Themen von Claude ergänzt.`);
+      } catch (e) { toast(errorCopy(e)); renderVocabManager(); }
     }));
     $$('[data-tb-rename]', list).forEach(b => b.addEventListener('click', async () => {
       const tb = app.textbooks.find(t => t.id === b.dataset.tbRename);
       const name = await askText({ title: 'Lehrmittel umbenennen', label: 'Name', value: tb.name });
       if (!name) return;
-      tb.name = name; await persistTextbook(tb);
+      await persistTextbook(Object.assign({}, tb, { name }));
     }));
     $$('[data-tb-delete]', list).forEach(b => b.addEventListener('click', async () => {
       const tb = app.textbooks.find(t => t.id === b.dataset.tbDelete);
@@ -741,7 +749,7 @@
       const [tid, uid] = b.dataset.unitDelete.split(':');
       const tb = app.textbooks.find(t => t.id === tid); const u = tb.units.find(x => x.id === uid);
       if (!await askConfirm({ title: 'Unit löschen', text: `Unit „${u.name}“ mit ${u.words.length} Vokabeln löschen?`, okLabel: 'Löschen', danger: true })) return;
-      tb.units = tb.units.filter(x => x.id !== uid); await persistTextbook(tb);
+      await persistTextbook(Object.assign({}, tb, { units: tb.units.filter(x => x.id !== uid) }));
     }));
     $$('[data-unit-show]', list).forEach(b => b.addEventListener('click', () => {
       const [tid, uid] = b.dataset.unitShow.split(':');
@@ -752,7 +760,7 @@
     $$('input[data-topic]', list).forEach(inp => inp.addEventListener('change', async () => {
       const [tid, uid] = inp.dataset.topic.split(':');
       const tb = app.textbooks.find(t => t.id === tid); const u = tb.units.find(x => x.id === uid);
-      u.topic = inp.value.trim(); await persistTextbook(tb, true);
+      await persistTextbook(Object.assign({}, tb, { units: vocab.withUnitPatch(tb.units, u.id, { topic: inp.value.trim() }) }), true);
     }));
 
     fillImportTargets();
@@ -783,8 +791,9 @@
     if (importState.units) applyUnitMode();
   }
 
-  async function persistTextbook(tb, quiet) {
-    if (tb.example) { tb.example = false; if (!tb.id.startsWith('tb_') || tb.id.includes('example')) tb.id = vocab.makeId('tb'); }
+  async function persistTextbook(input, quiet) {
+    const tb = clone(input);
+    if (tb.example) { delete tb.example; if (!tb.id.startsWith('tb_') || tb.id.includes('example')) tb.id = vocab.makeId('tb'); }
     await store.put('textbooks', tb);
     await refreshTextbooks();
     if (app.view === 'vocab') renderVocabManager();
@@ -892,7 +901,8 @@
         toast(`${r.units.length} Unit(s) von Claude erkannt.`);
       } else {
         const missing = importState.units.filter(u => !u.topic);
-        await deriveTopics(missing.length ? missing : importState.units);
+        const rows = await fetchTopics(missing.length ? missing : importState.units);
+        importState.units = vocab.withTopics(importState.units, rows, missing.length > 0);
         toast('Themen von Claude ergänzt.');
       }
       renderImportPreview();
@@ -902,20 +912,13 @@
     }
   }
 
-  /** Fill in the topic of units that have none; mutates the units in place. */
-  async function deriveTopics(units) {
-    if (!units || !units.length) return;
+  /** Ask Claude for a topic per unit. Returns [{unit, topic}] and changes nothing. */
+  async function fetchTopics(units) {
+    if (!units || !units.length) return [];
     if (!caps.sample) throw { code: 'not_granted', message: 'sample unavailable' };
     const res = await askJSON(prompts.buildUnitTopicPrompt(units), { tier: 'quick' });
     const rows = Array.isArray(res) ? res : (res && (res.topics || res.units)) || [];
-    for (const row of rows) {
-      if (!row) continue;
-      const name = String(row.unit || row.name || '').trim().toLowerCase();
-      const topic = String(row.topic || '').trim();
-      if (!topic) continue;
-      const hit = units.find(u => u.name.trim().toLowerCase() === name) || (rows.length === units.length ? units[rows.indexOf(row)] : null);
-      if (hit) hit.topic = topic;
-    }
+    return rows.filter(r => r && (r.topic !== undefined));
   }
 
   function renderImportPreview() {
@@ -940,8 +943,9 @@
         + `<button type="button" class="btn tiny danger" data-imp-remove="${i}" title="Diese Unit nicht importieren">✕</button>`
         + `<span class="muted">${u.words.length} Wörter: ${esc(u.words.slice(0, 6).map(w => w.word).join(', '))}${u.words.length > 6 ? ' …' : ''}</span></li>`).join('')
       + '</ul>';
-    $$('input[data-imp-name]', box).forEach(inp => inp.addEventListener('input', () => { importState.units[Number(inp.dataset.impName)].name = inp.value; }));
-    $$('input[data-imp-topic]', box).forEach(inp => inp.addEventListener('input', () => { importState.units[Number(inp.dataset.impTopic)].topic = inp.value; }));
+    const patchUnit = (i, patch) => { importState.units = importState.units.map((u, x) => (x === i ? Object.assign({}, u, patch) : u)); };
+    $$('input[data-imp-name]', box).forEach(inp => inp.addEventListener('input', () => patchUnit(Number(inp.dataset.impName), { name: inp.value })));
+    $$('input[data-imp-topic]', box).forEach(inp => inp.addEventListener('input', () => patchUnit(Number(inp.dataset.impTopic), { topic: inp.value })));
     $$('[data-imp-remove]', box).forEach(b => b.addEventListener('click', () => {
       importState.units.splice(Number(b.dataset.impRemove), 1);
       renderImportPreview();
@@ -971,7 +975,7 @@
       words: u.words.map(w => ({ word: String(w.word).trim(), translation: String(w.translation || '').trim(), note: String(w.note || '').trim() })),
     })).filter(u => u.words.length);
     const merged = vocab.mergeUnits(tb, units, mode);
-    for (const u of merged.units) if (!u.id) u.id = vocab.makeId('unit');
+    merged.units = merged.units.map(u => (u.id ? u : Object.assign({}, u, { id: vocab.makeId('unit') })));
     const saved = await persistTextbook(merged, true);
 
     // A new textbook becomes the creator's selection if that still points at example data.
@@ -1075,5 +1079,5 @@
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init); else init();
 
-  window.LR.ui = { app, generate, store, caps, showView, openCreator, importState, detectUnits, deriveTopics, confirmImport, newTextbook, askText, askConfirm };
+  window.LR.ui = { app, generate, store, caps, showView, openCreator, importState, detectUnits, fetchTopics, confirmImport, newTextbook, askText, askConfirm, clone };
 })();

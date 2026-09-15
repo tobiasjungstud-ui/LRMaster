@@ -2,7 +2,7 @@
 
 Erzeugt von `npm run coverage`. Jede Zeile ist eine Anforderung aus `docs/Konzept_Listening_Reading_Creator.md`, gebunden an die Stelle im Code, die sie umsetzt, und das Ergebnis der automatischen Prüfung (`npm test`).
 
-**Ergebnis: 202 von 202 Anforderungen bestanden.**
+**Ergebnis: 203 von 203 Anforderungen bestanden.**
 
 Prüfarten: **setting** – Steuerelement vorhanden und Änderung des Werts verändert nachweislich den Prompt an Claude · **function** – Verhalten wird mit echten Eingaben ausgeführt und verglichen · **rule** – Qualitätsregel existiert als Messung oder Claude-Review-Kriterium · **render** – Ausgabe wird auf einer Fixture gerendert und inhaltlich geprüft · **ui** – Navigations-/Strukturelement existiert.
 
@@ -14,7 +14,7 @@ Prüfarten: **setting** – Steuerelement vorhanden und Änderung des Werts ver�
 | ✅ | `S01.unit_selection` | Beim Erstellen wird eine Unit gewählt; Thema, Sprache und Zielvokabeln orientieren sich daran | function | Funktion (siehe Check im Manifest) |
 | ✅ | `S01.independent_difficulty` | Textschwierigkeit und Frageschwierigkeit unabhängig steuerbar | function | Funktion (siehe Check im Manifest) |
 
-## §2 Hauptnavigation (14/14)
+## §2 Hauptnavigation (15/15)
 
 | Status | ID | Anforderung | Art | Umsetzung |
 |---|---|---|---|---|
@@ -30,6 +30,7 @@ Prüfarten: **setting** – Steuerelement vorhanden und Änderung des Werts ver�
 | ✅ | `S02.claude_detects_units` | Fehlen Unit-Titel, erkennt Claude die Units aus dem Inhalt der Liste | function | Funktion (siehe Check im Manifest) |
 | ✅ | `S02.claude_no_word_lost` | Unit-Erkennung verliert keine Vokabel (Lücken und Überlappungen werden geschlossen) | function | Funktion (siehe Check im Manifest) |
 | ✅ | `S02.claude_derives_topics` | Themen der Units werden von Claude aus dem Wortschatz abgeleitet | function | Funktion (siehe Check im Manifest) |
+| ✅ | `S02.frozen_store_edit` | Gespeicherte (schreibgeschützte) Lehrmittel lassen sich bearbeiten: Themen, Umbenennen, Löschen ändern Kopien statt Originale | function | Funktion (siehe Check im Manifest) |
 | ✅ | `S02.dialogs_in_page` | Anlegen, Umbenennen und Löschen laufen über seiteneigene Dialoge (im Artifact-Frame sind window.prompt/confirm nicht verlässlich) | function | Funktion (siehe Check im Manifest) |
 | ✅ | `S02.unit_listing` | Lehrmittel zeigt Units (Unit 1, Unit 2, …) | ui | Element `#textbook-list` |
 

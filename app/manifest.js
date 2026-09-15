@@ -115,6 +115,20 @@
       const prompt = env.prompts.buildUnitTopicPrompt(units);
       return ok(/Unit 3/.test(prompt) && /box office/.test(prompt) && /2–5 words/.test(prompt) && /JSON array/.test(prompt) && /"topic"/.test(prompt), 'topic prompt incomplete');
     } });
+  add({ id: 'S02.frozen_store_edit', section: 2, title: 'Gespeicherte (schreibgeschützte) Lehrmittel lassen sich bearbeiten: Themen, Umbenennen, Löschen ändern Kopien statt Originale', kind: 'function',
+    check(env) {
+      const deepFreeze = (o) => { if (o && typeof o === 'object') { Object.values(o).forEach(deepFreeze); Object.freeze(o); } return o; };
+      const units = deepFreeze([{ id: 'u1', name: 'Unit 1', topic: '', words: [{ word: 'cast' }] }, { id: 'u2', name: 'Unit 2', topic: 'Kept', words: [{ word: 'delay' }] }]);
+      let withTopics, patched;
+      try {
+        withTopics = env.vocab.withTopics(units, [{ unit: 'Unit 1', topic: 'Films' }, { unit: 'Unit 2', topic: 'Ignored' }], true);
+        patched = env.vocab.withUnitPatch(units, 'u1', { topic: 'Typed' });
+      } catch (e) { return 'editing a frozen unit threw: ' + e.message; }
+      const src = env.uiSource || '';
+      const mutates = /\.topic\s*=\s*[^=]/.test(src) || /\bu\.name\s*=\s*[^=]/.test(src);
+      return ok(withTopics[0].topic === 'Films' && withTopics[1].topic === 'Kept' && units[0].topic === '' && patched[0].topic === 'Typed' && !mutates,
+        mutates ? 'the interface still assigns to a stored unit directly' : 'immutable update did not produce the expected result');
+    } });
   add({ id: 'S02.dialogs_in_page', section: 2, title: 'Anlegen, Umbenennen und Löschen laufen über seiteneigene Dialoge (im Artifact-Frame sind window.prompt/confirm nicht verlässlich)', kind: 'function',
     check(env) {
       const hasDialog = env.hasControl('#dlg') && env.hasControl('#dlg-ok') && env.hasControl('#dlg-cancel');

@@ -168,6 +168,40 @@ test('regrouping by detected units never loses or reorders a word', () => {
   }
 });
 
+test('topics can be applied to read-only (frozen) units from the store', () => {
+  const deepFreeze = (o) => { if (o && typeof o === 'object') { Object.values(o).forEach(deepFreeze); Object.freeze(o); } return o; };
+  const stored = deepFreeze([
+    { id: 'u1', name: 'Unit 1', topic: '', words: [{ word: 'cast' }] },
+    { id: 'u2', name: 'Unit 2', topic: 'Kept', words: [{ word: 'delay' }] },
+    { id: 'u3', name: 'Unit 3', topic: '', words: [{ word: 'plot' }] },
+  ]);
+  const rows = [{ unit: 'Unit 1', topic: 'Films and cinema' }, { unit: 'Unit 2', topic: 'Overwritten' }, { unit: 'Unit 3', topic: 'Travel' }];
+  const updated = vocab.withTopics(stored, rows, true);
+  assert.equal(updated[0].topic, 'Films and cinema');
+  assert.equal(updated[1].topic, 'Kept', 'an existing topic is not overwritten');
+  assert.equal(updated[2].topic, 'Travel');
+  assert.equal(stored[0].topic, '', 'the frozen original is untouched');
+  assert.notEqual(updated[0], stored[0]);
+  assert.equal(updated[1], stored[1], 'unchanged units are reused');
+  // positional fallback when Claude echoes the names differently
+  const byIndex = vocab.withTopics(stored, [{ unit: 'A', topic: 'One' }, { unit: 'B', topic: 'Two' }, { unit: 'C', topic: 'Three' }], true);
+  assert.equal(byIndex[0].topic, 'One');
+  assert.equal(byIndex[2].topic, 'Three');
+  // editing a single unit of a frozen list
+  const patched = vocab.withUnitPatch(stored, 'u3', { topic: 'Manually typed' });
+  assert.equal(patched[2].topic, 'Manually typed');
+  assert.equal(stored[2].topic, '');
+});
+
+test('applying topics never throws on frozen input, whatever Claude returns', () => {
+  const deepFreeze = (o) => { if (o && typeof o === 'object') { Object.values(o).forEach(deepFreeze); Object.freeze(o); } return o; };
+  const units = deepFreeze([{ id: 'u1', name: 'Unit 1', topic: '', words: [] }]);
+  for (const rows of [null, undefined, [], [null], [{}], [{ topic: '' }], [{ unit: 'Unit 1' }], [{ unit: 'Unit 1', topic: 'X' }], 'nonsense']) {
+    const r = vocab.withTopics(units, Array.isArray(rows) ? rows : [], true);
+    assert.equal(r.length, 1, JSON.stringify(rows));
+  }
+});
+
 test('unit detection prompt carries the list and asks for complete coverage', () => {
   const words = [{ word: 'cast', translation: 'Besetzung' }, { word: 'sequel', translation: 'Fortsetzung' }];
   const p = prompts.buildUnitDetectPrompt(words, 'aus Unit 8');
