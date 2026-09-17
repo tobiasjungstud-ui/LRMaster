@@ -240,6 +240,7 @@
     { key: 'customTopic', type: 'text', default: '', section: 2, mode: 'both', simple: true, label: 'Custom Topic' },
     // 3 Language Level
     { key: 'cefr', type: 'select', default: 'B1.1', options: CEFR_BANDS, section: 3, mode: 'both', simple: true, label: 'CEFR level' },
+    { key: 'levelMeter', type: 'toggle', default: true, section: 3, mode: 'both', simple: true, label: 'Schwierigkeit messen und nachsteuern' },
     { key: 'languageComplexity', type: 'range', default: 50, min: 0, max: 100, section: 3, mode: 'both', simple: false, label: 'Language Complexity' },
     { key: 'grammarComplexity', type: 'range', default: 50, min: 0, max: 100, section: 7, mode: 'both', simple: false, label: 'Grammar complexity' },
     { key: 'vocabularyDifficulty', type: 'range', default: 50, min: 0, max: 100, section: 7, mode: 'both', simple: false, label: 'Vocabulary difficulty' },
@@ -284,7 +285,9 @@
     { key: 'customSkillMix', type: 'map', default: { gist: 1, specific: 2, detail: 2, connecting: 2, inference: 2, attitude: 1, purpose: 0, context: 0 }, section: 6, mode: 'both', simple: false, label: 'Custom Question Mix' },
     { key: 'questionFormats', type: 'multiselect', default: ['multiple_choice', 'true_false', 'short_answer', 'wh_question', 'sentence_completion'], options: FORMAT_KEYS, section: 6, mode: 'both', simple: false, label: 'Question Formats' },
     { key: 'autoFormatMix', type: 'toggle', default: true, section: 6, mode: 'both', simple: false, label: 'Automatic balanced mix' },
-    { key: 'followChronology', type: 'toggle', default: true, section: 6, mode: 'both', simple: false, label: 'Follow audio chronology / text order' },
+    { key: 'questionLevel', type: 'select', default: 'auto', options: ['auto', 'A', 'B', 'both'], section: 6, mode: 'both', simple: true, label: 'Niveau der Fragen (Meta-Einstellung)' },
+    { key: 'glossary', type: 'toggle', default: false, section: 6, mode: 'both', simple: true, label: 'Fremdwörter auf der 1. Seite erklärt' },
+    { key: 'appendScript', type: 'toggle', default: false, section: 6, mode: 'listening', simple: true, label: 'Skript auf der letzten Seite abgebildet' },
     { key: 'higherOrder', type: 'toggle', default: false, section: 6, mode: 'both', simple: false, label: 'Higher-Order Questions' },
     { key: 'higherOrderCount', type: 'number', default: 2, min: 1, max: 5, section: 6, mode: 'both', simple: false, label: 'Number of higher-order questions' },
     { key: 'higherOrderTypes', type: 'multiselect', default: ['interpretation', 'transfer', 'evaluation'], options: HIGHER_ORDER_TYPES.map(t => t.key), section: 6, mode: 'both', simple: false, label: 'Higher-order types' },
@@ -303,7 +306,6 @@
     const s = {};
     for (const def of SCHEMA) s[def.key] = clone(def.default);
     s.kind = kind === 'reading' ? 'reading' : 'listening';
-    if (s.kind === 'reading') s.followChronology = true;
     return s;
   }
 
@@ -485,6 +487,42 @@
   }
 
   /*
+   * Question levels as a meta-setting. "Niveau B" learners can handle B1.1
+   * questions, "Niveau A" learners B1.2 up to B2.1. A level fixes the CEFR
+   * band(s) of the questions and the effective question difficulty (which
+   * drives the automatic skill mix); "both" produces one worksheet per level.
+   */
+  const QUESTION_LEVELS = {
+    A: { key: 'A', label: 'Niveau A', bands: ['B1.2', 'B2.1'], difficulty: 65, describe: 'B1.2 bis B2.1: Details und Einzelinformationen sicher, dazu Verknüpfen, Schlussfolgern und Haltung/Absicht erkennen' },
+    B: { key: 'B', label: 'Niveau B', bands: ['B1.1'], difficulty: 30, describe: 'B1.1: Hauptpunkte und klar gesagte Einzelinformationen, wenig Schlussfolgern, Fragen in einfacher Sprache' },
+  };
+  const QUESTION_LEVEL_KEYS = Object.keys(QUESTION_LEVELS);
+
+  /** The worksheet variants a state asks for: one per question level, or a single unnamed one. */
+  function questionVariants(state) {
+    const lv = state.questionLevel;
+    if (lv === 'both') return QUESTION_LEVEL_KEYS.map(k => QUESTION_LEVELS[k]);
+    if (QUESTION_LEVELS[lv]) return [QUESTION_LEVELS[lv]];
+    return [null];
+  }
+  /** The state for one variant: the level's difficulty replaces the slider. */
+  function variantState(state, variant) {
+    const s = clone(state);
+    if (variant) { s.questionLevel = variant.key; s.questionDifficulty = variant.difficulty; }
+    return s;
+  }
+  /** Effective question difficulty (0–100): the level's value when a level is set, else the slider. */
+  function effectiveQuestionDifficulty(state) {
+    const lv = QUESTION_LEVELS[state.questionLevel];
+    return lv ? lv.difficulty : clamp(Number(state.questionDifficulty) || 0, 0, 100);
+  }
+  /** CEFR bands the questions may carry: the level's bands, or the band derived from text level and slider. */
+  function questionBands(state) {
+    const lv = QUESTION_LEVELS[state.questionLevel];
+    return lv ? lv.bands.slice() : [questionBand(state.cefr, state.questionDifficulty)];
+  }
+
+  /*
    * Automatic skill mix (concept §23). Weights at "easy" favour direct
    * information retrieval; at "challenging" they shift towards connecting,
    * inference, attitude and purpose. Largest-remainder rounding keeps the sum
@@ -526,7 +564,7 @@
       for (const k of SKILL_KEYS) mix[k] = Math.max(0, Math.round(Number((state.customSkillMix || {})[k]) || 0));
       return mix;
     }
-    return autoSkillMix(n, state.questionDifficulty);
+    return autoSkillMix(n, effectiveQuestionDifficulty(state));
   }
 
   /** Ordered list of skills, one per question, for the planned worksheet. */
@@ -652,7 +690,15 @@
       topic: (state.useUnitTopic && state.topicMode === 'unit') ? (unit.topic || unit.name) : String(state.customTopic || '').trim(),
       topicSource: (state.useUnitTopic && state.topicMode === 'unit') ? 'unit' : 'custom',
       cefr: state.cefr,
-      questionBand: questionBand(state.cefr, state.questionDifficulty),
+      questionBand: questionBands(state)[0],
+      questionBands: questionBands(state),
+      questionLevel: QUESTION_LEVELS[state.questionLevel] ? state.questionLevel : null,
+      questionLevelLabel: QUESTION_LEVELS[state.questionLevel] ? QUESTION_LEVELS[state.questionLevel].label : '',
+      questionDifficulty: state.createWorksheet ? effectiveQuestionDifficulty(state) : null,
+      variants: state.createWorksheet ? questionVariants(state).map(v => v ? v.key : null) : [],
+      glossary: !!(state.createWorksheet && state.glossary),
+      appendScript: !!(state.createWorksheet && state.appendScript && state.kind === 'listening'),
+      levelMeter: state.levelMeter !== false,
       targetWords: targetWordCount(state),
       wpm: state.kind === 'listening' ? wordsPerMinute(state.speakingSpeed) : null,
       seconds: state.kind === 'listening' ? audioSeconds(state) : null,
@@ -705,7 +751,6 @@
     customSkillMix: { gist: 1, specific: 3, detail: 2, connecting: 1, inference: 1, attitude: 1, purpose: 1, context: 0 },
     questionFormats: ['multiple_choice', 'short_answer', 'matching'],
     autoFormatMix: true,
-    followChronology: true,
     speakerProfiles: [{ name: 'Host', age: '', role: 'Podcast host', personality: '' }, { name: 'Guest', age: '', role: 'Film critic', personality: '' }],
   };
 
@@ -732,6 +777,7 @@
     wordsPerMinute, audioSeconds, targetWordCount, effectiveSpeakerCount, speakerLabels,
     effectiveShares, roundToHundred, normalizeShares, applyPreset, presetByKey, applyTurnPreset,
     turnWordTarget, emotionTagTarget, questionCount, questionBand, autoSkillMix, effectiveSkillMix,
+    QUESTION_LEVELS, QUESTION_LEVEL_KEYS, questionVariants, variantState, effectiveQuestionDifficulty, questionBands,
     skillSequence, availableFormats, assignFormats, targetVocabulary, validateState, buildPlan,
     applyExampleConfig,
   };

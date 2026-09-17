@@ -38,6 +38,57 @@ function test(name, fn) {
 
 /* ---------------- unit tests ---------------- */
 console.log('\nUnit tests');
+const level = require(path.join(APP, 'level.js'));
+test('level meter: anchor script measures B1.2, samples order monotonically', () => {
+  const a = level.measure(fixture.levelSample('anchor'), 'listening', { seconds: 180 });
+  assert.equal(a.band, 'B1.2');
+  assert.equal(a.stats.words, 356); assert.equal(a.stats.turns, 10);
+  const scores = ['a2', 'b1', 'anchor', 'b2'].map(n => level.measure(fixture.levelSample(n), 'listening', {}).score);
+  for (let i = 1; i < scores.length; i++) assert.ok(scores[i] > scores[i - 1], scores.join(' < '));
+  assert.equal(level.measure(fixture.levelSample('b2reading'), 'reading', {}).band, 'B2.2');
+});
+test('level meter: stage directions, names and contractions do not count as hard words', () => {
+  const m = level.measure({ lines: [{ speaker: 'Speaker 1', text: "[chuckles] Maya, you don't have to." }, { speaker: 'Speaker 2', text: '[thoughtful] I know Maya.' }] }, 'listening', {});
+  assert.deepEqual(m.hardWords.map(h => h.lemma), []);
+  assert.equal(m.stats.words, 8);
+});
+test('level meter: lemmatiser, British spelling, compounds, overrides', () => {
+  assert.equal(level.lemmaOf('argued'), 'argue'); assert.equal(level.lemmaOf('humour'), 'humor'); assert.equal(level.lemmaOf('organisers'), 'organize');
+  assert.equal(level.americanize('favourite'), 'favorite');
+  assert.ok(level.rankOf('café') <= 1200 && level.rankOf('castle') <= 1200, 'Oxford A1/A2 overrides');
+  assert.ok(level.rankOf('seventeen-year-old') > 0 && level.rankOf('unmotivated') > 2000);
+  assert.equal(level.rankBand(500), 'core'); assert.equal(level.rankBand(2500), 'b2'); assert.equal(level.rankBand(null), 'c');
+});
+test('level meter: compare and glossary candidates', () => {
+  const m = level.measure(fixture.levelSample('b2'), 'listening', {});
+  const c = level.compare(m, 'A2.2');
+  assert.equal(c.status, 'fail'); assert.ok(c.deviations.length >= 3 && c.deviations.every(d => d.suggestion));
+  assert.equal(level.compare(m, m.band).status, 'pass');
+  const g = level.glossaryCandidates(m, 'B1.1', 5);
+  assert.ok(g.length === 5 && g.every(x => x.band === 'b2' || x.band === 'c'));
+  assert.ok(level.targetLines('B1.2', 'listening').length === 6 && level.targetLines('B1.2', 'reading').length === 5);
+});
+test('chronology is enforced and blocking; skills and formats are checked by totals', () => {
+  const m = fixture.material({}, 'listening');
+  const ws = JSON.parse(JSON.stringify(m.worksheet));
+  ws.questions = [ws.questions[0], ws.questions[3], ws.questions[1], ws.questions[2]].map((q, i) => Object.assign(q, { n: i + 1 }));
+  const before = quality.runDeterministic(m.settings, m.plan, m.content, ws).find(f => f.id === 'questions.chronology');
+  assert.equal(before.status, 'fail');
+  const r = quality.enforceChronology(ws, m.content, 'listening');
+  assert.deepEqual(r.worksheet.questions.map(q => q.skill), ['gist', 'specific', 'detail', 'inference']);
+  assert.equal(quality.runDeterministic(m.settings, m.plan, m.content, r.worksheet).find(f => f.id === 'questions.chronology').status, 'pass');
+  const swapped = JSON.parse(JSON.stringify(m.worksheet)); swapped.questions[1].skill = 'detail';
+  assert.equal(quality.runDeterministic(m.settings, m.plan, m.content, swapped).find(f => f.id === 'questions.skill_distribution').status, 'fail');
+  assert.equal(quality.runDeterministic(m.settings, m.plan, m.content, r.worksheet).find(f => f.id === 'questions.skill_distribution').status, 'pass');
+});
+test('question levels: A/B bands, variants and prompts', () => {
+  const s = core.normalizeState({ kind: 'reading', questionLevel: 'both', cefr: 'B1.2' });
+  assert.deepEqual(core.questionVariants(s).map(v => v.key), ['A', 'B']);
+  assert.deepEqual(core.questionBands(core.variantState(s, core.QUESTION_LEVELS.B)), ['B1.1']);
+  assert.deepEqual(core.questionBands(core.variantState(s, core.QUESTION_LEVELS.A)), ['B1.2', 'B2.1']);
+  assert.deepEqual(core.questionVariants(core.normalizeState({ kind: 'reading' })), [null]);
+});
+
 test('defaults normalise and round-trip', () => {
   const s = core.normalizeState({ kind: 'reading', cefr: 'B2.1', wordCount: '600', questionFormats: ['matching', 'bogus'] });
   assert.equal(s.kind, 'reading'); assert.equal(s.cefr, 'B2.1'); assert.equal(s.wordCount, 600); assert.deepEqual(s.questionFormats, ['matching']);

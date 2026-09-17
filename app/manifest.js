@@ -367,13 +367,29 @@
     } });
 
   /* §26 Question order */
-  add({ id: 'S26.chronology', section: 26, title: 'Follow audio chronology / Follow text order (Default ON, Gist-Ausnahme)', kind: 'setting', key: 'followChronology', alt: false,
-    extra(env) {
-      const s = env.state({ followChronology: true });
+  add({ id: 'S26.chronology', section: 26, title: 'Fragen folgen immer der Reihenfolge des Materials (Listening und Reading, Gist-Ausnahme) – kein Schalter, immer Pflicht', kind: 'function',
+    check(env) {
+      const s = env.state();
       const p = env.prompts.buildQuestionPrompt(s, env.core.buildPlan(s, env.ctx), env.fixture.content());
-      const r = env.state({ kind: 'reading', followChronology: true });
+      const r = env.state({ kind: 'reading' });
       const pr = env.prompts.buildQuestionPrompt(r, env.core.buildPlan(r, env.ctx), env.fixture.content('reading'));
-      return ok(env.core.defaults('listening').followChronology === true && /audio chronology/.test(p) && /Gist/.test(p) && /text chronology/.test(pr));
+      const m = env.fixture.material();
+      const rep = env.prompts.buildQuestionRepairPrompt(m.settings, m.plan, m.content, m.worksheet, [], [2], '');
+      const rule = env.quality.RULES.find(x => x.id === 'questions.chronology');
+      return ok(!env.core.SCHEMA_BY_KEY.followChronology && /MUST appear in the order/.test(p) && /timeline/.test(p) && /Gist/.test(p) && /in the audio/.test(p) && /in the text/.test(pr)
+        && /timeline/.test(rep) && rule && rule.blocking === true, 'chronology must be demanded in every question prompt and be a blocking rule');
+    } });
+  add({ id: 'S26.enforce', section: 26, title: 'Eingehende Fragebögen werden deterministisch in die Reihenfolge des Materials gebracht und neu nummeriert (jede Runde)', kind: 'function',
+    check(env) {
+      const m = env.fixture.material();
+      const ws = JSON.parse(JSON.stringify(m.worksheet));
+      const shuffled = [ws.questions[0], ws.questions[3], ws.questions[2], ws.questions[1]].map((q, i) => Object.assign({}, q, { n: i + 1 }));
+      const r = env.quality.enforceChronology(Object.assign({}, ws, { questions: shuffled }), m.content, 'listening');
+      const order = r.worksheet.questions.map(q => q.skill).join(',');
+      const same = env.quality.enforceChronology(m.worksheet, m.content, 'listening');
+      const src = env.pipelineSource || '';
+      const wired = env.pipelineSource ? /enforceChronology/.test(src) && /target: 'order'/.test(src) : true;
+      return ok(r.changed && order === 'gist,specific,detail,inference' && r.worksheet.questions.every((q, i) => q.n === i + 1) && same.changed === false && wired, `order=${order} changed=${r.changed} wired=${wired}`);
     } });
   add({ id: 'S26.check', section: 26, title: 'Reihenfolge wird anhand der Evidenzstellen geprüft', kind: 'rule', ruleId: 'questions.chronology',
     extra(env) {
@@ -383,7 +399,10 @@
       const plan = env.core.buildPlan(m.settings, env.ctx);
       const f = env.quality.runDeterministic(m.settings, plan, m.content, ws).find(x => x.id === 'questions.chronology');
       const good = env.quality.runDeterministic(m.settings, plan, m.content, m.worksheet).find(x => x.id === 'questions.chronology');
-      return ok(f && f.status !== 'pass' && good && good.status === 'pass', `reversed=${f && f.status} normal=${good && good.status}`);
+      const lost = JSON.parse(JSON.stringify(m.worksheet));
+      lost.questions[2].evidenceQuote = 'this sentence is not in the material at all';
+      const fl = env.quality.runDeterministic(m.settings, plan, m.content, lost).find(x => x.id === 'questions.chronology');
+      return ok(f && f.status === 'fail' && good && good.status === 'pass' && fl && fl.status === 'fail' && fl.questions.includes(3), `reversed=${f && f.status} normal=${good && good.status} unresolved=${fl && fl.status}`);
     } });
 
   /* §27 Pre-task */
@@ -503,7 +522,8 @@
   const ADV = { 'number of speakers': 'speakerCount', 'individual speaker share': 'customShares', 'average turn length': 'turnLength', 'turn variability': 'turnVariability', 'speaking speed': 'speakingSpeed', 'natural speech': 'naturalness', 'emotion frequency': 'emotionTags', 'information explicitness': 'explicitness',
     'word count': 'wordCount', 'paragraph length': 'paragraphLength', 'dialogue proportion': 'dialogueProportion', 'narrative vs. informational style': 'styleBalance',
     'CEFR': 'cefr', 'grammar complexity': 'grammarComplexity', 'vocabulary difficulty': 'vocabularyDifficulty', 'target vocabulary density': 'vocabUsage', 'idiomatic language': 'idiomaticLanguage',
-    'number (questions)': 'questionCount', 'difficulty (questions)': 'questionDifficulty', 'skill distribution': 'skillMixMode', 'response formats': 'questionFormats', 'distractor difficulty': 'distractorDifficulty', 'inference level': 'inferenceLevel', 'chronology': 'followChronology' };
+    'number (questions)': 'questionCount', 'difficulty (questions)': 'questionDifficulty', 'skill distribution': 'skillMixMode', 'response formats': 'questionFormats', 'distractor difficulty': 'distractorDifficulty', 'inference level': 'inferenceLevel' };
+  add({ id: 'S30.chronology', section: 30, title: 'Advanced: chronology – immer aktiv, kein Schalter (siehe §26)', kind: 'function', check(env) { return ok(typeof env.prompts.chronologyRule === 'function' && typeof env.quality.enforceChronology === 'function'); } });
   const ADV_ALT = { grammarComplexity: 95, vocabularyDifficulty: 95, idiomaticLanguage: 95, paragraphLength: 'long', dialogueProportion: 90, styleBalance: 95, distractorDifficulty: 95, inferenceLevel: 95 };
   for (const [label, key] of Object.entries(ADV)) {
     if (key in ADV_ALT) {
@@ -529,7 +549,7 @@
     check(env) {
       const s = env.core.applyExampleConfig(env.state(), env.textbooks);
       const plan = env.core.buildPlan(s, { textbook: env.textbooks[0], unit: env.textbooks[0].units.find(u => u.id === s.unitId) });
-      return ok(s.cefr === 'B1.2' && s.preset === 'podcast' && plan.seconds === 180 && deepEq(plan.shares, [30, 70]) && plan.questionCount === 10 && deepEq(plan.skillMix, { gist: 1, specific: 3, detail: 2, connecting: 1, inference: 1, attitude: 1, purpose: 1, context: 0 }) && deepEq(s.questionFormats, ['multiple_choice', 'short_answer', 'matching']) && s.followChronology && s.turnVariability >= 75 && s.emotionTags === 'medium' && env.hasControl('#btn-load-example'), 'example config does not reproduce §32');
+      return ok(s.cefr === 'B1.2' && s.preset === 'podcast' && plan.seconds === 180 && deepEq(plan.shares, [30, 70]) && plan.questionCount === 10 && deepEq(plan.skillMix, { gist: 1, specific: 3, detail: 2, connecting: 1, inference: 1, attitude: 1, purpose: 1, context: 0 }) && deepEq(s.questionFormats, ['multiple_choice', 'short_answer', 'matching']) && s.turnVariability >= 75 && s.emotionTags === 'medium' && env.hasControl('#btn-load-example'), 'example config does not reproduce §32');
     } });
 
   /* §33 Word-Export (Auftragserweiterung): herunterladbar, formatiert, typgerecht) */
@@ -608,12 +628,14 @@
       const missing = need.filter(n => !text.includes(squash(n)));
       return ok(!missing.length, 'missing ' + missing.join(', '));
     } });
-  add({ id: 'S33.student_no_script', section: 33, title: 'Word-Schülerversion enthält beim Listening kein Skript', kind: 'function',
+  add({ id: 'S33.student_no_script', section: 33, title: 'Word-Schülerversion enthält beim Listening kein Skript (ausser die Option „Skript auf der letzten Seite“ ist gewählt)', kind: 'function',
     check(env) {
       const m = env.fixture.material({}, 'listening');
       const text = squash(docText(env, m, 'student'));
       const leaked = m.content.lines.filter(l => text.includes(squash(l.text)));
-      return ok(leaked.length === 0, leaked.length + ' script line(s) leaked');
+      const withScript = squash(docText(env, env.fixture.material({ appendScript: true }, 'listening'), 'student'));
+      const present = m.content.lines.every(l => withScript.includes(squash(l.text)));
+      return ok(leaked.length === 0 && present, leaked.length + ' script line(s) leaked; with option present=' + present);
     } });
   add({ id: 'S33.student_worksheet', section: 33, title: 'Word-Schülerversion ist ein echtes Arbeitsblatt (Name/Klasse/Datum, Ankreuzkästchen, Schreiblinien, Seitenzahl)', kind: 'function',
     check(env) {
@@ -692,6 +714,125 @@
       const src = env.pipelineSource || '';
       const leak = env.pipelineSource ? /instructions\s*[:=]\s*['"][A-Z][^'"]{20,}['"]/.test(src) : false;
       return ok(generated && topicGenerated && !leak, 'content is not requested from Claude or a literal instruction text exists in the pipeline');
+    } });
+
+  /* §34 Schwierigkeitsmesser & Niveau (Auftragserweiterung) */
+  add({ id: 'S34.meter_setting', section: 34, title: 'Schalter „Schwierigkeit messen und nachsteuern“ (Ziel-Niveau = CEFR-Auswahl; Messwerte als Vorgaben im Prompt)', kind: 'setting', key: 'levelMeter', alt: false,
+    extra(env) {
+      const s = env.state({ cefr: 'B1.2' });
+      const p = env.prompts.buildContentPrompt(s, env.core.buildPlan(s, env.ctx));
+      return ok(/Measurable level targets/.test(p) && /average sentence length/.test(p) && /most frequent English words/.test(p) && /subordinate or relative clauses/.test(p) && /speaker turns/.test(p), 'content prompt lacks numeric level targets');
+    } });
+  add({ id: 'S34.dimensions', section: 34, title: 'Messer bewertet Satzlänge, Wortschatz (>2000 / >3500 Häufigkeitsrang), Nebensätze, anspruchsvolle Grammatik, Idiomatik und Beitragslänge', kind: 'function',
+    check(env) {
+      const keys = env.level.DIMENSIONS.map(d => d.key);
+      const m = env.level.measure(env.fixture.content(), 'listening', {});
+      const r = env.level.measure(env.fixture.content('reading'), 'reading', {});
+      return ok(deepEq(keys, ['sentence', 'lexB2', 'lexC', 'subordination', 'grammar', 'idiom', 'turn']) && m.dimensions.length === 7 && r.dimensions.length === 6 && env.level.BANDS.length === 6 && m.hardWords && m.structures.length >= 10, 'dimensions incomplete');
+    } });
+  add({ id: 'S34.anchor', section: 34, title: 'Kalibrierung: das Podcast-Skript „Screen Time“ misst B1.2 (Ankerpunkt), A2- und B2-Beispiele ordnen sich monoton ein', kind: 'function',
+    check(env) {
+      const a = env.level.measure(env.fixture.levelSample('anchor'), 'listening', { seconds: 180 });
+      const easy = env.level.measure(env.fixture.levelSample('a2'), 'listening', {});
+      const hard = env.level.measure(env.fixture.levelSample('b2'), 'listening', {});
+      const hardR = env.level.measure(env.fixture.levelSample('b2reading'), 'reading', {});
+      return ok(a.band === 'B1.2' && easy.index <= 1 && hard.index >= 4 && hardR.index >= 4 && easy.score < a.score && a.score < hard.score, `anchor=${a.band} (${a.score}) a2=${easy.band} b2=${hard.band} b2reading=${hardR.band}`);
+    } });
+  add({ id: 'S34.descriptors', section: 34, title: 'Jede Stufe A2.1–B2.2 ist mit Hör-/Lese-Deskriptor (GER-Begleitband) und sprachlichen Merkmalen hinterlegt', kind: 'function',
+    check(env) { return ok(env.level.BANDS.every(b => env.level.DESCRIPTORS[b] && env.level.DESCRIPTORS[b].listening && env.level.DESCRIPTORS[b].reading && env.level.DESCRIPTORS[b].language)); } });
+  add({ id: 'S34.rule', section: 34, title: 'Quality Check – gemessene Schwierigkeit gegen das Ziel-Niveau (Warnung bei 1 Stufe, Fehler ab 2 Stufen, mit konkreten Korrekturhinweisen)', kind: 'rule', ruleId: 'content.level_measured',
+    extra(env) {
+      const m = env.fixture.material({ cefr: 'B2.2' }, 'listening');
+      const f = env.quality.runContentChecks(m.settings, m.plan, m.content).find(x => x.id === 'content.level_measured');
+      const ok1 = f && f.status === 'fail' && f.measured && f.measured.band && /To fix/.test(f.detail);
+      const near = env.fixture.material({ cefr: 'A2.2' }, 'listening');
+      const g = env.quality.runContentChecks(near.settings, near.plan, near.content).find(x => x.id === 'content.level_measured');
+      const off = env.fixture.material({ levelMeter: false }, 'listening');
+      const h = env.quality.runContentChecks(off.settings, off.plan, off.content).find(x => x.id === 'content.level_measured');
+      return ok(ok1 && g && g.status !== 'fail' && h && h.status === 'pass', `far=${f && f.status} near=${g && g.status} off=${h && h.status}`);
+    } });
+  add({ id: 'S34.repair', section: 34, title: 'Abweichungen des Messers fliessen als Korrekturauftrag in die Textüberarbeitung ein (automatische Korrektur)', kind: 'function',
+    check(env) {
+      const m = env.fixture.material({ cefr: 'B2.2' }, 'listening');
+      const f = env.quality.runContentChecks(m.settings, m.plan, m.content).filter(x => x.id === 'content.level_measured');
+      const p = env.prompts.buildContentRevisionPrompt(m.settings, m.plan, m.content, f);
+      const rp = env.quality.repairPlan(f, 'all');
+      return ok(rp.content.length === 1 && /Measured difficulty/.test(p) && /To fix/.test(p), 'level finding is not repaired through the content revision');
+    } });
+  add({ id: 'S34.output', section: 34, title: 'Messung wird im Quality-Tab, in der Lehrerversion (HTML, Markdown, Word) ausgewiesen', kind: 'render',
+    check(env) {
+      const m = env.fixture.material({}, 'listening');
+      m.level = env.quality.slimMeasurement(env.level.measure(m.content, 'listening', {}));
+      const t = env.render.renderTeacherHTML(m);
+      const md = env.render.renderMarkdown(m);
+      const doc = docText(env, m, 'teacher');
+      const gauge = env.render.levelMeterHTML(m.level, 'B1.1');
+      const src = env.uiSource || '';
+      return ok(/Difficulty meter/.test(t) && /gauge/.test(t) && /### Difficulty meter/.test(md) && /Difficulty meter/.test(doc) && /gauge-marker/.test(gauge) && (!env.uiSource || /levelMeterHTML/.test(src)), 'meter missing in an output');
+    } });
+  add({ id: 'S34.page', section: 34, title: 'Seite „Niveau messen“: Skript/Text einfügen, messen, Zweitmeinung von Claude', kind: 'ui', selector: '#nav-level',
+    extra(env) {
+      const p = env.prompts.buildLevelOpinionPrompt('Speaker A: hello', 'listening', env.level.measure(env.fixture.content(), 'listening', {}));
+      return ok(env.hasControl('#btn-lv-measure') && env.hasControl('#btn-lv-opinion') && env.hasControl('#lv-text') && /"band"/.test(p) && /A2.1/.test(p) && /B2.2/.test(p));
+    } });
+  add({ id: 'S34.question_level', section: 34, title: 'Meta-Einstellung Niveau der Fragen: Niveau B = B1.1, Niveau A = B1.2–B2.1, „Beide“ erzeugt zwei Fragebögen', kind: 'setting', key: 'questionLevel', alt: 'B',
+    extra(env) {
+      const c = env.core;
+      const A = c.QUESTION_LEVELS.A, B = c.QUESTION_LEVELS.B;
+      const sA = env.state({ questionLevel: 'A' }), sB = env.state({ questionLevel: 'B' }), sBoth = env.state({ questionLevel: 'both' });
+      const pA = c.buildPlan(sA, env.ctx), pB = c.buildPlan(sB, env.ctx), pBoth = c.buildPlan(sBoth, env.ctx);
+      const qA = env.prompts.buildQuestionPrompt(sA, pA, env.fixture.content());
+      const qB = env.prompts.buildQuestionPrompt(sB, pB, env.fixture.content());
+      return ok(deepEq(A.bands, ['B1.2', 'B2.1']) && deepEq(B.bands, ['B1.1']) && deepEq(pA.questionBands, ['B1.2', 'B2.1']) && deepEq(pB.questionBands, ['B1.1'])
+        && deepEq(pBoth.variants, ['A', 'B']) && c.questionVariants(sBoth).length === 2 && /Niveau A/.test(qA) && /B1.2 to B2.1/.test(qA) && /Niveau B/.test(qB) && /CEFR B1.1/.test(qB)
+        && pA.questionDifficulty > pB.questionDifficulty && (pA.skillMix.inference + pA.skillMix.connecting) >= (pB.skillMix.inference + pB.skillMix.connecting), 'question level plan wrong');
+    } });
+  add({ id: 'S34.variants_output', section: 34, title: '„Beide“: je eine Schülerversion pro Niveau (Bildschirm, HTML, Word A/B), Lehrerversion mit beiden Lösungen, Prüfung je Fragebogen', kind: 'render',
+    check(env) {
+      const m = env.fixture.material({}, 'listening');
+      const wsB = JSON.parse(JSON.stringify(m.worksheet)); wsB.title = 'Fixture B title'; wsB.questions[1].prompt = 'Fixture B question?'; wsB.questions[1].answer = 'Fixture B answer';
+      m.variants = [{ key: 'A', label: 'Niveau A', plan: m.plan, worksheet: m.worksheet }, { key: 'B', label: 'Niveau B', plan: m.plan, worksheet: wsB }];
+      const sA = env.render.renderStudentHTML(m, 'A'), sB = env.render.renderStudentHTML(m, 'B');
+      const t = env.render.renderTeacherHTML(m);
+      const dA = docText(env, m, 'student'), dB = String(env.ooxml.textOf(env.word.partsFor(m, 'student', 'B'))).replace(/\s+/g, ' ');
+      const dT = docText(env, m, 'teacher');
+      const src = env.uiSource || '';
+      return ok(!/Fixture B question/.test(sA) && /Fixture B question/.test(sB) && /Answer key — Niveau A/.test(t) && /Answer key — Niveau B/.test(t) && /Fixture B answer/.test(t)
+        && !/Fixture B question/.test(dA) && /Fixture B question/.test(dB) && /Niveau A/.test(dT) && /Niveau B/.test(dT) && /Fixture B answer/.test(dT) && env.word.filename(m, 'student', 'B').endsWith('-niveau-b.docx')
+        && (!env.uiSource || (/produceWorksheet\(run, core\.variantState/.test(src) && /data-variant/.test(src))), 'variant output incomplete');
+    } });
+  add({ id: 'S34.band_rule', section: 34, title: 'Quality Check – jede Frage trägt eine Stufe innerhalb des erlaubten Fragen-Niveaus', kind: 'rule', ruleId: 'questions.level_band',
+    extra(env) {
+      const m = env.fixture.material({ questionLevel: 'B' }, 'listening');
+      const f = env.quality.runDeterministic(m.settings, m.plan, m.content, m.worksheet).find(x => x.id === 'questions.level_band');
+      const okM = env.fixture.material({ questionLevel: 'A' }, 'listening');
+      okM.worksheet.questions.forEach(q => { q.difficulty = 'B1.2'; });
+      const g = env.quality.runDeterministic(okM.settings, okM.plan, okM.content, okM.worksheet).find(x => x.id === 'questions.level_band');
+      return ok(f && f.status === 'pass' && g && g.status === 'pass', `B=${f && f.status} A=${g && g.status}`);
+    } });
+  add({ id: 'S34.glossary', section: 34, title: 'Option „Fremdwörter auf der 1. Seite erklärt“: Messer wählt die Wörter über dem Niveau (ohne Zielvokabular), Claude erklärt sie; Ausgabe auf Seite 1 (HTML, Word)', kind: 'setting', key: 'glossary', alt: true,
+    extra(env) {
+      const m = env.fixture.material({ glossary: true }, 'listening');
+      const measured = env.level.measure(m.content, 'listening', { exclude: m.plan.vocabulary.map(w => w.word) });
+      const cands = env.level.glossaryCandidates(measured, 'A2.1', 12);
+      const noTarget = cands.every(c => !m.plan.vocabulary.some(v => v.word.toLowerCase() === c.lemma));
+      const p = env.prompts.buildGlossaryPrompt(m.settings, m.plan, m.content, cands.length ? cands : [{ word: 'x', count: 1 }]);
+      m.glossary = env.quality.normalizeGlossary({ glossary: [{ word: 'ticket', form: 'tickets', explanation: 'Fixture explanation', german: 'Fixture DE' }] });
+      const st = env.render.renderStudentHTML(m);
+      const doc = docText(env, m, 'student');
+      const src = env.uiSource || '';
+      const firstPage = doc.indexOf('Fixture explanation') < doc.indexOf(m.worksheet.questions[0].prompt);
+      return ok(noTarget && /"glossary"/.test(p) && /German equivalent/.test(p) && st.indexOf('Words to know') < st.indexOf('Questions') && /Fixture explanation/.test(st) && firstPage && (!env.uiSource || /buildGlossaryPrompt/.test(src)), 'glossary pipeline incomplete');
+    } });
+  add({ id: 'S34.append_script', section: 34, title: 'Option „Skript auf der letzten Seite abgebildet“ (Listening): Schülerversion endet mit dem Skript (HTML, Word, Markdown)', kind: 'setting', key: 'appendScript', alt: true, promptSensitive: false,
+    extra(env) {
+      const m = env.fixture.material({ appendScript: true }, 'listening');
+      const st = env.render.renderStudentHTML(m);
+      const last = m.content.lines[m.content.lines.length - 1].text;
+      const doc = docText(env, m, 'student');
+      const md = env.render.renderMarkdown(m);
+      const off = env.render.renderStudentHTML(env.fixture.material({ appendScript: false }, 'listening'));
+      return ok(st.indexOf('Questions') < st.indexOf('class="block script appendix') && st.includes(env.render.esc(last)) && !off.includes(env.render.esc(last)) && doc.indexOf(m.worksheet.questions[0].prompt) < doc.indexOf(last) && md.indexOf('### Script') < md.indexOf('## Teacher version'), 'script appendix incomplete');
     } });
 
   return { REQUIREMENTS: M };

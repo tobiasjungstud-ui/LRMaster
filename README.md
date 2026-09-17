@@ -29,14 +29,38 @@ scripts/coverage-report.js  schreibt CONCEPT_COVERAGE.md (npm run coverage)
 
 ## Generierungs-Pipeline (`generate()` in `ui.js`)
 
-1. **Plan** – Validierung, Zielwortzahl (Audio-Länge × Sprechtempo bzw. Wortzahl/A4), Sprecher-Labels und -anteile, Skill-Mix (automatisch nach Schwierigkeit oder manuell), Format-Zuweisung, Fragen-Niveau (CEFR-Band unabhängig vom Textniveau).
+1. **Plan** – Validierung, Zielwortzahl (Audio-Länge × Sprechtempo bzw. Wortzahl/A4), Sprecher-Labels und -anteile, Skill-Mix (automatisch nach Schwierigkeit oder manuell), Format-Verteilung, Fragen-Niveau (CEFR-Band unabhängig vom Textniveau; als Meta-Einstellung *Niveau A* = B1.2–B2.1, *Niveau B* = B1.1 oder *Beide* mit je einem Plan pro Fragebogen).
 2. **Content** – Claude schreibt Skript/Text als JSON (Sprecherzeilen mit optionalem Emotion-Tag bzw. Absätze).
-3. **Content-Prüfung** – gemessen: Wortzahl, Sprechanteile, Sprecher-Labels, Tag-Dichte, Turn-Länge/Variabilität, Zielvokabular. Bei blockierenden Verstößen eine Revision mit konkreten Befunden.
-4. **Aufgaben** – Claude erstellt Fragen mit fixem Skill je Fragenummer, Format, CEFR-Difficulty, wörtlichem Evidenz-Zitat, Referenz und Begründung; separat Higher-Order-Aufgaben und Pre-Tasks.
-5. **Aufgaben-Prüfung** – gemessen: Anzahl, Skill-Verteilung, erlaubte Formate, Chronologie über Evidenz-Positionen, Duplikate, auffindbare Evidenz, Higher-Order getrennt, Pre-Task-Typen.
-6. **Claude-Review** – Beurteilung der Regeln, die Lesen erfordern (Eindeutigkeit, Ableitbarkeit, Distraktoren, Niveau, echte Inferenz, Natürlichkeit, Thema, keine Spoiler im Pre-Task).
-7. **Automatische Korrektur** – siehe unten: beanstandete Fragen werden gezielt ersetzt, der Text bei Bedarf überarbeitet, danach wird erneut gemessen und geprüft.
-8. **Ausgabe** – Student Version (ohne Skript beim Listening), Teacher Version (Skript mit Zeilennummern und Vokabel-Highlight, verwendete Items, Lösungsschlüssel mit Skill/Difficulty/Evidenz/Begründung, Qualitätsbericht), Prompts und JSON; Download als **Word (.docx)**, HTML, Markdown oder JSON, Druck, Speicherung.
+3. **Content-Prüfung** – gemessen: Wortzahl, Sprechanteile, Sprecher-Labels, Tag-Dichte, Turn-Länge/Variabilität, Zielvokabular und – mit dem **Schwierigkeitsmesser** (siehe unten) – das erreichte CEFR-Niveau gegen das gewählte. Abweichungen werden mit konkreten Vorgaben („Sätze kürzen: Ziel 9–10 Wörter“, „Schwere Wörter ersetzen: subtle, questionable …“) in die Textüberarbeitung gegeben.
+4. **Aufgaben** – Claude erstellt Fragen mit vorgegebener Anzahl je Skill und Format, CEFR-Difficulty innerhalb des Fragen-Niveaus, wörtlichem Evidenz-Zitat, Referenz und Begründung; separat Higher-Order-Aufgaben und Pre-Tasks. Bei *Beide* wird der Schritt pro Niveau durchlaufen.
+5. **Reihenfolge (immer)** – jeder eingehende Fragebogen wird deterministisch in die Reihenfolge des Materials gebracht (Evidenz-Position, Gist nur am Anfang/Ende) und neu nummeriert; die Prüfregel dazu ist blockierend und schlägt auch an, wenn ein Beleg nicht wörtlich gefunden wird.
+6. **Aufgaben-Prüfung** – gemessen: Anzahl, Skill-Verteilung (Summen), erlaubte Formate und Format-Verteilung, Chronologie, Stufe je Frage innerhalb des erlaubten Fragen-Niveaus, Duplikate, auffindbare Evidenz, Higher-Order getrennt, Pre-Task-Typen.
+7. **Claude-Review** – Beurteilung der Regeln, die Lesen erfordern (Eindeutigkeit, Ableitbarkeit, Distraktoren, Niveau, echte Inferenz, Natürlichkeit, Thema, keine Spoiler im Pre-Task).
+8. **Automatische Korrektur** – siehe unten: beanstandete Fragen werden gezielt ersetzt, der Text bei Bedarf überarbeitet, danach wird erneut geordnet, gemessen und geprüft.
+9. **Fremdwörter** (Option) – der Messer wählt die Wörter über dem Niveau (ohne Zielvokabular), Claude erklärt sie in einfachem Englisch mit deutscher Entsprechung; das Glossar steht auf Seite 1 des Fragebogens.
+10. **Ausgabe** – Student Version (ohne Skript beim Listening, ausser die Option *Skript auf der letzten Seite* ist gewählt; bei *Beide* eine Version pro Niveau), Teacher Version (Skript mit Zeilennummern und Vokabel-Highlight, verwendete Items, Messung, Lösungsschlüssel je Niveau mit Skill/Difficulty/Evidenz/Begründung, Qualitätsbericht), Prompts und JSON; Download als **Word (.docx)** (Schülerversion A/B, Lehrerversion), HTML, Markdown oder JSON, Druck, Speicherung.
+
+## Schwierigkeitsmesser (`level.js`, `wordlist.js`)
+
+Der Messer bestimmt das CEFR-Niveau eines Skripts oder Texts auf der Sechser-Skala A2.1–B2.2 aus sieben Dimensionen und liefert je Dimension Wert, Stufe und Korrekturhinweis:
+
+| Dimension | Mass | A2.1 | A2.2 | B1.1 | B1.2 | B2.1 | B2.2 |
+|---|---|---|---|---|---|---|---|
+| Satzlänge | Wörter/Satz | ≤ 7 | ≤ 9 | ≤ 10 | ≤ 12.5 | ≤ 17 | > 17 |
+| Wortschatz jenseits 2000 | % der Inhaltswörter mit NGSL-Rang > 2000 | ≤ 4 | ≤ 7 | ≤ 10 | ≤ 14 | ≤ 20 | > 20 |
+| Seltener Wortschatz | % mit Rang > 3500 oder ausserhalb der Liste | ≤ 0.6 | ≤ 1.2 | ≤ 1.8 | ≤ 3 | ≤ 6 | > 6 |
+| Nebensätze | Subordinatoren, Relativ- und that-Sätze pro Satz | ≤ 0.05 | ≤ 0.12 | ≤ 0.18 | ≤ 0.32 | ≤ 0.55 | > 0.55 |
+| Anspruchsvolle Grammatik | Passiv, Perfekt, Konditionale, Spaltsätze, Vergleiche, Inversion pro 100 Wörter | ≤ 0.5 | ≤ 1.2 | ≤ 2.1 | ≤ 3.2 | ≤ 4.5 | > 4.5 |
+| Phrasal Verbs & Idiome | pro 100 Wörter (gering gewichtet: Register) | ≤ 0.2 | ≤ 0.5 | ≤ 0.9 | ≤ 1.9 | ≤ 3 | > 3 |
+| Beitragslänge (Listening) | Wörter/Sprecherbeitrag | ≤ 13 | ≤ 20 | ≤ 30 | ≤ 38 | ≤ 50 | > 50 |
+
+Die Werte werden zwischen den Schwellen interpoliert und gewichtet (Satzlänge 0.2, Wortschatz 0.2/0.1, Nebensätze 0.15, Grammatik 0.15, Idiome 0.05, Beiträge 0.15) zu einem Score 0–5 verrechnet; die Streuung der Dimensionen ergibt die Sicherheit. Regieanweisungen wie `[laughs]`, Sprechernamen, Eigennamen und Kontraktionen werden nicht gezählt; ein Lemmatisierer führt Flexionsformen, britische Schreibungen (*humour → humor*), Komposita (*seventeen-year-old*) und Ableitungen (*unmotivated*) auf die Liste zurück.
+
+**Datenbasis**: Häufigkeitsränge der New General Service List 1.01 (Browne, Culligan & Phillips; CC BY-SA 4.0, 11 996 Lemmata, `wordlist.js`). Die Rangbänder wurden gegen die CEFR-Etiketten der Oxford 3000/5000 kalibriert (A1-Wörter: Median-Rang 645, A2 1324, B1 1684, B2 2438, C1 4005 ⇒ Bänder bei 1000 / 2000 / 3500); 390 A1/A2-Wörter und 128 B1-Wörter, die der Korpus tiefer einstuft (*pizza, café, castle*), erhalten Überschreibungen.
+
+**Ankerpunkt**: Das Podcast-Skript *Screen Time* (356 Wörter, 10 Beiträge) wurde von der Lehrperson mit **B1.2** eingeschätzt; die Schwellen sind so gesetzt, dass es B1.2 misst und die im Test hinterlegten A2-, B1-, B2.1- und B2.2-Referenztexte monoton darunter bzw. darüber liegen (`tests/run.js`, Manifest §34). Die Stufen sind mit den Deskriptoren des GER-Begleitbands (Hör- und Leseverstehen, A2/A2+/B1/B1+/B2/B2+) und den sprachlichen Merkmalen hinterlegt, die der Prompt als Zielvorgaben erhält.
+
+**Einbindung**: (1) Der Content-Prompt enthält die numerischen Ziele des gewählten Niveaus. (2) Die Regel `content.level_measured` vergleicht die Messung mit dem Ziel – Warnung bei einer Stufe, Fehler ab zwei – und liefert die Korrekturhinweise an die Textüberarbeitung. (3) Die Messung erscheint im Quality-Tab (Skala mit Marker, Dimensionen, Strukturen, schwere Wörter), in der Lehrerversion und im Word-Export. (4) Die Seite **Niveau messen** misst beliebige eingefügte Skripte oder Texte und holt auf Wunsch eine Zweitmeinung von Claude mit denselben Deskriptoren ein. Der Schalter *Schwierigkeit messen und nachsteuern* (Section Language) schaltet Vorgaben und Regel ab.
 
 ## Automatische Korrektur statt Fehlerliste
 
@@ -81,7 +105,7 @@ Das Arbeitsblatt ist ein echtes Arbeitsblatt: Name-/Klasse-/Datum-Zeile, Aufgabe
 
 ## Kontrollmechanismen
 
-- **Konzept-Manifest** (`app/manifest.js`): 208 Anforderungen aus dem Konzeptdokument, jede mit Prüfart:
+- **Konzept-Manifest** (`app/manifest.js`): 222 Anforderungen aus dem Konzeptdokument und den Auftragserweiterungen (§33 Word-Export, §34 Schwierigkeitsmesser & Niveau der Fragen), jede mit Prüfart:
   - `setting` – Steuerelement existiert **und** die Änderung des Werts verändert nachweislich mindestens einen Prompt (Prompt-Sensitivitätstest; tote Einstellungen fallen durch).
   - `function` – Verhalten wird mit echten Eingaben ausgeführt (z. B. Preset *Interview* ⇒ Anteile 25/75, Skill-Mix verschiebt sich mit der Schwierigkeit, Beispielkonfiguration §32 reproduziert alle Werte).
   - `rule` – Qualitätsregel existiert als Messfunktion oder als Review-Kriterium und wird im Review-Prompt an Claude übergeben.

@@ -589,11 +589,13 @@
     const ws = m.worksheet;
     const accent = d.accent;
     const out = [nameRow(ctx), SP(14)];
-    out.push(P((m.kind === 'listening' ? 'Listening' : 'Reading') + '  ·  ' + joinMeta([m.plan.unitName, m.plan.cefr]),
+    out.push(P((m.kind === 'listening' ? 'Listening' : 'Reading') + '  ·  ' + joinMeta([m.plan.unitName, m.plan.cefr, m.variantLabel]),
       { after: 3, run: { font: WS.display, size: 9, bold: true, caps: true, letterSpacing: 1.4, color: accent } }));
     out.push(P(ws.title || m.content.title, { after: 4, run: { font: WS.display, size: 18, bold: true, color: INK } }));
     if (ws.instructions) out.push(P(ws.instructions, { after: 10, run: { font: WS.body, size: 10.5, italic: true, color: GREY } }));
     out.push(ruleP({ color: accent, sz: 8, after: 12 }));
+
+    if (m.glossary && m.glossary.length) out.push(...glossaryBlocks(ctx));
 
     if (ws.preTasks && ws.preTasks.length) {
       out.push(P('Before you ' + (m.kind === 'listening' ? 'listen' : 'read'), { after: 6, run: { font: WS.display, size: 12, bold: true, color: INK } }));
@@ -623,9 +625,56 @@
     return out;
   }
 
+  /** "Words to know": the hard words the meter found, explained by Claude (worksheet option). */
+  function glossaryBlocks(ctx) {
+    const { m, d } = ctx;
+    const g = m.glossary || [];
+    const c3 = cols(ctx.W, [0.22, 0.5, 0.28]);
+    return [
+      P('Words to know', { after: 4, keepNext: true, run: { font: WS.display, size: 12, bold: true, color: INK } }),
+      TBL({ width: ctx.W, widthType: 'dxa', cols: c3, cellMargin: { top: 0.05, left: 0, bottom: 0.05, right: 0.15 }, borders: { insideH: hairline('EDF0F3') },
+        rows: g.map(x => ({ cells: [
+          { text: x.form || x.word, props: { after: 0, run: { font: WS.body, size: 10, bold: true, color: d.accent } } },
+          { text: x.explanation, props: { after: 0, run: { font: WS.body, size: 10, color: INK } } },
+          { text: x.german || '', props: { after: 0, run: { font: WS.body, size: 10, italic: true, color: GREY } } },
+        ] })) }),
+      SP(10),
+    ];
+  }
+
+  /** Difficulty meter (teacher version): band, score and the measured dimensions. */
+  function levelBlocks(ctx) {
+    const { m } = ctx;
+    const lv = m.level;
+    if (!lv) return [];
+    const bands = core.CEFR_BANDS;
+    const target = m.plan.cefr;
+    const tIdx = bands.indexOf(target);
+    const c3 = cols(ctx.W, [0.1, 0.5, 0.4]);
+    const COLORS = { 0: '1B5E20', 1: '8A5A00', 2: 'A3282B' };
+    const out = [
+      SP(12),
+      P('Difficulty meter', { after: 3, keepNext: true, run: { font: WS.display, size: 12, bold: true, color: INK } }),
+      P(`Measured ${lv.band} · score ${lv.score} / 5 · confidence ${lv.confidence} · target ${target}` + (lv.stats ? ` · ${lv.stats.words} words, ${lv.stats.sentences} sentences, ${lv.stats.msl} words/sentence` : ''), { after: 6, run: { font: WS.body, size: 9, color: GREY } }),
+      TBL({ width: ctx.W, widthType: 'dxa', cols: c3, cellMargin: { top: 0.05, left: 0, bottom: 0.05, right: 0.15 }, borders: { insideH: hairline('EDF0F3') },
+        rows: (lv.dimensions || []).map(dm => {
+          const diff = Math.min(2, Math.abs(bands.indexOf(dm.band) - tIdx));
+          return { cells: [
+            { text: dm.band, props: { after: 0, run: { font: WS.body, size: 8.5, bold: true, color: COLORS[diff] } } },
+            { text: dm.label, props: { after: 0, run: { font: WS.body, size: 9, color: INK } } },
+            { text: dm.value + ' ' + dm.unit, props: { after: 0, run: { font: WS.body, size: 8.5, color: GREY } } },
+          ] };
+        }) }),
+    ];
+    if (lv.hardWords && lv.hardWords.length) out.push(P('Hard words: ' + lv.hardWords.slice(0, 25).map(h => h.word).join(', '), { before: 4, run: { font: WS.body, size: 8.5, color: GREY } }));
+    return out;
+  }
+
   /* ------------------------------------------------------------------ */
   /* Teacher version                                                      */
   /* ------------------------------------------------------------------ */
+
+  function lvLine(lv, target) { return `${lv.band} (score ${lv.score}, confidence ${lv.confidence}; target ${target})`; }
 
   function teacherHeadBlocks(ctx) {
     const { m, d } = ctx;
@@ -638,9 +687,11 @@
       m.kind === 'listening'
         ? ['Audio', joinMeta([plan.preset.label, Math.round(plan.seconds / 60 * 10) / 10 + ' min ≈ ' + plan.targetWords + ' words', plan.speakers.map(s => s.label + ' ' + s.share + ' %').join(' / '), 'emotion tags: ' + m.settings.emotionTags])]
         : ['Text', joinMeta([m.settings.textType === 'Custom' ? m.settings.customTextType : m.settings.textType, '≈ ' + plan.targetWords + ' words', DESIGNS[core.designIdFor(m.settings)].label])],
-      m.worksheet ? ['Questions', plan.questionCount + ' · level ' + plan.questionBand + ' · difficulty ' + m.settings.questionDifficulty + '/100 · ' + core.SKILLS.filter(s => plan.skillMix[s.key]).map(s => plan.skillMix[s.key] + '× ' + s.short).join(', ')] : ['Worksheet', 'not created'],
+      m.worksheet ? ['Questions', render.variantsOf(m).filter(v => v.worksheet).map(v => { const p = v.plan || plan; return joinMeta([v.label, p.questionCount + ' · level ' + (p.questionBands ? p.questionBands.join('–') : p.questionBand) + ' · difficulty ' + (p.questionDifficulty == null ? m.settings.questionDifficulty : p.questionDifficulty) + '/100 · ' + core.SKILLS.filter(s => p.skillMix[s.key]).map(s => p.skillMix[s.key] + '× ' + s.short).join(', ')]); }).join('  |  ')] : ['Worksheet', 'not created'],
+      m.level ? ['Measured', lvLine(m.level, plan.cefr)] : null,
+      m.worksheet && (m.settings.glossary || m.settings.appendScript) ? ['Options', joinMeta([m.settings.glossary ? 'glossary on page 1' : '', m.settings.appendScript && m.kind === 'listening' ? 'script on the last page' : ''])] : null,
       ['Created', new Date(m.createdAt || Date.now()).toLocaleString('de-CH')],
-    ].filter(r => r[1]);
+    ].filter(r => r && r[1]);
     return [
       P('Teacher version', { after: 3, run: { font: WS.display, size: 9, bold: true, caps: true, letterSpacing: 2, color: 'A3282B' } }),
       P(m.title, { after: 8, run: { font: WS.display, size: 19, bold: true, color: INK } }),
@@ -688,6 +739,11 @@
   }
 
   function keyBlocks(ctx) {
+    const { m } = ctx;
+    const variants = render.variantsOf(m).filter(v => v.worksheet);
+    return variants.flatMap((v, i) => (i ? [SP(14)] : []).concat(keyBlocksFor(Object.assign({}, ctx, { m: render.forVariant(m, v.key) }), v.label)));
+  }
+  function keyBlocksFor(ctx, variantLabel) {
     const { m, d } = ctx;
     const ws = m.worksheet;
     const accent = '274060';
@@ -707,7 +763,7 @@
         ].filter(Boolean) },
       ] });
     }
-    const out = [P('Answer key', { after: 6, keepNext: true, run: { font: WS.display, size: 12, bold: true, color: INK } }),
+    const out = [P('Answer key' + (variantLabel ? ' — ' + variantLabel + ' (' + (m.plan.questionBands ? m.plan.questionBands.join('–') : m.plan.questionBand) + ')' : ''), { after: 6, keepNext: true, run: { font: WS.display, size: 12, bold: true, color: INK } }),
       TBL({ width: ctx.W, widthType: 'dxa', cols: c6, cellMargin: { top: 0.08, left: 0.1, bottom: 0.08, right: 0.1 },
         borders: { top: hairline(SOFT), bottom: hairline(SOFT), insideH: hairline(LINE), insideV: hairline('EDF0F3') }, rows })];
     if (ws.higherOrder && ws.higherOrder.length) {
@@ -755,7 +811,7 @@
 
   function footerBlocks(m, which, W) {
     return [P([
-      T(m.title + (which === 'teacher' ? '  ·  Teacher version' : ''), { font: WS.body, size: 8, color: SOFT }),
+      T(m.title + (which === 'teacher' ? '  ·  Teacher version' : m.variantLabel ? '  ·  ' + m.variantLabel : ''), { font: WS.body, size: 8, color: SOFT }),
       T('\t'),
       T('Page ', { font: WS.body, size: 8, color: SOFT }),
       F('PAGE', { font: WS.body, size: 8, color: SOFT }),
@@ -765,7 +821,8 @@
   }
 
   /** Student version: reading text in its own design, then the worksheet. */
-  function studentSpec(material) {
+  function studentSpec(material, variantKey) {
+    material = render.forVariant(material, variantKey);
     const ctx = context(material);
     const d = ctx.d;
     const sections = [];
@@ -775,6 +832,11 @@
     }
     if (material.worksheet) {
       sections.push({ blocks: worksheetBlocks(wsCtx), props: { margins: M_DOC } });
+      // Listening option: the script on the last page, after the questions.
+      if (material.kind === 'listening' && material.settings.appendScript) {
+        sections[sections.length - 1].props = Object.assign({}, sections[sections.length - 1].props, { type: 'nextPage' });
+        sections.push({ blocks: scriptBlocks(wsCtx), props: { margins: M_DOC } });
+      }
     } else if (!sections.length) {
       sections.push({ blocks: [P('')], props: { margins: M_DOC } });
     }
@@ -783,10 +845,10 @@
       sections,
       defaults: { font: d.fonts.body, size: d.sizes.body, display: d.fonts.display, accent: d.accent, color: INK },
       footer: footerBlocks(material, 'student', usableWidth(M_DOC)),
-      title: material.title, description: 'Student version — ' + d.label, creator: 'LRMaster',
+      title: material.title + (material.variantLabel ? ' — ' + material.variantLabel : ''), description: 'Student version — ' + d.label + (material.variantLabel ? ' — ' + material.variantLabel : ''), creator: 'LRMaster',
     };
   }
-  function buildStudent(material) { return docx.build(studentSpec(material)); }
+  function buildStudent(material, variantKey) { return docx.build(studentSpec(material, variantKey)); }
 
   /** Teacher version: metadata, full script/text, vocabulary, key, quality report. */
   function teacherSpec(material) {
@@ -796,7 +858,9 @@
       .concat(material.kind === 'listening' ? scriptBlocks(Object.assign({}, ctx, { W: usableWidth(M_DOC) })) : textBlocks(ctx));
     const wsCtx = Object.assign({}, ctx, { W: usableWidth(M_DOC), margins: M_DOC });
     const rest = vocabBlocks(wsCtx)
+      .concat(material.glossary && material.glossary.length ? [SP(14)].concat(glossaryBlocks(wsCtx)) : [])
       .concat(material.worksheet ? [SP(14)].concat(keyBlocks(wsCtx)) : [])
+      .concat(levelBlocks(wsCtx))
       .concat(qualityBlocks(wsCtx));
     const sections = [
       { blocks: first, props: { margins: material.kind === 'reading' ? ctx.margins : M_DOC, cols: material.kind === 'reading' ? d.page.cols : 1, colSep: d.page.colSep, type: 'nextPage' } },
@@ -816,11 +880,11 @@
       .replace(/[äàâ]/g, 'a').replace(/[öô]/g, 'o').replace(/[üû]/g, 'u').replace(/ß/g, 'ss')
       .replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 60) || 'material';
   }
-  function filename(material, which) { return slug(material.title) + '-' + which + '.docx'; }
+  function filename(material, which, variantKey) { return slug(material.title) + '-' + which + (variantKey ? '-niveau-' + String(variantKey).toLowerCase() : '') + '.docx'; }
 
   /** The same documents as package parts — used by the Word-export checks. */
-  function partsFor(material, which) {
-    const spec = which === 'teacher' ? teacherSpec(material) : studentSpec(material);
+  function partsFor(material, which, variantKey) {
+    const spec = which === 'teacher' ? teacherSpec(material) : studentSpec(material, variantKey);
     return docx.buildParts(spec);
   }
 

@@ -5,9 +5,9 @@
  * stable id that the concept manifest references.
  */
 (function (root, factory) {
-  if (typeof module === 'object' && module.exports) module.exports = factory(require('./core.js'));
-  else { root.LR = root.LR || {}; root.LR.quality = factory(root.LR.core); }
-})(typeof self !== 'undefined' ? self : this, function (core) {
+  if (typeof module === 'object' && module.exports) module.exports = factory(require('./core.js'), require('./level.js'));
+  else { root.LR = root.LR || {}; root.LR.quality = factory(root.LR.core, root.LR.level); }
+})(typeof self !== 'undefined' ? self : this, function (core, level) {
   'use strict';
 
   /* ------------------------------------------------------------------ */
@@ -281,6 +281,77 @@
   /* Rule registry (concept §29)                                          */
   /* ------------------------------------------------------------------ */
 
+  /* ------------------------------------------------------------------ */
+  /* Timeline (concept §26): questions always follow the material         */
+  /* ------------------------------------------------------------------ */
+
+  /** Where each question points in the material, and every way the order can be wrong. */
+  function chronologyReport(worksheet, content, kind) {
+    const mat = materialText(content, kind);
+    const qs = worksheet.questions || [];
+    const positions = [];
+    const unresolved = [];
+    const gistMisplaced = [];
+    qs.forEach((q, i) => {
+      const p = findQuotePosition(mat.text, q.evidenceQuote);
+      if (q.skill === 'gist') { if (i !== 0 && i !== qs.length - 1) gistMisplaced.push(q.n); return; }
+      if (p < 0) { unresolved.push(q.n); return; }
+      positions.push({ n: q.n, p, ref: q.evidenceRef || '' });
+    });
+    const violations = [];
+    for (let i = 1; i < positions.length; i++) if (positions[i].p + 40 < positions[i - 1].p) violations.push({ n: positions[i].n, prev: positions[i - 1].n, ref: positions[i].ref });
+    return { positions, unresolved, gistMisplaced, violations };
+  }
+
+  /**
+   * Put the questions into the order of the material and renumber them:
+   * non-gist questions by the position of their evidence, a gist question at
+   * the end it already occupies (first stays first, otherwise last), a
+   * question whose evidence cannot be located keeps its place relative to
+   * its predecessor. Returns the same worksheet object when nothing moves.
+   */
+  function enforceChronology(worksheet, content, kind) {
+    const qs = worksheet.questions || [];
+    if (qs.length < 2) return { worksheet, moved: [], changed: false };
+    const mat = materialText(content, kind);
+    const gistFirst = qs[0].skill === 'gist' ? [qs[0]] : [];
+    const gistLast = qs.filter((q, i) => q.skill === 'gist' && i > 0);
+    const body = qs.filter(q => q.skill !== 'gist');
+    let last = -1;
+    const keyed = body.map((q, i) => {
+      const p = findQuotePosition(mat.text, q.evidenceQuote);
+      const pos = p >= 0 ? p : last;
+      if (p >= 0) last = p;
+      return { q, pos, i };
+    });
+    keyed.sort((a, b) => a.pos - b.pos || a.i - b.i);
+    const ordered = gistFirst.concat(keyed.map(k => k.q), gistLast);
+    const moved = [];
+    const renumbered = ordered.map((q, i) => {
+      if (qs[i] !== q) moved.push(i + 1);
+      return Number(q.n) === i + 1 ? q : Object.assign({}, q, { n: i + 1 });
+    });
+    if (!moved.length) return { worksheet, moved, changed: false };
+    return { worksheet: Object.assign({}, worksheet, { questions: renumbered }), moved, changed: true };
+  }
+
+  /** Claude's glossary answer → [{word, form, explanation, german}]. */
+  function normalizeGlossary(raw) {
+    const list = Array.isArray(raw) ? raw : (raw && Array.isArray(raw.glossary)) ? raw.glossary : [];
+    return list.map(g => ({
+      word: String((g && (g.word || g.form)) || '').trim(), form: String((g && (g.form || g.word)) || '').trim(),
+      explanation: String((g && g.explanation) || '').trim(), german: String((g && g.german) || '').trim(),
+    })).filter(g => g.word && g.explanation);
+  }
+
+  /** The part of a measurement that is worth storing with the material. */
+  function slimMeasurement(m) {
+    return { band: m.band, index: m.index, score: m.score, confidence: m.confidence, kind: m.kind, stats: m.stats,
+      dimensions: m.dimensions.map(d => ({ key: d.key, label: d.label, unit: d.unit, value: d.value, band: d.band, score: Math.round(d.score * 100) / 100, explain: d.explain })),
+      structures: m.structures.map(x => ({ key: x.key, label: x.label, count: x.count, examples: x.examples })),
+      hardWords: m.hardWords.slice(0, 40) };
+  }
+
   function finding(rule, status, detail, extra) {
     return Object.assign({ id: rule.id, group: rule.group, title: rule.title, kind: rule.kind, status, detail: detail || '' }, extra || {});
   }
@@ -302,6 +373,16 @@
     { id: 'content.coherent', group: 'content', kind: 'llm', title: 'Text is coherent', criterion: 'the text/conversation is coherent and logically consistent', blocking: true },
     { id: 'content.natural', group: 'content', kind: 'llm', title: 'Conversation/text sounds natural', criterion: 'the language sounds natural for the format and the naturalness setting', blocking: false },
     { id: 'content.level', group: 'content', kind: 'llm', title: 'Language matches the CEFR level', criterion: 'the language stays at the configured CEFR level (not clearly above or below)', blocking: true },
+    { id: 'content.level_measured', group: 'content', kind: 'deterministic', title: 'Measured difficulty matches the CEFR level', blocking: false,
+      check(ctx) {
+        if (ctx.plan.levelMeter === false) return finding(this, 'pass', 'Level meter switched off.');
+        const measured = level.measure(ctx.content, ctx.state.kind, { seconds: ctx.plan.seconds, exclude: (ctx.plan.vocabulary || []).map(w => w.word) });
+        const cmp = level.compare(measured, ctx.plan.cefr);
+        const dims = measured.dimensions.map(d => `${d.label} ${d.value} ${d.unit} → ${d.band}`).join('; ');
+        const advice = cmp.deviations.filter(d => Math.abs(d.steps) >= 1).map(d => d.suggestion).join(' ');
+        const detail = `Measured ${measured.band} (score ${measured.score}, confidence ${measured.confidence}), target ${ctx.plan.cefr}. ${dims}.` + (advice && cmp.status !== 'pass' ? ' To fix: ' + advice : '');
+        return finding(this, cmp.status, detail, { measured: slimMeasurement(measured), comparison: { delta: cmp.delta, deviations: cmp.deviations } });
+      } },
     { id: 'content.word_count', group: 'content', kind: 'deterministic', title: 'Length matches the target', blocking: true,
       check(ctx) {
         const n = wordCount(materialText(ctx.content, ctx.state.kind).text.replace(/^[^:\n]+: /gm, ''));
@@ -377,22 +458,16 @@
     { id: 'questions.answerable', group: 'questions', kind: 'llm', title: 'Every question is answerable unambiguously', needsWorksheet: true, criterion: 'every question has exactly one defensible answer', blocking: true },
     { id: 'questions.derivable', group: 'questions', kind: 'llm', title: 'Correct answer follows from the material', needsWorksheet: true, criterion: 'each key answer can actually be derived from the material (and from the evidence quote given)', blocking: true },
     { id: 'questions.distractors', group: 'questions', kind: 'llm', title: 'Distractors are plausible', needsWorksheet: true, criterion: 'distractors in closed formats are plausible but clearly wrong', blocking: false },
-    { id: 'questions.chronology', group: 'questions', kind: 'deterministic', title: 'Questions follow audio/text order', needsWorksheet: true, blocking: false,
+    { id: 'questions.chronology', group: 'questions', kind: 'deterministic', title: 'Questions follow the timeline of the audio/text', needsWorksheet: true, blocking: true,
       check(ctx) {
-        if (!ctx.state.followChronology) return finding(this, 'pass', 'Chronology not required.');
-        const mat = materialText(ctx.content, ctx.state.kind);
-        const positions = [];
-        let unresolved = 0;
-        for (const q of ctx.worksheet.questions) {
-          if (q.skill === 'gist') continue;
-          const p = findQuotePosition(mat.text, q.evidenceQuote);
-          if (p < 0) { unresolved++; continue; }
-          positions.push({ n: q.n, p });
-        }
-        const violations = [];
-        for (let i = 1; i < positions.length; i++) if (positions[i].p + 40 < positions[i - 1].p) violations.push(`Q${positions[i].n} before Q${positions[i - 1].n}`);
-        const status = violations.length === 0 ? (unresolved ? 'warn' : 'pass') : violations.length <= 1 ? 'warn' : 'fail';
-        return finding(this, status, (violations.length ? 'Out of order: ' + violations.join('; ') + '. ' : 'Order verified. ') + (unresolved ? `${unresolved} evidence quote(s) not found verbatim.` : ''), { questions: violations.map(v => Number(/Q(\d+) before/.exec(v)[1])) });
+        const r = chronologyReport(ctx.worksheet, ctx.content, ctx.state.kind);
+        const problems = [];
+        if (r.violations.length) problems.push('Out of order: ' + r.violations.map(v => `Q${v.n} (${v.ref}) before Q${v.prev}`).join('; ') + '.');
+        if (r.gistMisplaced.length) problems.push('Gist question not at the beginning or end: Q' + r.gistMisplaced.join(', Q') + '.');
+        if (r.unresolved.length) problems.push('Position unknown, evidence quote not found verbatim: Q' + r.unresolved.join(', Q') + '.');
+        const status = problems.length ? 'fail' : 'pass';
+        return finding(this, status, problems.length ? problems.join(' ') : `Timeline verified for ${r.positions.length} question(s).`,
+          { questions: [...new Set(r.violations.map(v => v.n).concat(r.gistMisplaced, r.unresolved))].sort((a, b) => a - b) });
       } },
     { id: 'questions.no_duplicates', group: 'questions', kind: 'deterministic', title: 'No two questions test the same information', needsWorksheet: true, blocking: false,
       check(ctx) {
@@ -414,24 +489,35 @@
     { id: 'questions.duplicates_llm', group: 'questions', kind: 'llm', title: 'No two questions test exactly the same information (review)', needsWorksheet: true, criterion: 'no two questions test exactly the same piece of information', blocking: false },
     { id: 'questions.skill_distribution', group: 'questions', kind: 'deterministic', title: 'Skill distribution matches the settings', needsWorksheet: true, blocking: true,
       check(ctx) {
-        const want = ctx.plan.skillSequence;
-        const got = ctx.worksheet.questions.map(q => q.skill);
-        const mismatches = [];
-        for (let i = 0; i < Math.max(want.length, got.length); i++) if (want[i] !== got[i]) mismatches.push(i + 1);
         const counts = {};
-        for (const s of got) counts[s] = (counts[s] || 0) + 1;
-        const sameTotals = core.SKILL_KEYS.every(k => (counts[k] || 0) === (ctx.plan.skillMix[k] || 0));
-        const status = mismatches.length === 0 ? 'pass' : sameTotals ? 'warn' : 'fail';
-        return finding(this, status, mismatches.length ? `Skill differs from plan at Q${mismatches.join(', Q')}` + (sameTotals ? ' (totals per skill are correct).' : '.') : 'Every question carries the planned skill.', { questions: mismatches });
+        for (const q of ctx.worksheet.questions) counts[q.skill] = (counts[q.skill] || 0) + 1;
+        const diffs = core.SKILL_KEYS.filter(k => (counts[k] || 0) !== (ctx.plan.skillMix[k] || 0)).map(k => `${k} ${counts[k] || 0}/${ctx.plan.skillMix[k] || 0}`);
+        const unknown = ctx.worksheet.questions.filter(q => !core.SKILL_KEYS.includes(q.skill)).map(q => q.n);
+        const status = diffs.length === 0 && unknown.length === 0 ? 'pass' : 'fail';
+        return finding(this, status, status === 'pass' ? 'Every skill has the planned number of questions.' : 'Questions per skill differ from the plan (got/planned): ' + diffs.join(', ') + (unknown.length ? '; unknown skill at Q' + unknown.join(', Q') : '') + '.', { questions: unknown });
       } },
     { id: 'questions.formats', group: 'questions', kind: 'deterministic', title: 'Only enabled response formats are used', needsWorksheet: true, blocking: true,
       check(ctx) {
         const bad = ctx.worksheet.questions.filter(q => !ctx.plan.formats.includes(q.format)).map(q => `Q${q.n} (${q.format || 'none'})`);
-        const seqBad = ctx.plan.formatSequence ? ctx.worksheet.questions.filter((q, i) => ctx.plan.formatSequence[i] && q.format !== ctx.plan.formatSequence[i]).map(q => `Q${q.n}`) : [];
-        const status = bad.length ? 'fail' : seqBad.length ? 'warn' : 'pass';
-        return finding(this, status, bad.length ? 'Disabled formats: ' + bad.join(', ') : seqBad.length ? 'Balanced mix not followed at ' + seqBad.join(', ') : 'Formats as planned.', { questions: bad.concat(seqBad).map(s => Number(/\d+/.exec(s)[0])) });
+        let mixDiff = [];
+        if (ctx.plan.formatSequence) {
+          const want = {}, got = {};
+          for (const f of ctx.plan.formatSequence) want[f] = (want[f] || 0) + 1;
+          for (const q of ctx.worksheet.questions) got[q.format] = (got[q.format] || 0) + 1;
+          mixDiff = Object.keys(want).filter(f => (got[f] || 0) !== want[f]).map(f => `${f} ${got[f] || 0}/${want[f]}`);
+        }
+        const status = bad.length ? 'fail' : mixDiff.length ? 'warn' : 'pass';
+        return finding(this, status, bad.length ? 'Disabled formats: ' + bad.join(', ') : mixDiff.length ? 'Balanced mix not followed (got/planned): ' + mixDiff.join(', ') : 'Formats as planned.', { questions: bad.map(s => Number(/\d+/.exec(s)[0])) });
       } },
-    { id: 'questions.difficulty', group: 'questions', kind: 'llm', title: 'Difficulty matches the requested level', needsWorksheet: true, criterion: 'the questions match the requested question level and difficulty setting (not clearly easier or harder)', blocking: false },
+    { id: 'questions.level_band', group: 'questions', kind: 'deterministic', title: 'Question bands stay within the question level', needsWorksheet: true, blocking: false,
+      check(ctx) {
+        const allowed = ctx.plan.questionBands || [ctx.plan.questionBand];
+        const off = ctx.worksheet.questions.filter(q => q.difficulty && !allowed.includes(q.difficulty)).map(q => q.n);
+        const missing = ctx.worksheet.questions.filter(q => !q.difficulty).map(q => q.n);
+        const status = off.length ? 'warn' : 'pass';
+        return finding(this, status, (off.length ? `Outside ${allowed.join('/')}: Q${off.join(', Q')}. ` : `All questions labelled ${allowed.join('/')}` + (ctx.plan.questionLevelLabel ? ` (${ctx.plan.questionLevelLabel})` : '') + '.') + (missing.length ? ` No band given for Q${missing.join(', Q')}.` : ''), { questions: off });
+      } },
+    { id: 'questions.difficulty', group: 'questions', kind: 'llm', title: 'Difficulty matches the requested level', needsWorksheet: true, criterion: 'the questions, their options and the expected answers match the allowed question band(s) and the difficulty setting (not clearly easier or harder)', blocking: false },
     { id: 'questions.inference_genuine', group: 'questions', kind: 'llm', title: 'Inference questions are genuinely inferential', needsWorksheet: true, criterion: 'questions labelled inference require reasoning beyond explicitly stated information and are not hidden detail questions', blocking: true },
     { id: 'questions.evidence', group: 'questions', kind: 'deterministic', title: 'Every question has verifiable evidence', needsWorksheet: true, blocking: false,
       check(ctx) {
@@ -572,5 +658,6 @@
     speakerStats, tagStats, normalizeContent, normalizeMeta, normalizeWorksheet, normalizeQuestion,
     repairable, repairPlan, problemScore, applyQuestionPatch, changedQuestions, STRUCTURAL, applicableRules, runDeterministic,
     runContentChecks, llmRules, mergeReview, blockingFailures, summarize,
+    chronologyReport, enforceChronology, normalizeGlossary, slimMeasurement,
   };
 });

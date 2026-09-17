@@ -16,6 +16,7 @@
     <button type="button" id="nav-listening" data-nav="listening">Listening erstellen</button>
     <button type="button" id="nav-reading" data-nav="reading">Reading erstellen</button>
     <button type="button" id="nav-vocab" data-nav="vocab">Vocabulary / Lehrmittel verwalten</button>
+    <button type="button" id="nav-level" data-nav="level">Niveau messen</button>
     <button type="button" id="nav-materials" data-nav="materials">Materialien</button>
     <button type="button" id="nav-check" data-nav="check">Konzept-Check</button>
   </nav>
@@ -76,7 +77,7 @@
           <button type="button" class="tab" data-tab="json">JSON</button>
         </div>
         <div class="output-actions">
-          <button type="button" class="btn tiny primary" data-download="docx-student">Word: Schülerversion</button>
+          <button type="button" class="btn tiny primary" data-download="docx-student">Word: Schülerversion</button><span id="dl-variants" class="dl-variants"></span>
           <button type="button" class="btn tiny primary" data-download="docx-teacher">Word: Lehrerversion</button>
           <button type="button" class="btn tiny" id="btn-print">Drucken</button>
           <button type="button" class="btn tiny" data-download="student">Student .html</button>
@@ -91,6 +92,29 @@
       <div class="pane" data-pane="prompts" id="out-prompts" hidden></div>
       <pre class="pane json" data-pane="json" id="out-json" hidden></pre>
     </section>
+  </section>
+
+  <!-- Level meter -->
+  <section class="view" id="view-level" hidden>
+    <div class="creator-head"><h1>Niveau messen</h1><div class="creator-actions"><button type="button" class="btn ghost" id="btn-lv-example">Beispiel einfügen</button></div></div>
+    <p class="help">Skript oder Text einfügen: Der Schwierigkeitsmesser bestimmt das CEFR-Niveau (A2.1–B2.2) aus Satzlänge, Wortschatz jenseits der 2000 bzw. 3500 häufigsten Wörter, Nebensätzen, anspruchsvoller Grammatik, Idiomatik und Beitragslänge. Derselbe Messer prüft jedes generierte Material gegen das gewählte Niveau und steuert die Korrektur. Kalibriert am Podcast-Skript «Screen Time» (B1.2).</p>
+    <div class="lv-grid">
+      <div>
+        <div class="lv-options">
+          <label><input type="radio" name="lv-kind" value="listening" checked> Listening-Skript (Sprecher: Text)</label>
+          <label><input type="radio" name="lv-kind" value="reading"> Reading-Text (Absätze)</label>
+          <label>Ziel <select id="lv-target"></select></label>
+          <label>Audiolänge (s) <input type="number" id="lv-seconds" min="0" step="10" placeholder="optional" style="width:6rem"></label>
+        </div>
+        <textarea id="lv-text" rows="18" placeholder="Speaker 1: [warmly] Welcome back to …&#10;Speaker 2: …"></textarea>
+        <div class="lv-actions"><button type="button" class="btn primary" id="btn-lv-measure">Messen</button><button type="button" class="btn secondary" id="btn-lv-opinion" disabled>Zweitmeinung von Claude</button><span class="muted small" id="lv-count"></span></div>
+        <p class="muted small" id="lv-attribution"></p>
+      </div>
+      <div>
+        <div id="lv-result"><p class="muted">Noch keine Messung.</p></div>
+        <div id="lv-opinion"></div>
+      </div>
+    </div>
   </section>
 
   <!-- Vocabulary manager -->
@@ -174,6 +198,8 @@ body{font-family:Georgia,serif;margin:2cm;color:#111;line-height:1.45}.sheet h1{
 </script>
 
 <script src="core.js"></script>
+<script src="wordlist.js"></script>
+<script src="level.js"></script>
 <script src="prompts.js"></script>
 <script src="quality.js"></script>
 <script src="render.js"></script>

@@ -6,9 +6,9 @@
  * texts, questions, instructions and topic ideas all come from Claude.
  */
 (function (root, factory) {
-  if (typeof module === 'object' && module.exports) module.exports = factory(require('./core.js'));
-  else { root.LR = root.LR || {}; root.LR.prompts = factory(root.LR.core); }
-})(typeof self !== 'undefined' ? self : this, function (core) {
+  if (typeof module === 'object' && module.exports) module.exports = factory(require('./core.js'), require('./level.js'));
+  else { root.LR = root.LR || {}; root.LR.prompts = factory(root.LR.core, root.LR.level); }
+})(typeof self !== 'undefined' ? self : this, function (core, level) {
   'use strict';
 
   function scale(v, labels) {
@@ -82,6 +82,14 @@
     return lines.join('\n');
   }
 
+  function levelTargetBlock(state, plan) {
+    if (plan.levelMeter === false) return '';
+    const d = level.DESCRIPTORS[plan.cefr] || {};
+    return '## Measurable level targets (the text is measured against these after writing)\n'
+      + `What ${plan.cefr} means here: ${d.language || ''}\n`
+      + level.targetLines(plan.cefr, state.kind).map(l => '- ' + l).join('\n');
+  }
+
   function languageBlock(state, plan) {
     return [
       `CEFR level of the language: ${plan.cefr}. Stay inside this level even where the settings ask for natural or idiomatic speech.`,
@@ -90,7 +98,8 @@
       `Vocabulary difficulty (beyond the target words): ${scale(state.vocabularyDifficulty, ['very frequent words only', 'frequent words', 'level-typical', 'some less frequent words', 'demanding'])}.`,
       `Idiomatic language: ${scale(state.idiomaticLanguage, ['none', 'rare', 'occasional', 'frequent', 'very frequent'])}.`,
       `Information explicitness: ${scale(state.explicitness, ['very explicit — facts are stated directly', 'mostly explicit', 'mixed', 'often implicit — facts must be pieced together', 'highly implicit'])}. Example of explicit: "I didn't go to the party because I was sick." Less explicit: "Everyone was posting pictures from the party. I spent the evening on the sofa with a fever."`,
-    ].join('\n');
+      levelTargetBlock(state, plan),
+    ].filter(Boolean).join('\n');
   }
 
   function vocabularyBlock(state, plan) {
@@ -224,29 +233,54 @@
     return (content.paragraphs || []).map((p, i) => `[¶${i + 1}] ${p}`).join('\n\n');
   }
 
+  /** Questions follow the timeline of the material — always, checked automatically. */
+  function chronologyRule(isL) {
+    const medium = isL ? 'audio' : 'text';
+    return `The questions MUST appear in the order in which the information occurs in the ${medium} (the timeline). Number them in that order: Q1 refers to the earliest place, the last question to the latest. Only Gist / global-understanding questions may stand at the very beginning or the very end. The order is verified automatically against the position of each "evidenceQuote" in the ${medium}; a worksheet that breaks the timeline is rejected.`;
+  }
+  function skillCountLines(mix) {
+    return core.SKILL_KEYS.filter(k => mix[k]).map(k => `- ${mix[k]}× ${skillLabel(k)} ("skill": "${k}") — ${SKILL_DEFINITIONS[k]}`).join('\n');
+  }
+  function formatCountLines(seq) {
+    const counts = {};
+    for (const f of seq) counts[f] = (counts[f] || 0) + 1;
+    return Object.keys(counts).map(f => `- ${counts[f]}× ${formatLabel(f)} ("format": "${f}")`).join('\n');
+  }
+  function questionLevelLines(state, plan) {
+    const lv = core.QUESTION_LEVELS[plan.questionLevel];
+    const diff = plan.questionDifficulty == null ? state.questionDifficulty : plan.questionDifficulty;
+    const out = [`Language level of the material: ${plan.cefr}.`];
+    if (lv) {
+      out.push(`Question level (meta-setting): ${lv.label} — ${lv.describe}. Every question, its options and its expected answer are written at CEFR ${lv.bands.join(' to ')}; give each question "difficulty" from ${lv.bands.map(b => '"' + b + '"').join(' / ')}.`);
+      if (lv.bands.length > 1) out.push(`Use the lower band (${lv.bands[0]}) for Gist, Specific information and Detail questions and the higher band (${lv.bands[lv.bands.length - 1]}) only for Connecting, Inference, Attitude and Purpose questions.`);
+    } else {
+      out.push(`Questions are written at CEFR ${plan.questionBand}.`);
+    }
+    out.push(`Question difficulty is set INDEPENDENTLY of the text difficulty: ${scale(diff, ['easy', 'fairly easy', 'medium', 'challenging', 'very challenging'])}.`);
+    return out.join('\n');
+  }
+
   function buildQuestionPrompt(state, plan, content) {
     const isL = state.kind === 'listening';
     const lines = [];
     lines.push(`You are an experienced EFL test writer. Create a worksheet for the ${isL ? 'listening script' : 'reading text'} below. Students will ${isL ? 'hear the audio (they do not see the script)' : 'read the text'}.`);
     lines.push('## Material\nTitle: ' + content.title + '\n' + contentAsText(content, state));
-    lines.push('## Language\n' + `Language level of the material: ${plan.cefr}. Questions are written at CEFR ${plan.questionBand}; question difficulty is set INDEPENDENTLY of the text difficulty: ${scale(state.questionDifficulty, ['easy', 'fairly easy', 'medium', 'challenging', 'very challenging'])}.`);
+    lines.push('## Language\n' + questionLevelLines(state, plan));
     lines.push('## Difficulty control\nDifficulty must not come from the question type alone. Adjust it through: how explicitly the information is given, the distance between information and question, the use of synonyms/paraphrase instead of the words of the text, how many pieces of information must be combined, the plausibility of distractors, the share of inference and the linguistic complexity of the question.'
       + `\nDistractor difficulty: ${scale(state.distractorDifficulty, ['obviously wrong distractors', 'easy distractors', 'plausible distractors', 'demanding distractors that echo the text', 'very demanding distractors'])}.`
       + `\nInference level: ${scale(state.inferenceLevel, ['inference questions stay very close to the text', 'light inference', 'medium inference', 'inference questions require genuine reasoning', 'deep inference'])}.`);
 
-    lines.push('## Comprehension questions\n' + `Write exactly ${plan.questionCount} questions. Each question tests ONE of these skills; the required skill for each question number is fixed:\n`
-      + plan.skillSequence.map((s, i) => `Q${i + 1}: ${skillLabel(s)} — ${SKILL_DEFINITIONS[s]}`).join('\n'));
+    lines.push('## Comprehension questions\n' + `Write exactly ${plan.questionCount} questions. Each question tests ONE skill; the number of questions per skill is fixed:\n`
+      + skillCountLines(plan.skillMix));
     if (plan.formatSequence) {
-      lines.push('## Response formats (automatic balanced mix)\nThe response format for each question is fixed:\n' + plan.formatSequence.map((f, i) => `Q${i + 1}: ${formatLabel(f)} ("format": "${f}")`).join('\n'));
+      lines.push('## Response formats (automatic balanced mix)\nUse the enabled formats this many times (the spread is fixed; which question gets which format is your choice, but Gist questions take "best_summary" when it is listed):\n' + formatCountLines(plan.formatSequence));
     } else {
       lines.push('## Response formats\nChoose for each question one of these enabled formats and vary them sensibly: ' + plan.formats.map(f => `${formatLabel(f)} ("${f}")`).join(', ') + '.');
     }
     lines.push('## Format shapes\n' + plan.formats.map(f => `- ${f}: ${FORMAT_SHAPES[f]}`).join('\n'));
-    lines.push('## Order\n' + (state.followChronology
-      ? `Follow ${isL ? 'audio' : 'text'} chronology: questions appear in the same order as the information in the ${isL ? 'audio' : 'text'}. Only Gist / global-understanding questions may stand at the beginning or the end.`
-      : 'The order of the questions is free; group them sensibly.'));
+    lines.push('## Order (mandatory)\n' + chronologyRule(isL));
     lines.push('## Evidence\nFor every question give "evidenceQuote": a VERBATIM excerpt (5–20 words, copied exactly) from the material that contains or implies the answer, and "evidenceRef": the line number ' + (isL ? '[n]' : '[¶n]') + ' where it is found. For Inference, Connecting, Attitude and Purpose questions add "rationale": one sentence explaining why the answer follows from the material (for Connecting questions name both places).');
-    lines.push('## Quality rules\n- Every question is answerable unambiguously and only from the material.\n- No two questions test the same piece of information.\n- Inference questions are genuinely inferential, not disguised detail questions.\n- Distractors are plausible but clearly wrong given the material.\n- Give each question "difficulty": its CEFR band (e.g. "' + plan.questionBand + '").');
+    lines.push('## Quality rules\n- Every question is answerable unambiguously and only from the material.\n- No two questions test the same piece of information.\n- Inference questions are genuinely inferential, not disguised detail questions.\n- Distractors are plausible but clearly wrong given the material.\n- Give each question "difficulty": its CEFR band, one of ' + plan.questionBands.map(b => '"' + b + '"').join(', ') + '.');
 
     if (plan.higherOrderCount > 0) {
       lines.push('## Higher-order thinking\n' + `Additionally write ${plan.higherOrderCount} higher-order task(s) in a SEPARATE array "higherOrder" (do not mix them with the comprehension questions). Types to use: ${plan.higherOrderTypes.join(', ')} — Interpretation: interpret meaning more deeply; Transfer: apply information to a new situation; Evaluation: judge a decision or position on the basis of the material. Use "type" for the type and a short-answer shape with "answer" as a model answer and "rationale".`);
@@ -275,11 +309,11 @@
     lines.push('You are a strict reviewer of EFL classroom material. Check the material and worksheet below against each rule and answer with pass/fail per rule. Be concrete: name question numbers or lines.');
     lines.push('## Settings\n' + [
       `Kind: ${state.kind}; textbook unit: ${plan.unitName}` + (plan.unitTopic ? ` (${plan.unitTopic})` : '') + `; intended topic: ${plan.topic}`,
-      `Language level: ${plan.cefr}; question level: ${plan.questionBand}; question difficulty: ${state.questionDifficulty}/100`,
+      `Language level: ${plan.cefr}; question level: ${plan.questionBand}; question difficulty: ${plan.questionDifficulty == null ? state.questionDifficulty : plan.questionDifficulty}/100`,
       `Target vocabulary that should appear: ${plan.vocabulary.map(w => w.word).join(', ')}`,
       state.kind === 'listening' ? `Speakers and target shares: ${plan.speakers.map(s => `${s.label} ${s.share} %`).join(', ')}; emotion tags: ${state.emotionTags}; naturalness ${state.naturalness}/100` : `Text type: ${state.textType}`,
-      worksheet ? `Planned skills: ${plan.skillSequence.map((s, i) => `Q${i + 1}=${s}`).join(', ')}` : 'No worksheet.',
-      state.createWorksheet && state.followChronology ? 'Questions must follow the order of the material (gist may be first/last).' : '',
+      worksheet ? `Planned skills: ${core.SKILL_KEYS.filter(k => plan.skillMix[k]).map(k => `${plan.skillMix[k]}× ${k}`).join(', ')}; allowed question bands: ${plan.questionBands.join(', ')}` + (plan.questionLevel ? ` (${plan.questionLevelLabel})` : '') : 'No worksheet.',
+      worksheet ? 'Questions must follow the order of the material — the timeline (gist may be first/last).' : '',
     ].filter(Boolean).join('\n'));
     lines.push('## Material\n' + contentAsText(content, state));
     if (worksheet) lines.push('## Worksheet (JSON)\n' + JSON.stringify({ preTasks: worksheet.preTasks, questions: worksheet.questions, higherOrder: worksheet.higherOrder }, null, 0).slice(0, 30000));
@@ -307,7 +341,7 @@
   function buildQuestionRevisionPrompt(state, plan, content, worksheet, findings, fixInstructions) {
     return [
       buildQuestionPrompt(state, plan, content),
-      '## Revision\nA previous worksheet draft failed the quality check. Fix every finding below, keep the questions that were fine, and return the complete worksheet in the same JSON shape (same number of questions, same skill per question number).',
+      '## Revision\nA previous worksheet draft failed the quality check. Fix every finding below, keep the questions that were fine, and return the complete worksheet in the same JSON shape (same number of questions, same number of questions per skill, timeline order).',
       '### Findings\n' + findingsBlock(findings) + (fixInstructions ? '\n\nReviewer instructions: ' + fixInstructions : ''),
       '### Previous worksheet\n' + JSON.stringify(worksheet).slice(0, 30000),
     ].join('\n\n');
@@ -341,7 +375,7 @@
         `### Q${n}`,
         `Required skill: ${skillLabel(q.skill)} — ${SKILL_DEFINITIONS[q.skill] || ''}`,
         `Required response format: ${formatLabel(q.format)} ("format": "${q.format}")`,
-        `Required level: ${q.difficulty || plan.questionBand}`,
+        `Required level: ${plan.questionBands.includes(q.difficulty) ? q.difficulty : plan.questionBand}`,
         'Current version: ' + JSON.stringify(q),
         'What is wrong: ' + (problems.length ? problems.join(' | ') : 'it must be replaced by a question that tests something different'),
       ].join('\n');
@@ -354,11 +388,48 @@
       + `- Give "evidenceQuote": a VERBATIM excerpt (5–20 words) from the material, and "evidenceRef": the line number ${isL ? '[n]' : '[¶n]'} where it stands. Use a different place in the material than the questions that stay, wherever the skill allows it.\n`
       + '- For Inference, Connecting, Attitude and Purpose questions add "rationale": one sentence saying why the answer follows.\n'
       + '- Inference questions must require reasoning beyond what is stated; do not restate another question as a generalisation.\n'
-      + `- Question difficulty: ${scale(state.questionDifficulty, ['easy', 'fairly easy', 'medium', 'challenging', 'very challenging'])}; distractors: ${scale(state.distractorDifficulty, ['obviously wrong', 'easy', 'plausible', 'demanding', 'very demanding'])}.`
-      + (state.followChronology ? `\n- Keep the ${isL ? 'audio' : 'text'} order: a replacement should point at roughly the same place in the material as the question it replaces, unless the problem was exactly that.` : ''));
+      + `- Question difficulty: ${scale(plan.questionDifficulty == null ? state.questionDifficulty : plan.questionDifficulty, ['easy', 'fairly easy', 'medium', 'challenging', 'very challenging'])}; distractors: ${scale(state.distractorDifficulty, ['obviously wrong', 'easy', 'plausible', 'demanding', 'very demanding'])}; "difficulty" is one of ${plan.questionBands.join(' / ')}.`
+      + `\n- Keep the ${isL ? 'audio' : 'text'} timeline: a replacement should point at roughly the same place in the material as the question it replaces (between the places of its neighbours), unless the problem was exactly that. The order is verified automatically.`);
     if (formats.length) lines.push('## Format shapes\n' + formats.map(f => `- ${f}: ${FORMAT_SHAPES[f]}`).join('\n'));
     lines.push('Reply with only a JSON object holding the replacements: {"questions": [' + targets.map(n => `{"n": ${n}, "skill": "…", "format": "…", "difficulty": "…", "prompt": "…", …format fields…, "answer": …, "evidenceQuote": "…", "evidenceRef": "…", "rationale": "…"}`).join(', ') + ']}');
     return lines.join('\n\n');
+  }
+
+  /* ------------------------------------------------------------------ */
+  /* 5b. Glossary of hard words (worksheet option, concept §28)            */
+  /* ------------------------------------------------------------------ */
+
+  /**
+   * The words come from the level meter (rare words above the level minus the
+   * target vocabulary); Claude writes the learner-facing explanations.
+   */
+  function buildGlossaryPrompt(state, plan, content, candidates) {
+    const isL = state.kind === 'listening';
+    const band = plan.questionBands ? plan.questionBands[0] : plan.cefr;
+    return [
+      `You are an EFL teacher preparing a worksheet for CEFR ${plan.cefr} learners. Explain the difficult words below as they are used in the ${isL ? 'listening script' : 'text'}, for a glossary on the first page of the worksheet.`,
+      '## Material\n' + contentAsText(content, state),
+      '## Words to explain\n' + candidates.map(c => `- ${c.word}` + (c.count > 1 ? ` (${c.count}×)` : '')).join('\n'),
+      '## Rules\n- Explain the meaning the word has HERE, in simple English at CEFR ' + band + ' (max. 12 words), and add the German equivalent.\n- Give the word as it appears in the material (the "form") and its base form (the "word").\n- Keep the order in which the words first occur in the material.\n- Do not explain the target vocabulary of the unit: ' + plan.vocabulary.map(w => w.word).join(', ') + '.\n- Skip a word only if it is a name or truly not explainable; do not add words.',
+      'Reply with only a JSON object: {"glossary": [{"word": "…", "form": "…", "explanation": "…", "german": "…"}]}',
+    ].join('\n\n');
+  }
+
+  /* ------------------------------------------------------------------ */
+  /* 5c. Second opinion on the measured level (Niveau messen page)        */
+  /* ------------------------------------------------------------------ */
+
+  function buildLevelOpinionPrompt(text, kind, measured) {
+    const isL = kind === 'listening';
+    const dims = (measured.dimensions || []).map(d => `- ${d.label}: ${d.value} ${d.unit} → ${d.band}`).join('\n');
+    const bands = level.BANDS.map(b => `- ${b}: ${(level.DESCRIPTORS[b] || {})[isL ? 'listening' : 'reading']} Sprachlich: ${(level.DESCRIPTORS[b] || {}).language}`).join('\n');
+    return [
+      `You are an experienced CEFR rater for English ${isL ? 'listening' : 'reading'} material for Swiss secondary school students. Rate the ${isL ? 'script' : 'text'} below on the six-band scale used by this tool and compare your judgement with the automatic measurement.`,
+      '## Scale\n' + bands,
+      '## Material\n' + text,
+      `## Automatic measurement\nOverall: ${measured.band} (score ${measured.score} on a 0–5 scale, confidence ${measured.confidence})\n${dims}\nHard words: ${(measured.hardWords || []).slice(0, 15).map(h => h.word).join(', ')}`,
+      'Reply with only a JSON object: {"band": "one of ' + level.BANDS.join('|') + '", "agree": true|false, "justification": "3–5 sentences in German naming concrete features of the text", "hardest": ["up to 5 concrete words or structures that push the level up"], "toReach": {"easier": "one German sentence: what to change for one band lower", "harder": "one German sentence: what to change for one band higher"}}',
+    ].join('\n\n');
   }
 
   /** What the repair round tells the reviewer/writer about the findings. */
@@ -425,6 +496,7 @@
       content: buildContentPrompt(state, plan),
       questions: state.createWorksheet ? buildQuestionPrompt(state, plan, content) : '',
       review: buildReviewPrompt(state, plan, content, state.createWorksheet ? worksheet : null, [], []),
+      glossary: state.createWorksheet && state.glossary ? buildGlossaryPrompt(state, plan, content, [{ word: 'x', count: 1 }]) : '',
     };
   }
 
@@ -432,6 +504,7 @@
     scale, SKILL_DEFINITIONS, FORMAT_SHAPES, contentAsText, documentBlock, metaSpec, contentSchema,
     buildTopicPrompt, buildContentPrompt, buildQuestionPrompt, buildReviewPrompt,
     buildContentRevisionPrompt, buildQuestionRevisionPrompt, buildQuestionRepairPrompt, findingsBlock, buildVocabParsePrompt,
-    buildUnitDetectPrompt, buildUnitTopicPrompt, buildAllPrompts,
+    buildUnitDetectPrompt, buildUnitTopicPrompt, buildAllPrompts, buildGlossaryPrompt, buildLevelOpinionPrompt,
+    chronologyRule, levelTargetBlock, questionLevelLines,
   };
 });

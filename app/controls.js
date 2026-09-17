@@ -23,6 +23,7 @@
     questionCount: { custom: 'Custom' },
     skillMixMode: { auto: 'Balanced Question Mix (automatic)', custom: 'Custom Question Mix' },
     autoFix: { off: 'Aus – Befunde nur melden', fail: 'Fehler automatisch beheben', all: 'Fehler und Warnungen automatisch beheben' },
+    questionLevel: { auto: 'Automatisch (Regler Question Difficulty)', A: 'Niveau A – B1.2 bis B2.1', B: 'Niveau B – B1.1', both: 'Beide – je ein Fragebogen für Niveau A und B' },
     audioLength: Object.fromEntries(core.AUDIO_LENGTHS.map(a => [a.key, a.label])),
     preset: Object.fromEntries(core.PRESETS.map(p => [p.key, p.label])),
     cefr: {},
@@ -57,7 +58,10 @@
     naturalness: 'Higher values add contractions, fillers, hesitation, reactions, reformulations and interruptions – always within the CEFR level.',
     vocabUsage: 'How prominently the target vocabulary is used. Words are never forced into the text.',
     questionDifficulty: 'Independent of the text level. Affects explicitness, distance, synonyms, combinations, distractors, inference share and question language.',
-    followChronology: 'Questions appear in the order of the information. Gist questions may stand first or last.',
+    questionLevel: 'Meta-Einstellung: Niveau B kann B1.1-Fragen lösen, Niveau A B1.2 bis B2.1. Mit «Beide» entstehen zwei Fragebögen zum selben Text; die Lehrerversion enthält beide Lösungen. Fragen folgen immer der Reihenfolge des Materials (wird geprüft).',
+    glossary: 'Der Schwierigkeitsmesser ermittelt die Wörter über dem Niveau (ohne Zielvokabular); Claude erklärt sie in einfachem Englisch mit deutscher Entsprechung auf der ersten Seite des Fragebogens.',
+    appendScript: 'Nur Listening: Das vollständige Skript wird als letzte Seite an die Schülerversion angehängt (Bildschirm, Word, Markdown).',
+    levelMeter: 'Der Text wird nach dem Schreiben auf Satzlänge, Wortschatz (Häufigkeitsränge), Nebensätze, anspruchsvolle Grammatik, Idiomatik und Beitragslänge gemessen. Weicht das Ergebnis vom gewählten CEFR-Niveau ab, wird der Text mit konkreten Vorgaben nachgebessert.',
     higherOrder: 'Interpretation, transfer and evaluation tasks are kept separate from the comprehension questions.',
     preTask: 'Prediction, vocabulary activation or a speaking prompt. Never gives away answers.',
     autoFormatMix: 'ON: the app assigns the enabled formats evenly to the questions. OFF: Claude chooses freely among the enabled formats.',
@@ -118,19 +122,19 @@
   const ORDER = {
     1: ['textbookId', 'unitId', 'useUnitTopic'],
     2: ['topicMode', 'customTopic'],
-    3: ['cefr', 'languageComplexity'],
+    3: ['cefr', 'levelMeter', 'languageComplexity'],
     4: ['format', 'speakerCount', 'preset', 'speakerBalance', 'customShares', 'turnLength', 'turnVariability', 'audioLength', 'audioLengthCustom', 'speakingSpeed', 'speakerProfiles', 'emotionTags', 'naturalness', 'explicitness',
         'textType', 'customTextType', 'lengthMode', 'wordCount', 'a4Pages'],
     5: ['vocabUsage', 'targetVocabMin', 'targetVocabMax', 'vocabSelectionMode', 'selectedVocab', 'highlightVocab'],
-    6: ['createWorksheet', 'questionCount', 'questionCountCustom', 'questionDifficulty', 'skillMixMode', 'customSkillMix', 'questionFormats', 'autoFormatMix', 'followChronology', 'higherOrder', 'higherOrderCount', 'higherOrderTypes', 'preTask', 'preTaskTypes'],
+    6: ['createWorksheet', 'questionCount', 'questionCountCustom', 'questionLevel', 'questionDifficulty', 'glossary', 'appendScript', 'skillMixMode', 'customSkillMix', 'questionFormats', 'autoFormatMix', 'higherOrder', 'higherOrderCount', 'higherOrderTypes', 'preTask', 'preTaskTypes'],
     7: ['grammarComplexity', 'vocabularyDifficulty', 'idiomaticLanguage', 'paragraphLength', 'dialogueProportion', 'styleBalance', 'distractorDifficulty', 'inferenceLevel', 'autoFix', 'autoFixRounds'],
   };
 
   const ADVANCED_GROUPS = [
     { title: 'Audio', keys: ['speakerCount', 'customShares', 'turnLength', 'turnVariability', 'speakingSpeed', 'naturalness', 'emotionTags', 'explicitness'] },
     { title: 'Text', keys: ['wordCount', 'paragraphLength', 'dialogueProportion', 'styleBalance'] },
-    { title: 'Language', keys: ['cefr', 'grammarComplexity', 'vocabularyDifficulty', 'vocabUsage', 'idiomaticLanguage'] },
-    { title: 'Questions', keys: ['questionCount', 'questionDifficulty', 'skillMixMode', 'questionFormats', 'distractorDifficulty', 'inferenceLevel', 'followChronology'] },
+    { title: 'Language', keys: ['cefr', 'levelMeter', 'grammarComplexity', 'vocabularyDifficulty', 'vocabUsage', 'idiomaticLanguage'] },
+    { title: 'Questions', keys: ['questionCount', 'questionLevel', 'questionDifficulty', 'skillMixMode', 'questionFormats', 'distractorDifficulty', 'inferenceLevel', 'glossary', 'appendScript'] },
     { title: 'Qualität', keys: ['autoFix', 'autoFixRounds'] },
   ];
 

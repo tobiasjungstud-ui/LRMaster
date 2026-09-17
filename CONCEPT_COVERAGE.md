@@ -2,7 +2,7 @@
 
 Erzeugt von `npm run coverage`. Jede Zeile ist eine Anforderung aus `docs/Konzept_Listening_Reading_Creator.md`, gebunden an die Stelle im Code, die sie umsetzt, und das Ergebnis der automatischen Prüfung (`npm test`).
 
-**Ergebnis: 208 von 208 Anforderungen bestanden.**
+**Ergebnis: 222 von 222 Anforderungen bestanden.**
 
 Prüfarten: **setting** – Steuerelement vorhanden und Änderung des Werts verändert nachweislich den Prompt an Claude · **function** – Verhalten wird mit echten Eingaben ausgeführt und verglichen · **rule** – Qualitätsregel existiert als Messung oder Claude-Review-Kriterium · **render** – Ausgabe wird auf einer Fixture gerendert und inhaltlich geprüft · **ui** – Navigations-/Strukturelement existiert.
 
@@ -232,11 +232,12 @@ Prüfarten: **setting** – Steuerelement vorhanden und Änderung des Werts ver�
 | ✅ | `S25.formats` | 14 Frageformate, mehrere gleichzeitig aktivierbar | setting | Setting `questionFormats` (core.SCHEMA → Control `[data-setting="questionFormats"]` → prompts.js) |
 | ✅ | `S25.auto_mix` | Automatic balanced mix sorgt für Variation | setting | Setting `autoFormatMix` (core.SCHEMA → Control `[data-setting="autoFormatMix"]` → prompts.js) |
 
-## §26 Question Order (2/2)
+## §26 Question Order (3/3)
 
 | Status | ID | Anforderung | Art | Umsetzung |
 |---|---|---|---|---|
-| ✅ | `S26.chronology` | Follow audio chronology / Follow text order (Default ON, Gist-Ausnahme) | setting | Setting `followChronology` (core.SCHEMA → Control `[data-setting="followChronology"]` → prompts.js) |
+| ✅ | `S26.chronology` | Fragen folgen immer der Reihenfolge des Materials (Listening und Reading, Gist-Ausnahme) – kein Schalter, immer Pflicht | function | Funktion (siehe Check im Manifest) |
+| ✅ | `S26.enforce` | Eingehende Fragebögen werden deterministisch in die Reihenfolge des Materials gebracht und neu nummeriert (jede Runde) | function | Funktion (siehe Check im Manifest) |
 | ✅ | `S26.check` | Reihenfolge wird anhand der Evidenzstellen geprüft | rule | Quality rule `questions.chronology` (gemessen in quality.js) |
 
 ## §27 Pre-Listening / Pre-Reading (3/3)
@@ -309,6 +310,7 @@ Prüfarten: **setting** – Steuerelement vorhanden und Änderung des Werts ver�
 
 | Status | ID | Anforderung | Art | Umsetzung |
 |---|---|---|---|---|
+| ✅ | `S30.chronology` | Advanced: chronology – immer aktiv, kein Schalter (siehe §26) | function | Funktion (siehe Check im Manifest) |
 | ✅ | `S30.speakerCount` | Advanced: number of speakers (= Einstellung „speakerCount“) | function | Funktion (siehe Check im Manifest) |
 | ✅ | `S30.customShares` | Advanced: individual speaker share (= Einstellung „customShares“) | function | Funktion (siehe Check im Manifest) |
 | ✅ | `S30.turnLength` | Advanced: average turn length (= Einstellung „turnLength“) | function | Funktion (siehe Check im Manifest) |
@@ -332,7 +334,6 @@ Prüfarten: **setting** – Steuerelement vorhanden und Änderung des Werts ver�
 | ✅ | `S30.questionFormats` | Advanced: response formats (= Einstellung „questionFormats“) | function | Funktion (siehe Check im Manifest) |
 | ✅ | `S30.distractorDifficulty` | Advanced: distractor difficulty | setting | Setting `distractorDifficulty` (core.SCHEMA → Control `[data-setting="distractorDifficulty"]` → prompts.js) |
 | ✅ | `S30.inferenceLevel` | Advanced: inference level | setting | Setting `inferenceLevel` (core.SCHEMA → Control `[data-setting="inferenceLevel"]` → prompts.js) |
-| ✅ | `S30.followChronology` | Advanced: chronology (= Einstellung „followChronology“) | function | Funktion (siehe Check im Manifest) |
 
 ## §31 Simple vs. Advanced Mode (2/2)
 
@@ -371,13 +372,31 @@ Prüfarten: **setting** – Steuerelement vorhanden und Änderung des Werts ver�
 | ✅ | `S33.design_dialogue` | Design „dialogue“ (Dialogue) enthält die typischen Elemente | function | Funktion (siehe Check im Manifest) |
 | ✅ | `S33.design_custom` | Design „custom“ (Custom) enthält die typischen Elemente | function | Funktion (siehe Check im Manifest) |
 | ✅ | `S33.design_script` | Listening-Skript wird als Aufnahme-Skript gesetzt (Zeilennummern, Sprecher, Emotion-Tags, Setting) | function | Funktion (siehe Check im Manifest) |
-| ✅ | `S33.student_no_script` | Word-Schülerversion enthält beim Listening kein Skript | function | Funktion (siehe Check im Manifest) |
+| ✅ | `S33.student_no_script` | Word-Schülerversion enthält beim Listening kein Skript (ausser die Option „Skript auf der letzten Seite“ ist gewählt) | function | Funktion (siehe Check im Manifest) |
 | ✅ | `S33.student_worksheet` | Word-Schülerversion ist ein echtes Arbeitsblatt (Name/Klasse/Datum, Ankreuzkästchen, Schreiblinien, Seitenzahl) | function | Funktion (siehe Check im Manifest) |
 | ✅ | `S33.teacher_key` | Word-Lehrerversion enthält Skript/Text, Vokabeln, Lösungsschlüssel mit Skill, Difficulty, Evidenz und Qualitätsbericht | function | Funktion (siehe Check im Manifest) |
 | ✅ | `S33.teacher_highlight` | Zielvokabular wird in der Word-Lehrerversion hervorgehoben (Schalter wirkt) | function | Funktion (siehe Check im Manifest) |
 | ✅ | `S33.meta_from_claude` | Dokument-Angaben (Byline, From/To/Subject, Usernames, Rating …) stammen von Claude, nicht aus dem Code | function | Funktion (siehe Check im Manifest) |
 | ✅ | `S33.reading_text_in_student` | Word-Schülerversion enthält beim Reading den Text im Layout des Texttyps und danach das Arbeitsblatt | function | Funktion (siehe Check im Manifest) |
 | ✅ | `S33.html_matches` | Die Bildschirmvorschau zeigt denselben Texttyp-Aufbau wie das Word-Dokument | function | Funktion (siehe Check im Manifest) |
+
+## §34  (13/13)
+
+| Status | ID | Anforderung | Art | Umsetzung |
+|---|---|---|---|---|
+| ✅ | `S34.meter_setting` | Schalter „Schwierigkeit messen und nachsteuern“ (Ziel-Niveau = CEFR-Auswahl; Messwerte als Vorgaben im Prompt) | setting | Setting `levelMeter` (core.SCHEMA → Control `[data-setting="levelMeter"]` → prompts.js) |
+| ✅ | `S34.dimensions` | Messer bewertet Satzlänge, Wortschatz (>2000 / >3500 Häufigkeitsrang), Nebensätze, anspruchsvolle Grammatik, Idiomatik und Beitragslänge | function | Funktion (siehe Check im Manifest) |
+| ✅ | `S34.anchor` | Kalibrierung: das Podcast-Skript „Screen Time“ misst B1.2 (Ankerpunkt), A2- und B2-Beispiele ordnen sich monoton ein | function | Funktion (siehe Check im Manifest) |
+| ✅ | `S34.descriptors` | Jede Stufe A2.1–B2.2 ist mit Hör-/Lese-Deskriptor (GER-Begleitband) und sprachlichen Merkmalen hinterlegt | function | Funktion (siehe Check im Manifest) |
+| ✅ | `S34.rule` | Quality Check – gemessene Schwierigkeit gegen das Ziel-Niveau (Warnung bei 1 Stufe, Fehler ab 2 Stufen, mit konkreten Korrekturhinweisen) | rule | Quality rule `content.level_measured` (gemessen in quality.js) |
+| ✅ | `S34.repair` | Abweichungen des Messers fliessen als Korrekturauftrag in die Textüberarbeitung ein (automatische Korrektur) | function | Funktion (siehe Check im Manifest) |
+| ✅ | `S34.output` | Messung wird im Quality-Tab, in der Lehrerversion (HTML, Markdown, Word) ausgewiesen | render | render.js (renderStudentHTML / renderTeacherHTML) |
+| ✅ | `S34.page` | Seite „Niveau messen“: Skript/Text einfügen, messen, Zweitmeinung von Claude | ui | Element `#nav-level` |
+| ✅ | `S34.question_level` | Meta-Einstellung Niveau der Fragen: Niveau B = B1.1, Niveau A = B1.2–B2.1, „Beide“ erzeugt zwei Fragebögen | setting | Setting `questionLevel` (core.SCHEMA → Control `[data-setting="questionLevel"]` → prompts.js) |
+| ✅ | `S34.variants_output` | „Beide“: je eine Schülerversion pro Niveau (Bildschirm, HTML, Word A/B), Lehrerversion mit beiden Lösungen, Prüfung je Fragebogen | render | render.js (renderStudentHTML / renderTeacherHTML) |
+| ✅ | `S34.band_rule` | Quality Check – jede Frage trägt eine Stufe innerhalb des erlaubten Fragen-Niveaus | rule | Quality rule `questions.level_band` (gemessen in quality.js) |
+| ✅ | `S34.glossary` | Option „Fremdwörter auf der 1. Seite erklärt“: Messer wählt die Wörter über dem Niveau (ohne Zielvokabular), Claude erklärt sie; Ausgabe auf Seite 1 (HTML, Word) | setting | Setting `glossary` (core.SCHEMA → Control `[data-setting="glossary"]` → prompts.js) |
+| ✅ | `S34.append_script` | Option „Skript auf der letzten Seite abgebildet“ (Listening): Schülerversion endet mit dem Skript (HTML, Word, Markdown) | setting | Setting `appendScript` (core.SCHEMA → Control `[data-setting="appendScript"]` → prompts.js) |
 
 ## Einstellungen (core.SCHEMA)
 
@@ -389,6 +408,7 @@ Prüfarten: **setting** – Steuerelement vorhanden und Änderung des Werts ver�
 | `topicMode` | select | 2 | both | ja | `"unit"` |
 | `customTopic` | text | 2 | both | ja | `""` |
 | `cefr` | select | 3 | both | ja | `"B1.1"` |
+| `levelMeter` | toggle | 3 | both | ja | `true` |
 | `languageComplexity` | range | 3 | both | nein | `50` |
 | `grammarComplexity` | range | 7 | both | nein | `50` |
 | `vocabularyDifficulty` | range | 7 | both | nein | `50` |
@@ -429,7 +449,9 @@ Prüfarten: **setting** – Steuerelement vorhanden und Änderung des Werts ver�
 | `customSkillMix` | map | 6 | both | nein | `{"gist":1,"specific":2,"detail":2,"connecting":2,"inference":2,"attitude":1,"purpose":0,"context":0}` |
 | `questionFormats` | multiselect | 6 | both | nein | `["multiple_choice","true_false","short_answer","wh_question","sentence_completion"]` |
 | `autoFormatMix` | toggle | 6 | both | nein | `true` |
-| `followChronology` | toggle | 6 | both | nein | `true` |
+| `questionLevel` | select | 6 | both | ja | `"auto"` |
+| `glossary` | toggle | 6 | both | ja | `false` |
+| `appendScript` | toggle | 6 | listening | ja | `false` |
 | `higherOrder` | toggle | 6 | both | nein | `false` |
 | `higherOrderCount` | number | 6 | both | nein | `2` |
 | `higherOrderTypes` | multiselect | 6 | both | nein | `["interpretation","transfer","evaluation"]` |
@@ -450,6 +472,7 @@ Prüfarten: **setting** – Steuerelement vorhanden und Änderung des Werts ver�
 | `content.coherent` | content | llm | ja | Text is coherent |
 | `content.natural` | content | llm | nein | Conversation/text sounds natural |
 | `content.level` | content | llm | ja | Language matches the CEFR level |
+| `content.level_measured` | content | deterministic | nein | Measured difficulty matches the CEFR level |
 | `content.word_count` | content | deterministic | ja | Length matches the target |
 | `content.meta_fields` | content | deterministic | nein | Document details for the text type are complete |
 | `listening.shares` | listening | deterministic | ja | Speaking shares match the settings |
@@ -462,11 +485,12 @@ Prüfarten: **setting** – Steuerelement vorhanden und Änderung des Werts ver�
 | `questions.answerable` | questions | llm | ja | Every question is answerable unambiguously |
 | `questions.derivable` | questions | llm | ja | Correct answer follows from the material |
 | `questions.distractors` | questions | llm | nein | Distractors are plausible |
-| `questions.chronology` | questions | deterministic | nein | Questions follow audio/text order |
+| `questions.chronology` | questions | deterministic | ja | Questions follow the timeline of the audio/text |
 | `questions.no_duplicates` | questions | deterministic | nein | No two questions test the same information |
 | `questions.duplicates_llm` | questions | llm | nein | No two questions test exactly the same information (review) |
 | `questions.skill_distribution` | questions | deterministic | ja | Skill distribution matches the settings |
 | `questions.formats` | questions | deterministic | ja | Only enabled response formats are used |
+| `questions.level_band` | questions | deterministic | nein | Question bands stay within the question level |
 | `questions.difficulty` | questions | llm | nein | Difficulty matches the requested level |
 | `questions.inference_genuine` | questions | llm | ja | Inference questions are genuinely inferential |
 | `questions.evidence` | questions | deterministic | nein | Every question has verifiable evidence |

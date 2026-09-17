@@ -353,3 +353,34 @@ mark.vocab { background: var(--mark); color: inherit; border-radius: 3px; paddin
   body { background: #fff; color: #111; }
   .sheet { max-width: none; }
 }
+
+/* Level meter, variants, glossary, script appendix */
+.meter { margin: .4rem 0 1rem; }
+.meter-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: .4rem .8rem; margin-bottom: .4rem; }
+.meter-band { font-size: 1.6rem; font-weight: 700; letter-spacing: .02em; }
+.gauge { margin: .3rem 0 .8rem; }
+.gauge-scale { display: grid; grid-template-columns: repeat(6, 1fr); font-family: var(--font-mono); font-size: .72rem; text-align: center; color: var(--muted); }
+.gauge-scale .target { color: var(--ink); font-weight: 700; }
+.gauge-scale .hit { text-decoration: underline; }
+.gauge-bar { position: relative; height: 10px; border-radius: 999px; background: linear-gradient(90deg, #cfe8d3, #f3e6b0 50%, #f0c4c4); }
+.gauge-marker { position: absolute; top: -4px; width: 18px; height: 18px; margin-left: -9px; border-radius: 50%; background: var(--ink); border: 2px solid var(--surface); box-shadow: var(--shadow); }
+.gauge-target { position: absolute; top: -6px; width: 2px; height: 22px; margin-left: -1px; background: var(--ink); opacity: .5; }
+.meter-table td:first-child { width: 4.5rem; }
+.hard-c { font-weight: 600; }
+.variant-switch { display: flex; flex-wrap: wrap; gap: .35rem; margin-bottom: .8rem; }
+.variant-switch .chip-btn.active { background: var(--ink); color: var(--surface); }
+.dl-variants { display: inline-flex; gap: .35rem; }
+.glossary-list { display: grid; grid-template-columns: max-content 1fr; gap: .25rem .9rem; margin: 0 0 1rem; }
+.glossary-list .gl { display: contents; }
+.glossary-list dt { font-weight: 700; }
+.glossary-list dd { margin: 0; }
+.glossary-list .german { color: var(--muted); font-style: italic; }
+.page-break { break-before: page; page-break-before: always; }
+.lv-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 1.2rem; }
+@media (max-width: 900px) { .lv-grid { grid-template-columns: 1fr; } }
+.lv-options { display: flex; flex-wrap: wrap; gap: .5rem 1rem; margin-bottom: .5rem; font-size: .9rem; }
+.lv-actions { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; margin-top: .5rem; }
+#lv-text { width: 100%; font: inherit; font-size: .9rem; padding: .6rem; border: 1px solid var(--line); border-radius: 8px; resize: vertical; }
+.lv-verdict { padding: .4rem .6rem; border-radius: 8px; background: var(--ground); }
+.lv-desc { margin-top: .6rem; }
+.sheet .badge { font-size: .7rem; padding: .1rem .4rem; border-radius: 999px; background: var(--ground); }
