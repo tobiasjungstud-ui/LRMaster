@@ -30,6 +30,7 @@
   function formatLabel(k) { const f = core.QUESTION_FORMATS.find(x => x.key === k); return f ? f.label : k; }
   function hoLabel(k) { const t = core.HIGHER_ORDER_TYPES.find(x => x.key === k); return t ? t.label : k; }
   function preLabel(k) { const t = core.PRE_TASK_TYPES.find(x => x.key === k); return t ? t.label : k; }
+  function postLabel(k) { const t = core.POST_TASK_TYPES.find(x => x.key === k); return t ? t.label : k; }
 
   /** Wrap occurrences of target vocabulary in <mark>. */
   function highlight(text, items) {
@@ -177,19 +178,22 @@
   function socialEn(k) { const f = core.SOCIAL_FORMS.find(x => x.key === k); return f ? f.en : k; }
   function modeLabel(k) { const m = core.PRE_TASK_MODES.find(x => x.key === k); return m ? m.label : k; }
 
-  function preTaskHtml(p, teacher) {
+  function preTaskHtml(p, teacher, phase) {
     const badges = [
       p.socialForm ? `<span class="badge social ${esc(p.socialForm)}">${esc(socialLabel(p.socialForm))} · ${esc(socialEn(p.socialForm))}</span>` : '',
       p.mode ? `<span class="badge mode ${esc(p.mode)}">${p.mode === 'oral' ? '🗣 ' : '✎ '}${esc(modeLabel(p.mode))}</span>` : '',
       p.minutes ? `<span class="badge time">${p.minutes} min</span>` : '',
     ].filter(Boolean).join('');
-    let html = `<section class="pretask" data-mode="${esc(p.mode || 'written')}"><h3>${p.n ? esc(String(p.n)) + '. ' : ''}${esc(preLabel(p.type))}${p.title ? ': ' + esc(p.title) : ''}</h3>`;
+    const isPost = phase === 'post';
+    let html = `<section class="pretask${isPost ? ' posttask' : ''}" data-mode="${esc(p.mode || 'written')}"><h3>${p.n ? esc(String(p.n)) + '. ' : ''}${esc(isPost ? postLabel(p.type) : preLabel(p.type))}${p.title ? ': ' + esc(p.title) : ''}</h3>`;
     if (badges) html += `<p class="pretask-meta">${badges}</p>`;
     html += `<p>${esc(p.prompt)}</p>`;
     if (p.items && p.items.length) html += '<ul class="pretask-items">' + p.items.map(i => `<li>${esc(i)}</li>`).join('') + '</ul>';
     if (p.mode !== 'oral') html += '<p class="answer-line">_________________________________________________</p><p class="answer-line">_________________________________________________</p>';
+    if (p.product) html += `<p class="product"><strong>Result:</strong> ${esc(p.product)}</p>`;
     if (p.criteria && p.criteria.length) html += '<div class="criteria"><h4>Success criteria</h4><ul>' + p.criteria.map(c => `<li>${esc(c)}</li>`).join('') + '</ul></div>';
     if (teacher) {
+      if (p.reference) html += `<p class="teacher-note">Starts from: “${esc(p.reference)}”</p>`;
       if (p.vocabUsed && p.vocabUsed.length) html += `<p class="teacher-note">Target words used: ${p.vocabUsed.map(esc).join(', ')}</p>`;
       if (p.materials) html += `<p class="teacher-note">Material: ${esc(p.materials)}</p>`;
       if (p.teacherNote) html += `<p class="teacher-note">Teacher note: ${esc(p.teacherNote)}</p>`;
@@ -274,6 +278,9 @@
     if (ws && ws.higherOrder && ws.higherOrder.length) {
       html += '<section class="block higher-order"><h2>Beyond the text</h2><ol class="qlist">' + ws.higherOrder.map(h => `<li class="q"><span class="q-format">${esc(hoLabel(h.type))}</span><p class="q-prompt">${esc(h.prompt)}</p><p class="answer-line">_________________________________________________</p><p class="answer-line">_________________________________________________</p></li>`).join('') + '</ol></section>';
     }
+    if (ws && ws.postTasks && ws.postTasks.length) {
+      html += `<section class="block post-tasks"><h2>After you ${isL ? 'listen' : 'read'}</h2>` + ws.postTasks.map(p => preTaskHtml(p, false, 'post')).join('') + '</section>';
+    }
     html += scriptAppendixHTML(m);
     html += '</article>';
     return html;
@@ -316,6 +323,7 @@
       const vws = v.worksheet;
       const suffix = v.label ? ` — ${esc(v.label)} (${esc((v.plan || m.plan).questionBands ? (v.plan || m.plan).questionBands.join('–') : (v.plan || m.plan).questionBand)})` : '';
       if (vws.preTasks.length) html += `<section class="block"><h2>Pre-task${suffix}</h2>` + vws.preTasks.map(p => preTaskHtml(p, true)).join('') + '</section>';
+      if ((vws.postTasks || []).length) html += `<section class="block"><h2>Post-task${suffix}</h2>` + vws.postTasks.map(p => preTaskHtml(p, true, 'post')).join('') + '</section>';
       html += `<section class="block key"><h2>Answer key${suffix}</h2><div class="table-wrap"><table class="keytable"><thead><tr><th>Q</th><th>Skill</th><th>Format</th><th>Difficulty</th><th>Correct answer</th><th>Evidence</th></tr></thead><tbody>`;
       for (const q of vws.questions) {
         html += `<tr><td>${q.n}</td><td>${esc(skillLabel(q.skill))}</td><td>${esc(formatLabel(q.format))}</td><td>${esc(q.difficulty)}</td><td>${answerText(q)}</td><td>${q.evidenceRef ? `<span class="ref">${esc(q.evidenceRef)}</span> ` : ''}“${esc(q.evidenceQuote)}”${q.rationale ? `<div class="rationale">${esc(q.rationale)}</div>` : ''}</td></tr>`;
@@ -365,6 +373,12 @@
     out.push('## Student version' + (variantsOf(m).length > 1 ? ' — ' + variantsOf(m).map(v => v.label).join(' / ') : ''));
     if (ws && ws.instructions) out.push(ws.instructions, '');
     if (m.glossary && m.glossary.length) out.push('### Words to know', ...m.glossary.map(g => `- **${g.form || g.word}** — ${g.explanation}${g.german ? ' (' + g.german + ')' : ''}`), '');
+    const taskLines = (list, phase) => list.flatMap(p => [
+      `### ${p.n ? p.n + '. ' : ''}${phase === 'post' ? postLabel(p.type) : preLabel(p.type)}${p.title ? ': ' + p.title : ''}`,
+      [socialLabel(p.socialForm), modeLabel(p.mode), p.minutes ? p.minutes + ' min' : ''].filter(Boolean).join(' · '),
+      '', p.prompt, ...(p.items || []).map(i => `- ${i}`),
+      ...(p.product ? ['', `Result: ${p.product}`] : []),
+      ...((p.criteria || []).length ? ['', 'Success criteria:', ...p.criteria.map(c => `- ${c}`)] : []), '']);
     for (const p of (ws && ws.preTasks) || []) out.push(
       `### ${p.n ? p.n + '. ' : ''}${preLabel(p.type)}${p.title ? ': ' + p.title : ''}`,
       [socialLabel(p.socialForm), modeLabel(p.mode), p.minutes ? p.minutes + ' min' : ''].filter(Boolean).join(' · '),
@@ -381,6 +395,7 @@
     }
     for (const h of v.worksheet.higherOrder || []) out.push(`- [${hoLabel(h.type)}] ${h.prompt}`);
     }
+    if (ws && (ws.postTasks || []).length) out.push('', `## After you ${isL ? 'listen' : 'read'}`, '', ...taskLines(ws.postTasks, 'post'));
     if (isL && m.settings && m.settings.appendScript) out.push('', '### Script', ...(m.content.lines || []).map(l => `${l.speaker}: ${l.emotion ? '[' + l.emotion + '] ' : ''}${l.text}`));
     out.push('', '## Teacher version', '', `### ${isL ? 'Script' : 'Text'}`);
     if (isL) out.push(...(m.content.lines || []).map(l => `${l.speaker}: ${l.emotion ? '[' + l.emotion + '] ' : ''}${l.text}`));
@@ -401,6 +416,6 @@
     return out.join('\n');
   }
 
-  return { esc, seededShuffle, highlight, renderTextHTML, isHeadingLike, repairLabel, repairListHTML, renderStudentHTML, renderTeacherHTML, renderMarkdown, questionBody, answerText, preTaskHtml, socialLabel, modeLabel,
+  return { esc, seededShuffle, highlight, renderTextHTML, isHeadingLike, repairLabel, repairListHTML, renderStudentHTML, renderTeacherHTML, renderMarkdown, questionBody, answerText, preTaskHtml, socialLabel, modeLabel, preLabel, postLabel,
     variantsOf, forVariant, glossaryHTML, scriptAppendixHTML, levelMeterHTML };
 });

@@ -240,32 +240,46 @@
   function modeEn(key) { const m = core.PRE_TASK_MODES.find(x => x.key === key); return m ? m.en : key; }
 
   /**
-   * The pre-task order (concept §27 and the task forms of a Lernaufgabe).
-   * Type, social form, working mode and time are fixed per task so that the
-   * checks can verify them; everything else is Claude's.
+   * The task block of one phase (concept §27 pre-task and §36 post-task).
+   * Type, social form, working mode and time are fixed per position so that
+   * the checks can verify them; everything else is Claude's.
    */
-  function preTaskBlock(state, plan) {
+  function taskBlock(state, plan, phaseKey) {
     const isL = state.kind === 'listening';
-    const pt = plan.preTask;
-    if (!pt || !pt.count) return '## Pre-task\nNone: "preTasks" is an empty array.';
+    const isPre = phaseKey !== 'post';
+    const ph = core.TASK_PHASES[isPre ? 'pre' : 'post'];
+    const pt = isPre ? plan.preTask : plan.postTask;
+    const heading = isPre ? `## Pre-task (before ${isL ? 'listening' : 'reading'})` : `## Post-task (after ${isL ? 'listening' : 'reading'})`;
+    if (!pt || !pt.count) return heading + `\nNone: "${ph.prefix}s" is an empty array.`;
+    const typeDef = (k) => { const t = ph.types.find(x => x.key === k); return t ? t.definition : k; };
+    const typeLabel = (k) => { const t = ph.types.find(x => x.key === k); return t ? t.label : k; };
     const vocab = plan.vocabulary.map(w => w.word);
-    const focus = pt.focus === 'vocabulary'
-      ? 'the TARGET VOCABULARY of the unit — every task works with those words'
-      : pt.focus === 'topic'
-        ? 'the TOPIC — prior knowledge, attitudes and expectations, not single words'
-        : 'the TOPIC and the TARGET VOCABULARY — at least one task activates prior knowledge about the topic and at least one works with the target words';
+    const focus = isPre
+      ? (pt.focus === 'vocabulary' ? 'the TARGET VOCABULARY of the unit — every task works with those words'
+        : pt.focus === 'topic' ? 'the TOPIC — prior knowledge, attitudes and expectations, not single words'
+        : 'the TOPIC and the TARGET VOCABULARY — at least one task activates prior knowledge about the topic and at least one works with the target words')
+      : (pt.focus === 'vocabulary' ? 'the TARGET VOCABULARY — every task makes the students use those words productively'
+        : pt.focus === 'content' ? `what the ${isL ? 'audio' : 'text'} says — the content is taken further, not repeated`
+        : `the CONTENT and the TARGET VOCABULARY — the tasks take the content further and at least one of them makes the students use the target words productively`);
     const lines = [
-      '## Pre-task (before ' + (isL ? 'listening' : 'reading') + ')',
-      `Write exactly ${pt.count} pre-task(s) in the array "preTasks", in the given order. Type, social form, working mode and time are FIXED for every position:`,
-      pt.tasks.map(t => `P${t.n}: ${preTaskTypeLabel(t.type)} ("type": "${t.type}") · "socialForm": "${t.socialForm}" (${socialFormEn(t.socialForm)}) · "mode": "${t.mode}" (${modeEn(t.mode)}) · "minutes": ${t.minutes}\n    ${preTaskTypeDef(t.type)}`).join('\n'),
-      `What the pre-tasks prepare: ${focus}. Target vocabulary of the unit: ${vocab.join(', ') || '–'}.`,
-      `Language of the instructions, options and examples: CEFR ${pt.band}` + (pt.level ? ` (${core.QUESTION_LEVELS[pt.level].label})` : '') + '. Students read them before they know the material, so keep them short and unambiguous.',
-      `Cognitive demand: ${scale(pt.difficulty, [
+      heading,
+      `Write exactly ${pt.count} ${isPre ? 'pre' : 'post'}-task(s) in the array "${ph.prefix}s", in the given order. Type, social form, working mode and time are FIXED for every position:`,
+      pt.tasks.map(t => `${isPre ? 'P' : 'T'}${t.n}: ${typeLabel(t.type)} ("type": "${t.type}") · "socialForm": "${t.socialForm}" (${socialFormEn(t.socialForm)}) · "mode": "${t.mode}" (${modeEn(t.mode)}) · "minutes": ${t.minutes}\n    ${typeDef(t.type)}`).join('\n'),
+      `What the tasks work on: ${focus}. Target vocabulary of the unit: ${vocab.join(', ') || '–'}.`,
+      `Language of the instructions, options and examples: CEFR ${pt.band}` + (pt.level ? ` (${core.QUESTION_LEVELS[pt.level].label})` : '') + '.'
+        + (isPre ? ' Students read them before they know the material, so keep them short and unambiguous.' : ' Students read them after they have worked through the material.'),
+      `Cognitive demand: ${scale(pt.difficulty, isPre ? [
         'reproductive — collect, name, tick, match; everything is given',
         'mostly reproductive with one small step of own thinking',
         'apply and connect — compare, sort, give a reason for a choice',
         'reason and judge — weigh arguments, justify a position, formulate a hypothesis',
         'evaluate and decide — argue a dilemma from both sides and commit to a position',
+      ] : [
+        'reproduce and organise — retell, list, sort what the material said',
+        'apply closely — use single points of the material in a given frame',
+        'apply and connect — transfer the content to a new situation and explain the link',
+        'reason and create — build an own product or position on the material and justify it',
+        'evaluate and create freely — judge the material, argue against it, design something own that goes clearly beyond it',
       ])}.`,
       `Support (scaffolding): ${scale(pt.scaffolding, [
         'none — the bare task',
@@ -280,18 +294,31 @@
     } else {
       lines.push('Success criteria: not required, "criteria" is an empty array.');
     }
-    lines.push('Rules for every pre-task:\n'
-      + `- It must be solvable WITHOUT the ${isL ? 'audio' : 'text'} and must NOT give away any answer of the comprehension questions.\n`
+    const common = '- A written task says exactly what is written down and where (list, table, sentences).\n'
       + '- An oral task gives a real reason to speak (a question to the partner, a position to defend, information the other side does not have) and asks for nothing in writing.\n'
-      + '- A written task says exactly what is written down and where (list, table, sentences).\n'
       + '- Partner, group and plenary tasks say what each person does, so that nobody can sit back.\n'
-      + '- A vocabulary task uses only words from the target vocabulary above and lists them in "vocabUsed".\n'
-      + '- A confrontation task states the claim or dilemma itself; it is honestly arguable both ways and is not answered by the material alone.\n'
       + `- The time in "minutes" must be realistic for the task in a class of 20 students (total ${pt.minutes} minutes).\n`
-      + '- "materials": what the teacher has to prepare (empty string if nothing).');
-    lines.push('Shape: {"n": 1, "type": "…", "title": "…", "prompt": "the instruction as the students read it", "items": ["word bank / statements / sentence starters"], "socialForm": "single|pair|group|plenary", "mode": "written|oral", "minutes": 3, "criteria": ["…"], "vocabUsed": ["…"], "materials": "…", "teacherNote": "what the teacher should watch for and how the task is picked up afterwards"}');
+      + '- "materials": what the teacher has to prepare (empty string if nothing).';
+    if (isPre) {
+      lines.push('Rules for every pre-task:\n'
+        + `- It must be solvable WITHOUT the ${isL ? 'audio' : 'text'} and must NOT give away any answer of the comprehension questions.\n`
+        + '- A vocabulary task uses only words from the target vocabulary above and lists them in "vocabUsed".\n'
+        + '- A confrontation task states the claim or dilemma itself; it is honestly arguable both ways and is not answered by the material alone.\n'
+        + common);
+    } else {
+      lines.push('Rules for every post-task:\n'
+        + `- It BUILDS ON the material: name in "reference" the concrete place it starts from (a statement, a decision, a number, a speaker's attitude) and make that visible in the task itself.\n`
+        + '- It must NOT be answerable by repeating a comprehension question or a higher-order task of this worksheet; it asks the students to produce something of their own.\n'
+        + '- "product" says in a few words what the students hand in or show at the end (three sentences, a short mail, a spoken position, a poster, a filled-in table).\n'
+        + '- A vocabulary task makes the students USE the target words in own sentences or a short text, and lists them in "vocabUsed".\n'
+        + '- A mediation task names the addressee and the purpose; a debate names the two sides; a role play names the roles.\n'
+        + common);
+    }
+    lines.push(`Shape: {"n": 1, "type": "…", "title": "…", "prompt": "the instruction as the students read it", "items": ["word bank / statements / sentence starters"], "socialForm": "single|pair|group|plenary", "mode": "written|oral", "minutes": 3, "criteria": ["…"], "vocabUsed": ["…"], ${isPre ? '' : '"reference": "the place in the material the task starts from", "product": "what the students hand in", '}"materials": "…", "teacherNote": "what the teacher should watch for and how the task is picked up afterwards"}`);
     return lines.join('\n');
   }
+  function preTaskBlock(state, plan) { return taskBlock(state, plan, 'pre'); }
+  function postTaskBlock(state, plan) { return taskBlock(state, plan, 'post'); }
 
   /** Questions follow the timeline of the material — always, checked automatically. */
   function chronologyRule(isL) {
@@ -349,9 +376,10 @@
     }
 
     lines.push(preTaskBlock(state, plan));
+    lines.push(postTaskBlock(state, plan));
 
     lines.push('## Student instruction\nWrite "instructions": a short instruction for students (1–2 sentences) at their level, and "title": the worksheet title.');
-    lines.push('Reply with only a JSON object: {"title": "…", "instructions": "…", "preTasks": [...], "questions": [{"n": 1, "skill": "gist|specific|detail|connecting|inference|attitude|purpose|context", "format": "…", "difficulty": "CEFR band", "prompt": "…", …format fields…, "answer": …, "evidenceQuote": "…", "evidenceRef": "…", "rationale": "…"}], "higherOrder": [{"n": 1, "type": "…", "prompt": "…", "answer": "…", "rationale": "…"}]}');
+    lines.push('Reply with only a JSON object: {"title": "…", "instructions": "…", "preTasks": [...], "postTasks": [...], "questions": [{"n": 1, "skill": "gist|specific|detail|connecting|inference|attitude|purpose|context", "format": "…", "difficulty": "CEFR band", "prompt": "…", …format fields…, "answer": …, "evidenceQuote": "…", "evidenceRef": "…", "rationale": "…"}], "higherOrder": [{"n": 1, "type": "…", "prompt": "…", "answer": "…", "rationale": "…"}]}');
     return lines.join('\n\n');
   }
 
@@ -370,6 +398,7 @@
       worksheet ? `Planned skills: ${core.SKILL_KEYS.filter(k => plan.skillMix[k]).map(k => `${plan.skillMix[k]}× ${k}`).join(', ')}; allowed question bands: ${plan.questionBands.join(', ')}` + (plan.questionLevel ? ` (${plan.questionLevelLabel})` : '') : 'No worksheet.',
       worksheet ? 'Questions must follow the order of the material — the timeline (gist may be first/last).' : '',
       worksheet && plan.preTask ? `Pre-task plan: ${plan.preTask.tasks.map(t => `P${t.n} ${t.type}/${t.socialForm}/${t.mode}/${t.minutes}min`).join(', ')}; focus ${plan.preTask.focus}; language ${plan.preTask.band}; demand ${plan.preTask.difficulty}/100; success criteria ${plan.preTask.criteria ? 'required' : 'not required'}` : '',
+      worksheet && plan.postTask ? `Post-task plan: ${plan.postTask.tasks.map(t => `T${t.n} ${t.type}/${t.socialForm}/${t.mode}/${t.minutes}min`).join(', ')}; focus ${plan.postTask.focus}; language ${plan.postTask.band}; demand ${plan.postTask.difficulty}/100; success criteria ${plan.postTask.criteria ? 'required' : 'not required'}` : '',
     ].filter(Boolean).join('\n'));
     lines.push('## Material\n' + contentAsText(content, state));
     if (worksheet) lines.push('## Worksheet (JSON)\n' + JSON.stringify({ preTasks: worksheet.preTasks, questions: worksheet.questions, higherOrder: worksheet.higherOrder }, null, 0).slice(0, 30000));
@@ -452,21 +481,30 @@
   }
 
   /**
-   * Targeted repair of the pre-task: the questions stay untouched, only the
-   * pre-tasks are written again with the findings in front of them.
+   * Targeted repair of one task phase: the questions stay untouched, only the
+   * pre- or post-tasks are written again with the findings in front of them.
    */
-  function buildPreTaskRepairPrompt(state, plan, content, worksheet, findings, fixInstructions) {
+  function buildTaskRepairPrompt(state, plan, content, worksheet, findings, fixInstructions, phaseKey) {
     const isL = state.kind === 'listening';
+    const isPre = phaseKey !== 'post';
+    const field = isPre ? 'preTasks' : 'postTasks';
+    const questions = (worksheet.questions || []).map(q => `Q${q.n} (${skillLabel(q.skill)}): ${q.prompt || q.statement || ''} → ${Array.isArray(q.answer) ? q.answer.join(' / ') : q.answer}`).join('\n');
     return [
-      `You are revising the pre-${isL ? 'listening' : 'reading'} tasks of a worksheet. The comprehension questions stay exactly as they are; write the pre-tasks again so that every problem below is gone.`,
+      `You are revising the ${isPre ? 'pre' : 'post'}-${isL ? 'listening' : 'reading'} tasks of a worksheet. The comprehension questions stay exactly as they are; write the ${isPre ? 'pre' : 'post'}-tasks again so that every problem below is gone.`,
       '## Material\n' + contentAsText(content, state),
-      '## Comprehension questions that follow (do not anticipate any of these answers)\n'
-        + (worksheet.questions || []).map(q => `Q${q.n} (${skillLabel(q.skill)}): ${q.prompt || q.statement || ''} → ${Array.isArray(q.answer) ? q.answer.join(' / ') : q.answer}`).join('\n'),
-      '## Current pre-tasks\n' + JSON.stringify(worksheet.preTasks || [], null, 0).slice(0, 12000),
+      (isPre ? '## Comprehension questions that follow (do not anticipate any of these answers)\n' : '## Comprehension questions of this worksheet (a post-task must not simply repeat them)\n') + questions,
+      (worksheet.higherOrder || []).length && !isPre ? '## Higher-order tasks of this worksheet (do not repeat these either)\n' + worksheet.higherOrder.map(h => `- ${h.prompt}`).join('\n') : '',
+      `## Current ${isPre ? 'pre' : 'post'}-tasks\n` + JSON.stringify(worksheet[field] || [], null, 0).slice(0, 12000),
       '## What is wrong\n' + findingsBlock(findings) + (fixInstructions ? '\n\nReviewer instructions: ' + fixInstructions : ''),
-      preTaskBlock(state, plan),
-      'Reply with only a JSON object: {"preTasks": [ … the complete new list in the fixed order … ]}',
-    ].join('\n\n');
+      taskBlock(state, plan, isPre ? 'pre' : 'post'),
+      `Reply with only a JSON object: {"${field}": [ … the complete new list in the fixed order … ]}`,
+    ].filter(Boolean).join('\n\n');
+  }
+  function buildPreTaskRepairPrompt(state, plan, content, worksheet, findings, fixInstructions) {
+    return buildTaskRepairPrompt(state, plan, content, worksheet, findings, fixInstructions, 'pre');
+  }
+  function buildPostTaskRepairPrompt(state, plan, content, worksheet, findings, fixInstructions) {
+    return buildTaskRepairPrompt(state, plan, content, worksheet, findings, fixInstructions, 'post');
   }
 
   /* ------------------------------------------------------------------ */
@@ -579,6 +617,7 @@
     buildTopicPrompt, buildContentPrompt, buildQuestionPrompt, buildReviewPrompt,
     buildContentRevisionPrompt, buildQuestionRevisionPrompt, buildQuestionRepairPrompt, findingsBlock, buildVocabParsePrompt,
     buildUnitDetectPrompt, buildUnitTopicPrompt, buildAllPrompts, buildGlossaryPrompt, buildLevelOpinionPrompt,
-    chronologyRule, levelTargetBlock, questionLevelLines, preTaskBlock, buildPreTaskRepairPrompt,
+    chronologyRule, levelTargetBlock, questionLevelLines, taskBlock, preTaskBlock, postTaskBlock,
+    buildTaskRepairPrompt, buildPreTaskRepairPrompt, buildPostTaskRepairPrompt,
   };
 });

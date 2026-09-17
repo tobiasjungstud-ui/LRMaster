@@ -116,10 +116,20 @@
       preTasks: [
         { n: 1, type: 'vocabulary', title: 'Fixture vocabulary title', prompt: 'Match the words argue, trust and apologise to the pictures and tell your partner about friends.',
           items: ['argue', 'trust', 'apologise'], socialForm: 'pair', mode: 'oral', minutes: 4,
-          criteria: ['I can use the three words in a sentence.'], vocabUsed: ['argue', 'trust', 'apologise'], materials: '', teacherNote: 'Fixture teacher note.' },
+          criteria: ['I can use the three words in a sentence.'], vocabUsed: ['argue', 'trust', 'apologise'], materials: '', teacherNote: 'Fixture teacher note.', reference: '', product: '' },
         { n: 2, type: 'prediction', title: 'Guess', prompt: 'Look at the title about friends and communication and write down what you will hear.',
           items: [], socialForm: 'single', mode: 'written', minutes: 4,
-          criteria: ['I can write two guesses.'], vocabUsed: [], materials: '', teacherNote: '' },
+          criteria: ['I can write two guesses.'], vocabUsed: [], materials: '', teacherNote: '', reference: '', product: '' },
+      ],
+      postTasks: [
+        { n: 1, type: 'discussion', title: 'Fixture discussion title', prompt: 'Speaker B says friends have to apologise properly. Discuss in your group whether that is always true.',
+          items: ['I think …', 'That is why …'], socialForm: 'pair', mode: 'oral', minutes: 8,
+          criteria: ['We each give one example.'], vocabUsed: ['apologise'], materials: '', teacherNote: 'Fixture post teacher note.',
+          reference: 'Speaker B: he has to apologise properly this time', product: 'A spoken position from every group member.' },
+        { n: 2, type: 'transfer', title: 'Fixture transfer title', prompt: 'Write about a time when you had to trust a friend and stay honest about communication at your own school.',
+          items: [], socialForm: 'single', mode: 'written', minutes: 7,
+          criteria: ['I write five sentences.'], vocabUsed: ['trust', 'honest'], materials: '', teacherNote: '',
+          reference: 'I trust him, but he has to apologise properly', product: 'Five sentences in the exercise book.' },
       ],
       questions: [
         { n: 1, skill: 'gist', format: 'multiple_choice', difficulty: 'B1.1', prompt: 'What is the conversation mainly about?', options: ['Fixture option one', 'Fixture option two', 'Fixture option three'], answer: 'B', evidenceQuote: quotes[0], evidenceRef: refs[0], rationale: '' },
@@ -140,6 +150,7 @@
     const ws = worksheet(kind);
     if (settings.higherOrder) ws.higherOrder = [{ n: 1, type: 'evaluation', prompt: 'Fixture higher-order prompt', answer: 'Fixture model answer', rationale: '' }];
     if (!settings.preTask) ws.preTasks = [];
+    if (!settings.postTask) ws.postTasks = [];
     const plan = core.buildPlan(settings, ctx || { textbook: textbooks()[0], unit: textbooks()[0].units[0] });
     return {
       id: 'fixture', kind, createdAt: 0, settings, plan, content: c, worksheet: settings.createWorksheet ? ws : null,

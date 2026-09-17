@@ -140,7 +140,7 @@
   add({ id: 'S02.unit_listing', section: 2, title: 'Lehrmittel zeigt Units (Unit 1, Unit 2, …)', kind: 'ui', selector: '#textbook-list' });
 
   /* §3 Grundaufbau */
-  for (const s of [[1, 'source', 'Source & Unit'], [2, 'content', 'Content'], [3, 'level', 'Language Level'], [4, 'structure', 'Text / Audio Structure'], [5, 'vocab', 'Vocabulary'], [6, 'worksheet', 'Worksheet & Questions'], [7, 'pretask', 'Pre-Task'], [8, 'advanced', 'Advanced Settings'], [9, 'generate', 'Generate']]) {
+  for (const s of [[1, 'source', 'Source & Unit'], [2, 'content', 'Content'], [3, 'level', 'Language Level'], [4, 'structure', 'Text / Audio Structure'], [5, 'vocab', 'Vocabulary'], [6, 'worksheet', 'Worksheet & Questions'], [7, 'pretask', 'Pre-Task'], [8, 'posttask', 'Post-Task'], [9, 'advanced', 'Advanced Settings'], [10, 'generate', 'Generate']]) {
     add({ id: `S03.section_${s[0]}`, section: 3, title: `Creator-Bereich ${s[0]}: ${s[2]}`, kind: 'ui', selector: `#sec-${s[1]}[data-step="${s[0]}"]` });
   }
   add({ id: 'S03.collapsible', section: 3, title: 'Bereiche einzeln auf-/zuklappbar', kind: 'ui', selector: '[data-toggle-step="4"]' });
@@ -993,7 +993,7 @@
       const prompt = env.prompts.buildPreTaskRepairPrompt(m.settings, m.plan, m.content, m.worksheet, [f], '');
       const patched = env.quality.applyPreTaskPatch(m.worksheet, { preTasks: [Object.assign({}, m.worksheet.preTasks[0], { prompt: 'Replaced pre-task prompt.' }), m.worksheet.preTasks[1]] });
       const src = env.pipelineSource || '';
-      const wired = !src || (/buildPreTaskRepairPrompt/.test(src) && /applyPreTaskPatch/.test(src) && /target: 'pretask'/.test(src));
+      const wired = !src || (/buildTaskRepairPrompt/.test(src) && /applyTaskPatch/.test(src) && /target: phase \+ 'task'/.test(src));
       return ok(rp.preTasks.length === 1 && rp.questions.length === 0 && rp.worksheet.length === 0
         && /The comprehension questions stay exactly as they are/.test(prompt) && /Pre-task \(before listening\)/.test(prompt)
         && patched.questions === m.worksheet.questions && patched.preTasks[0].prompt === 'Replaced pre-task prompt.'
@@ -1011,6 +1011,184 @@
       return ok(/Partnerarbeit/.test(st) && /mündlich/.test(st) && /4 min/.test(st) && /Success criteria/.test(st)
         && /Partnerarbeit/.test(md) && /Partnerarbeit/.test(ds) && /Success criteria/.test(ds)
         && t.includes(env.render.esc(note)) && /Sozialform/.test(dt) && dt.includes(note), 'pre-task details missing in an output');
+    } });
+
+
+  /* §36 Post-Task: dieselbe Mechanik nach dem Hören/Lesen (Auftragserweiterung) */
+  const postState = (env, over) => env.state(Object.assign({ createWorksheet: true, postTask: true }, over || {}));
+  const postPlan = (env, over) => env.core.buildPlan(postState(env, over), env.ctx);
+  const postPrompt = (env, over) => { const s = postState(env, over); return env.prompts.buildQuestionPrompt(s, env.core.buildPlan(s, env.ctx), env.fixture.content()); };
+  const postFind = (env, id, over, mutate) => {
+    const m = env.fixture.material(Object.assign({ postTask: true }, over || {}), 'listening');
+    if (mutate) mutate(m.worksheet.postTasks, m);
+    return env.quality.runDeterministic(m.settings, m.plan, m.content, m.worksheet).find(f => f.id === id);
+  };
+
+  add({ id: 'S36.section', section: 36, title: 'Eigener Creator-Bereich „Post-Task“', kind: 'ui', selector: '#sec-posttask[data-step="8"]' });
+  add({ id: 'S36.toggle', section: 36, title: 'Post-Task erstellen (Aufgaben nach dem Hören/Lesen)', kind: 'setting', key: 'postTask', alt: true,
+    extra(env) {
+      const on = postPrompt(env, {}), off = env.prompts.buildQuestionPrompt(env.state({}), env.core.buildPlan(env.state({}), env.ctx), env.fixture.content());
+      return ok(/## Post-task \(after listening\)/.test(on) && /"postTasks" is an empty array/.test(off) && /"postTasks": \[\.\.\.\]/.test(on), 'post-task block missing in the question prompt');
+    } });
+  add({ id: 'S36.focus', section: 36, title: 'Post-Task um den Inhalt, ums Vokabular oder um beides', kind: 'setting', key: 'postTaskFocus', alt: 'vocabulary', given: { postTask: true },
+    extra(env) {
+      const c = postPrompt(env, { postTaskFocus: 'content' }), v = postPrompt(env, { postTaskFocus: 'vocabulary' });
+      return ok(/the content is taken further, not repeated/.test(c) && /use those words productively/.test(v));
+    } });
+  add({ id: 'S36.count', section: 36, title: 'Anzahl der Post-Task-Aufgaben einstellbar', kind: 'setting', key: 'postTaskCount', alt: 5, given: { postTask: true },
+    extra(env) {
+      const p = postPlan(env, { postTaskCount: 5 });
+      return ok(p.postTask.count === 5 && p.postTask.tasks.every((t, i) => t.n === i + 1) && /exactly 5 post-task/.test(postPrompt(env, { postTaskCount: 5 })));
+    } });
+  add({ id: 'S36.types', section: 36, title: 'Aufgabentypen: Diskussion, Debatte, Rollenspiel, Transfer, Sprachmittlung, Stellungnahme, kreatives Produkt, Wortschatz, Recherche, Partnerfeedback', kind: 'setting', key: 'postTaskTypes', alt: ['debate'], given: { postTask: true },
+    extra(env) {
+      const keys = env.core.POST_TASK_TYPE_KEYS;
+      const complete = ['discussion', 'debate', 'roleplay', 'transfer', 'mediation', 'opinion', 'creative', 'vocabulary', 'research', 'peerfeedback'].every(k => keys.includes(k));
+      const defined = env.core.POST_TASK_TYPES.every(t => t.definition && t.definition.length > 40);
+      const mix = postPlan(env, { postTaskCount: 4, postTaskTypes: ['debate', 'creative'] }).postTask.typeMix;
+      return ok(complete && defined && mix.debate === 2 && mix.creative === 2, 'types incomplete or not distributed');
+    } });
+  add({ id: 'S36.social_mode', section: 36, title: 'Sozialformen automatisch verteilen oder selbst festlegen', kind: 'setting', key: 'postTaskSocialMode', alt: 'custom',
+    given: { postTask: true, customPostTaskSocial: { single: 0, pair: 0, group: 1, plenary: 1 } },
+    extra(env) {
+      const auto = postPlan(env, {}).postTask.socialMix;
+      const own = postPlan(env, { postTaskSocialMode: 'custom', customPostTaskSocial: { single: 0, pair: 0, group: 1, plenary: 1 } }).postTask.socialMix;
+      return ok(!deepEq(auto, own) && (own.group || 0) === 1 && (own.plenary || 0) === 1, 'the own mix does not reach the plan');
+    } });
+  add({ id: 'S36.social_custom', section: 36, title: 'Wie viele Einzel-, Partner-, Gruppen- und Plenumsarbeiten', kind: 'setting', key: 'customPostTaskSocial', alt: { single: 0, pair: 0, group: 1, plenary: 1 }, given: { postTask: true, postTaskSocialMode: 'custom' },
+    extra(env) {
+      const forms = postPlan(env, { postTaskSocialMode: 'custom', customPostTaskSocial: { single: 0, pair: 2, group: 0, plenary: 0 } }).postTask.tasks.map(t => t.socialForm);
+      return ok(forms.every(f => f === 'pair'), forms.join(','));
+    } });
+  add({ id: 'S36.oral', section: 36, title: 'Wie viele Aufgaben mündlich gelöst werden (nur mit interaktiver Sozialform)', kind: 'setting', key: 'postTaskOralCount', alt: 2, given: { postTask: true },
+    extra(env) {
+      const tasks = postPlan(env, { postTaskCount: 3, postTaskOralCount: 2 }).postTask.tasks;
+      const oral = tasks.filter(t => t.mode === 'oral');
+      const errs = env.core.validateState(postState(env, { postTaskCount: 2, postTaskOralCount: 2, postTaskSocialMode: 'custom', customPostTaskSocial: { single: 2, pair: 0, group: 0, plenary: 0 } }), env.ctx).map(e => e.key);
+      return ok(oral.length === 2 && oral.every(t => t.socialForm !== 'single') && errs.includes('postTaskOralCount'), 'oral tasks not planned or not guarded');
+    } });
+  add({ id: 'S36.difficulty', section: 36, title: 'Kriterienorientiertes Anforderungsniveau (wiedergeben bis eigenes Produkt und Kritik)', kind: 'setting', key: 'postTaskDifficulty', alt: 95, given: { postTask: true },
+    extra(env) { return ok(/reproduce and organise/.test(postPrompt(env, { postTaskDifficulty: 0 })) && /evaluate and create freely/.test(postPrompt(env, { postTaskDifficulty: 100 }))); } });
+  add({ id: 'S36.scaffolding', section: 36, title: 'Hilfestellungen (Beispiel, Wortspeicher, Satzanfänge, Musterlösung)', kind: 'setting', key: 'postTaskScaffolding', alt: 95, given: { postTask: true },
+    extra(env) { return ok(/none — the bare task/.test(postPrompt(env, { postTaskScaffolding: 0 })) && /word bank, sentence starters, a model answer/.test(postPrompt(env, { postTaskScaffolding: 100 }))); } });
+  add({ id: 'S36.level', section: 36, title: 'Sprachniveau der Aufgabenstellung (wie die Fragen, Niveau A oder B)', kind: 'setting', key: 'postTaskLevel', alt: 'A', given: { postTask: true },
+    extra(env) { return ok(postPlan(env, { postTaskLevel: 'A' }).postTask.band === 'B1.2' && postPlan(env, { postTaskLevel: 'B' }).postTask.band === 'B1.1'); } });
+  add({ id: 'S36.criteria', section: 36, title: 'Gelingenskriterien pro Aufgabe, auf dem Arbeitsblatt ausgewiesen', kind: 'setting', key: 'postTaskCriteria', alt: false, given: { postTask: true },
+    extra(env) {
+      const m = env.fixture.material({ postTask: true }, 'listening');
+      const st = env.render.renderStudentHTML(m);
+      const crit = m.worksheet.postTasks[0].criteria[0];
+      return ok(/"criteria" is an empty array/.test(postPrompt(env, { postTaskCriteria: false })) && st.includes(env.render.esc(crit)) && docText(env, m, 'student').includes(crit), 'success criteria missing in prompt or output');
+    } });
+  add({ id: 'S36.minutes', section: 36, title: 'Zeitbudget der Post-Task, auf die Aufgaben verteilt', kind: 'setting', key: 'postTaskMinutes', alt: 40, given: { postTask: true },
+    extra(env) {
+      const tasks = postPlan(env, { postTaskCount: 3, postTaskMinutes: 21 }).postTask.tasks;
+      return ok(tasks.reduce((a, t) => a + t.minutes, 0) === 21 && /total 21 minutes/.test(postPrompt(env, { postTaskCount: 3, postTaskMinutes: 21 })));
+    } });
+  add({ id: 'S36.shared_planner', section: 36, title: 'Pre- und Post-Task werden von derselben geprüften Mechanik geplant (Typ, Sozialform, Arbeitsweise, Zeit pro Position)', kind: 'function',
+    check(env) {
+      const s = postState(env, { preTask: true, preTaskCount: 3, postTaskCount: 3, postTaskOralCount: 2, preTaskOralCount: 2 });
+      const plan = env.core.buildPlan(s, env.ctx);
+      const both = [plan.preTask, plan.postTask];
+      const shaped = both.every(p => p && p.tasks.length === 3 && p.tasks.every(t => t.n && t.type && t.socialForm && t.mode && t.minutes)
+        && p.tasks.filter(t => t.mode === 'oral').length === 2 && p.tasks.filter(t => t.mode === 'oral').every(t => t.socialForm !== 'single'));
+      const generic = typeof env.core.buildTaskPlan === 'function' && typeof env.core.taskSequence === 'function'
+        && deepEq(env.core.buildTaskPlan(s, 'post'), plan.postTask) && deepEq(env.core.buildTaskPlan(s, 'pre'), plan.preTask);
+      const rules = ['present', 'social_forms', 'modes', 'focus', 'criteria', 'time', 'language'].every(id => env.quality.RULES.some(r => r.id === 'posttask.' + id) && env.quality.RULES.some(r => r.id === 'pretask.' + id));
+      return ok(shaped && generic && rules, 'the two phases are not planned and checked by the same code');
+    } });
+
+  /* Kontrollen */
+  add({ id: 'S36.rule_present', section: 36, title: 'Kontrolle: Anzahl und Typen der Post-Task-Aufgaben stimmen', kind: 'rule', ruleId: 'posttask.present',
+    extra(env) {
+      const good = postFind(env, 'posttask.present');
+      const bad = postFind(env, 'posttask.present', {}, (t) => t.pop());
+      const wrongType = postFind(env, 'posttask.present', {}, (t) => { t[0].type = 'debate'; });
+      return ok(good.status === 'pass' && bad.status === 'fail' && wrongType.status === 'fail', `${good.status}/${bad.status}/${wrongType.status}`);
+    } });
+  add({ id: 'S36.rule_social', section: 36, title: 'Kontrolle: Sozialformen entsprechen den Einstellungen', kind: 'rule', ruleId: 'posttask.social_forms',
+    extra(env) {
+      const good = postFind(env, 'posttask.social_forms');
+      const bad = postFind(env, 'posttask.social_forms', {}, (t) => { t[0].socialForm = 'group'; });
+      return ok(good.status === 'pass' && bad.status === 'fail' && bad.postTasks.includes(1), `${good.status}/${bad.status}`);
+    } });
+  add({ id: 'S36.rule_modes', section: 36, title: 'Kontrolle: mündliche und schriftliche Aufgaben wie eingestellt, mündlich nie in Einzelarbeit', kind: 'rule', ruleId: 'posttask.modes',
+    extra(env) {
+      const good = postFind(env, 'posttask.modes');
+      const bad = postFind(env, 'posttask.modes', {}, (t) => { t[0].mode = 'written'; });
+      const lonely = postFind(env, 'posttask.modes', {}, (t) => { t[0].mode = 'written'; t[1].mode = 'oral'; });
+      return ok(good.status === 'pass' && bad.status === 'fail' && lonely.status !== 'pass', `${good.status}/${bad.status}/${lonely.status}`);
+    } });
+  add({ id: 'S36.rule_focus', section: 36, title: 'Kontrolle: Inhalt weitergedacht, Zielvokabular produktiv verwendet', kind: 'rule', ruleId: 'posttask.focus',
+    extra(env) {
+      const good = postFind(env, 'posttask.focus');
+      const bad = postFind(env, 'posttask.focus', {}, (t) => { t.forEach(x => { x.prompt = 'Do something.'; x.items = []; x.vocabUsed = []; x.type = 'creative'; }); });
+      return ok(good.status === 'pass' && bad.status === 'warn', `${good.status}/${bad.status}`);
+    } });
+  add({ id: 'S36.rule_criteria', section: 36, title: 'Kontrolle: Gelingenskriterien vorhanden und kurz', kind: 'rule', ruleId: 'posttask.criteria',
+    extra(env) {
+      const good = postFind(env, 'posttask.criteria');
+      const bad = postFind(env, 'posttask.criteria', {}, (t) => { t[0].criteria = []; });
+      const off = postFind(env, 'posttask.criteria', { postTaskCriteria: false }, (t) => { t[0].criteria = []; });
+      return ok(good.status === 'pass' && bad.status === 'fail' && off.status === 'pass', `${good.status}/${bad.status}/${off.status}`);
+    } });
+  add({ id: 'S36.rule_time', section: 36, title: 'Kontrolle: Zeitangaben vorhanden und im Budget', kind: 'rule', ruleId: 'posttask.time',
+    extra(env) {
+      const good = postFind(env, 'posttask.time');
+      const bad = postFind(env, 'posttask.time', {}, (t) => { t[0].minutes = 60; });
+      return ok(good.status === 'pass' && bad.status === 'warn', `${good.status}/${bad.status}`);
+    } });
+  add({ id: 'S36.rule_language', section: 36, title: 'Kontrolle: Aufgabenstellung bleibt auf dem eingestellten Sprachniveau', kind: 'rule', ruleId: 'posttask.language',
+    extra(env) {
+      const good = postFind(env, 'posttask.language');
+      const bad = postFind(env, 'posttask.language', {}, (t) => { t[0].prompt = 'Scrutinise the ostensibly innocuous ramifications and corroborate your conjecture.'; });
+      return ok(good.status === 'pass' && bad.status === 'warn', `${good.status}/${bad.status}`);
+    } });
+  add({ id: 'S36.rule_product', section: 36, title: 'Kontrolle: jede Aufgabe nennt ihren Ansatzpunkt im Material und ihr Produkt', kind: 'rule', ruleId: 'posttask.product',
+    extra(env) {
+      const good = postFind(env, 'posttask.product');
+      const noProduct = postFind(env, 'posttask.product', {}, (t) => { t[0].product = ''; });
+      const noRef = postFind(env, 'posttask.product', {}, (t) => { t[0].reference = ''; });
+      return ok(good.status === 'pass' && noProduct.status === 'fail' && noRef.status === 'warn', `${good.status}/${noProduct.status}/${noRef.status}`);
+    } });
+  add({ id: 'S36.rule_uses_material', section: 36, title: 'Kontrolle (Claude): Post-Task setzt am Material an', kind: 'rule', ruleId: 'posttask.uses_material' });
+  add({ id: 'S36.rule_beyond', section: 36, title: 'Kontrolle (Claude): Post-Task geht über die Verständnisfragen hinaus', kind: 'rule', ruleId: 'posttask.beyond_questions' });
+  add({ id: 'S36.rule_social_fits', section: 36, title: 'Kontrolle (Claude): Sozialform und Arbeitsweise passen zur Aufgabe', kind: 'rule', ruleId: 'posttask.social_fits' });
+  add({ id: 'S36.rule_mediation', section: 36, title: 'Kontrolle (Claude): Sprachmittlung nennt Adressat und Zweck', kind: 'rule', ruleId: 'posttask.mediation',
+    extra(env) {
+      const withMed = env.core.buildPlan(postState(env, { postTaskTypes: ['mediation'] }), env.ctx);
+      const without = env.core.buildPlan(postState(env, { postTaskTypes: ['discussion'] }), env.ctx);
+      const ws = env.fixture.material({ postTask: true }).worksheet;
+      const on = env.quality.applicableRules(postState(env, { postTaskTypes: ['mediation'] }), withMed, ws).some(r => r.id === 'posttask.mediation');
+      const off = env.quality.applicableRules(postState(env, { postTaskTypes: ['discussion'] }), without, ws).some(r => r.id === 'posttask.mediation');
+      return ok(on && !off, 'the mediation check does not follow the chosen types');
+    } });
+  add({ id: 'S36.repair', section: 36, title: 'Beanstandete Post-Task wird gezielt neu erstellt, Fragen und Pre-Task bleiben unverändert', kind: 'function',
+    check(env) {
+      const m = env.fixture.material({ preTask: true, postTask: true }, 'listening');
+      const f = postFind(env, 'posttask.criteria', {}, (t) => { t[0].criteria = []; });
+      const rp = env.quality.repairPlan([f], 'all');
+      const prompt = env.prompts.buildPostTaskRepairPrompt(m.settings, m.plan, m.content, m.worksheet, [f], '');
+      const patched = env.quality.applyPostTaskPatch(m.worksheet, { postTasks: [Object.assign({}, m.worksheet.postTasks[0], { prompt: 'Replaced post-task prompt.' }), m.worksheet.postTasks[1]] });
+      const src = env.pipelineSource || '';
+      const wired = !src || (/buildTaskRepairPrompt/.test(src) && /applyTaskPatch/.test(src) && /target: phase \+ 'task'/.test(src) && /'pre', 'post'/.test(src));
+      return ok(rp.postTasks.length === 1 && rp.questions.length === 0 && rp.worksheet.length === 0 && rp.preTasks.length === 0
+        && /must not simply repeat them/.test(prompt) && /## Post-task \(after listening\)/.test(prompt)
+        && patched.questions === m.worksheet.questions && patched.preTasks === m.worksheet.preTasks
+        && patched.postTasks[0].prompt === 'Replaced post-task prompt.' && deepEq(env.quality.changedPostTasks(m.worksheet, patched), [1]) && wired, 'targeted post-task repair incomplete');
+    } });
+  add({ id: 'S36.output', section: 36, title: 'Post-Task steht nach den Fragen auf dem Arbeitsblatt (Bildschirm, Word, Markdown) mit Sozialform, Arbeitsweise, Zeit, Produkt und Kriterien; Lehrerversion mit Übersicht', kind: 'render',
+    check(env) {
+      const m = env.fixture.material({ postTask: true }, 'listening');
+      const st = env.render.renderStudentHTML(m);
+      const t = env.render.renderTeacherHTML(m);
+      const md = env.render.renderMarkdown(m);
+      const ds = docText(env, m, 'student');
+      const dt = docText(env, m, 'teacher');
+      const post = m.worksheet.postTasks[0];
+      return ok(st.indexOf('Questions') < st.indexOf('After you listen') && /Diskussion/.test(st) && /Partnerarbeit/.test(st) && /Result:/.test(st) && st.includes(env.render.esc(post.criteria[0]))
+        && /## After you listen/.test(md) && /After you listen/.test(ds) && ds.includes(post.product)
+        && /Post-Task/.test(dt) && dt.includes(post.reference) && t.includes(env.render.esc(post.reference)), 'post-task details missing in an output');
     } });
 
   return { REQUIREMENTS: M };

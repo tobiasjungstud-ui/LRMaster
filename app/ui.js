@@ -286,17 +286,21 @@
         $('#vocab-count').textContent = `${chosen.size} von ${words.length} ausgewählt`;
         break;
       }
-      case 'customPreTaskSocial': {
-        body.innerHTML = '<div class="mix-grid">' + core.SOCIAL_FORMS.map(fm => `<label><span>${esc(fm.label)}</span><input type="number" min="0" max="6" data-social="${fm.key}" value="${Number((s.customPreTaskSocial || {})[fm.key]) || 0}"></label>`).join('') + '</div><div class="share-sum"><span id="social-sum"></span></div>';
+      case 'customPreTaskSocial':
+      case 'customPostTaskSocial': {
+        const phase = key === 'customPostTaskSocial' ? 'post' : 'pre';
+        const sumId = 'social-sum-' + phase;
+        body.innerHTML = '<div class="mix-grid">' + core.SOCIAL_FORMS.map(fm => `<label><span>${esc(fm.label)}</span><input type="number" min="0" max="6" data-social="${fm.key}" value="${Number((s[key] || {})[fm.key]) || 0}"></label>`).join('') + `</div><div class="share-sum"><span id="${sumId}"></span></div>`;
         const upd = () => {
-          const sum = core.SOCIAL_FORM_KEYS.reduce((a, k) => a + (Number(s.customPreTaskSocial[k]) || 0), 0);
-          const n = core.preTaskCount(s);
-          const inter = ['pair', 'group', 'plenary'].reduce((a, k) => a + (Number(s.customPreTaskSocial[k]) || 0), 0);
-          const e = $('#social-sum');
+          const sum = core.SOCIAL_FORM_KEYS.reduce((a, k) => a + (Number(s[key][k]) || 0), 0);
+          const n = core.taskCount(s, phase);
+          const inter = ['pair', 'group', 'plenary'].reduce((a, k) => a + (Number(s[key][k]) || 0), 0);
+          const oral = Number(phase === 'post' ? s.postTaskOralCount : s.preTaskOralCount) || 0;
+          const e = $('#' + sumId);
           e.textContent = `Summe: ${sum} von ${n} Aufgaben · ${inter} interaktiv (mündlich möglich: ${inter})`;
-          e.classList.toggle('bad', sum !== n || (Number(s.preTaskOralCount) || 0) > inter);
+          e.classList.toggle('bad', sum !== n || oral > inter);
         };
-        $$('input[data-social]', body).forEach(inp => inp.addEventListener('input', () => { s.customPreTaskSocial[inp.dataset.social] = Number(inp.value); upd(); onStateChange('customPreTaskSocial'); }));
+        $$('input[data-social]', body).forEach(inp => inp.addEventListener('input', () => { s[key][inp.dataset.social] = Number(inp.value); upd(); onStateChange(key); }));
         upd();
         break;
       }
@@ -326,7 +330,8 @@
     show('a4Pages', s.lengthMode === 'a4');
     show('selectedVocab', s.vocabSelectionMode === 'manual');
     const PRE_KEYS = ['preTaskFocus', 'preTaskCount', 'preTaskTypes', 'preTaskSocialMode', 'customPreTaskSocial', 'preTaskOralCount', 'preTaskDifficulty', 'preTaskLevel', 'preTaskScaffolding', 'preTaskCriteria', 'preTaskMinutes'];
-    for (const k of ['questionCount', 'questionCountCustom', 'questionDifficulty', 'questionLevel', 'glossary', 'appendScript', 'skillMixMode', 'customSkillMix', 'questionFormats', 'autoFormatMix', 'higherOrder', 'higherOrderCount', 'higherOrderTypes', 'preTask', 'distractorDifficulty', 'inferenceLevel'].concat(PRE_KEYS)) show(k, s.createWorksheet);
+    const POST_KEYS = PRE_KEYS.map(k => k.replace(/^preTask/, 'postTask').replace(/^customPreTaskSocial$/, 'customPostTaskSocial'));
+    for (const k of ['questionCount', 'questionCountCustom', 'questionDifficulty', 'questionLevel', 'glossary', 'appendScript', 'skillMixMode', 'customSkillMix', 'questionFormats', 'autoFormatMix', 'higherOrder', 'higherOrderCount', 'higherOrderTypes', 'preTask', 'postTask', 'distractorDifficulty', 'inferenceLevel'].concat(PRE_KEYS, POST_KEYS)) show(k, s.createWorksheet);
     if (s.createWorksheet) {
       show('questionCountCustom', s.questionCount === 'custom');
       // a question level fixes the difficulty; the slider only applies without one
@@ -334,8 +339,11 @@
       show('customSkillMix', s.skillMixMode === 'custom');
       show('higherOrderCount', s.higherOrder); show('higherOrderTypes', s.higherOrder);
       for (const k of PRE_KEYS) show(k, s.preTask);
+      for (const k of POST_KEYS) show(k, s.postTask);
       show('customPreTaskSocial', s.preTask && s.preTaskSocialMode === 'custom');
+      show('customPostTaskSocial', s.postTask && s.postTaskSocialMode === 'custom');
       const oral = $('#set-preTaskOralCount'); if (oral) oral.max = core.preTaskCount(s);
+      const oralPost = $('#set-postTaskOralCount'); if (oralPost) oralPost.max = core.postTaskCount(s);
     }
     // topicMode select is only meaningful when the unit topic is ON
     const tm = $('#set-topicMode'); if (tm) { tm.disabled = !s.useUnitTopic; if (!s.useUnitTopic) { s.topicMode = 'custom'; tm.value = 'custom'; } }
@@ -408,7 +416,7 @@
 
   const STEPS = [
     ['plan', 'Plan & Validierung'], ['content', 'Skript / Text schreiben'], ['content-check', 'Content prüfen'], ['content-fix', 'Content korrigieren'],
-    ['questions', 'Aufgaben erstellen'], ['question-check', 'Aufgaben prüfen'], ['review', 'Claude-Review'], ['question-fix', 'Aufgaben korrigieren'], ['pretask-fix', 'Pre-Task korrigieren'], ['glossary', 'Fremdwörter erklären'], ['done', 'Ausgabe'],
+    ['questions', 'Aufgaben erstellen'], ['question-check', 'Aufgaben prüfen'], ['review', 'Claude-Review'], ['question-fix', 'Aufgaben korrigieren'], ['pretask-fix', 'Pre-Task korrigieren'], ['posttask-fix', 'Post-Task korrigieren'], ['glossary', 'Fremdwörter erklären'], ['done', 'Ausgabe'],
   ];
   function progress(step, status, note) {
     const el = $('#progress');
@@ -512,7 +520,7 @@
           } catch (e) { if (e.code === 'cancelled') throw e; glossary = []; progress('glossary', 'warn', errorCopy(e)); }
         } else progress('glossary', 'skip', 'nicht gewählt');
       } else {
-        for (const st of ['questions', 'question-check', 'review', 'question-fix', 'pretask-fix', 'glossary']) progress(st, 'skip', 'kein Worksheet');
+        for (const st of ['questions', 'question-check', 'review', 'question-fix', 'pretask-fix', 'posttask-fix', 'glossary']) progress(st, 'skip', 'kein Worksheet');
       }
 
       /* 5. Assemble */
@@ -551,7 +559,7 @@
   }
 
   /** Everything the worksheet stage owns: the questions and the pre-task. */
-  function isWorksheetGroup(f) { return f.group === 'questions' || f.group === 'pretask'; }
+  function isWorksheetGroup(f) { return f.group === 'questions' || f.group === 'pretask' || f.group === 'posttask'; }
 
   /** The measured band, for the progress line. */
   function levelNote(findings) {
@@ -607,7 +615,7 @@
     /* Repair loop: replace the questions a check complained about. */
     let findings = questionFindings.concat(reviewFindings);
     let contentRedone = !opts.allowContentRedo;
-    let preTaskGivenUp = false;
+    const givenUp = { pre: false, post: false };
     for (let round = 1; round <= maxRounds; round++) {
       const rp = quality.repairPlan(findings, state.autoFix);
       if (!rp.items.length) break;
@@ -640,32 +648,40 @@
         } catch (e) { if (e.code === 'cancelled') throw e; progress('content-fix', 'warn', errorCopy(e)); }
       }
 
-      // The pre-task is repaired on its own: the questions stay untouched.
-      if (rp.preTasks.length && !preTaskGivenUp) {
-        progress('pretask-fix', 'running', `${pfx}Runde ${round}: ${findingsLabel(rp.preTasks)}`);
+      // Pre- and post-task are repaired on their own: the questions stay untouched.
+      for (const phase of ['pre', 'post']) {
+        const items = phase === 'pre' ? rp.preTasks : rp.postTasks;
+        if (!items.length || givenUp[phase]) continue;
+        const step = phase + 'task-fix';
+        const L = phase === 'pre' ? 'Pre-Task' : 'Post-Task';
+        const mark = phase === 'pre' ? 'P' : 'T';
+        progress(step, 'running', `${pfx}Runde ${round}: ${findingsLabel(items)}`);
         try {
-          usedPrompts[key('preTaskRepair' + round)] = prompts.buildPreTaskRepairPrompt(state, plan, content, worksheet, rp.preTasks, review && review.fixInstructions);
-          const patch = await askJSON(usedPrompts[key('preTaskRepair' + round)], Object.assign({ signal: ctl.signal }, stream));
-          const candidate = quality.applyPreTaskPatch(worksheet, patch);
-          const changedPre = candidate === worksheet ? [] : quality.changedPreTasks(worksheet, candidate);
-          if (!changedPre.length) { preTaskGivenUp = true; progress('pretask-fix', 'warn', `${pfx}Runde ${round}: keine neuen Pre-Task-Aufgaben erhalten`); }
-          else {
-            const candDet = quality.runDeterministic(state, plan, content, candidate).filter(f => isWorksheetGroup(f));
-            let candReview = review, candLlm = reviewFindings;
-            try { const r = await reviewNow(candidate, contentFindings.concat(candDet), 'P' + round); candReview = r.review; candLlm = r.findings; }
-            catch (e) { if (e.code === 'cancelled') throw e; }
-            const candFindings = candDet.concat(candLlm);
-            const better = quality.problemScore(candFindings) < quality.problemScore(findings);
-            repairs.push({ round, target: 'pretask', preTasks: changedPre, fixed: rp.preTasks.map(f => f.title), accepted: better, variant: tag || undefined });
-            if (better) {
-              worksheet = candidate; questionFindings = candDet; reviewFindings = candLlm; review = candReview; findings = candFindings;
-              progress('pretask-fix', 'done', `${pfx}Runde ${round}: P${changedPre.join(', P')} ersetzt · ${summaryText(findings)}`);
-            } else { preTaskGivenUp = true; progress('pretask-fix', 'done', `${pfx}Runde ${round}: keine Verbesserung, vorige Fassung behalten`); }
-          }
-        } catch (e) { if (e.code === 'cancelled') throw e; preTaskGivenUp = true; progress('pretask-fix', 'warn', pfx + errorCopy(e)); }
+          const promptKey = key(phase + 'TaskRepair' + round);
+          usedPrompts[promptKey] = prompts.buildTaskRepairPrompt(state, plan, content, worksheet, items, review && review.fixInstructions, phase);
+          const patch = await askJSON(usedPrompts[promptKey], Object.assign({ signal: ctl.signal }, stream));
+          const candidate = quality.applyTaskPatch(worksheet, patch, phase);
+          const changedTasks = candidate === worksheet ? [] : quality.changedTasks(worksheet, candidate, phase);
+          if (!changedTasks.length) { givenUp[phase] = true; progress(step, 'warn', `${pfx}Runde ${round}: keine neuen ${L}-Aufgaben erhalten`); continue; }
+          const candDet = quality.runDeterministic(state, plan, content, candidate).filter(f => isWorksheetGroup(f));
+          let candReview = review, candLlm = reviewFindings;
+          try { const r = await reviewNow(candidate, contentFindings.concat(candDet), (phase === 'pre' ? 'P' : 'T') + round); candReview = r.review; candLlm = r.findings; }
+          catch (e) { if (e.code === 'cancelled') throw e; }
+          const candFindings = candDet.concat(candLlm);
+          const better = quality.problemScore(candFindings) < quality.problemScore(findings);
+          repairs.push(Object.assign({ round, target: phase + 'task', fixed: items.map(f => f.title), accepted: better, variant: tag || undefined },
+            phase === 'pre' ? { preTasks: changedTasks } : { postTasks: changedTasks }));
+          if (better) {
+            worksheet = candidate; questionFindings = candDet; reviewFindings = candLlm; review = candReview; findings = candFindings;
+            progress(step, 'done', `${pfx}Runde ${round}: ${mark}${changedTasks.join(', ' + mark)} ersetzt · ${summaryText(findings)}`);
+          } else { givenUp[phase] = true; progress(step, 'done', `${pfx}Runde ${round}: keine Verbesserung, vorige Fassung behalten`); }
+        } catch (e) { if (e.code === 'cancelled') throw e; givenUp[phase] = true; progress(step, 'warn', pfx + errorCopy(e)); }
       }
 
-      if (!rp.questions.length && !rp.worksheet.length) { if (rp.preTasks.length && !preTaskGivenUp) continue; break; }
+      if (!rp.questions.length && !rp.worksheet.length) {
+        if ((rp.preTasks.length && !givenUp.pre) || (rp.postTasks.length && !givenUp.post)) continue;
+        break;
+      }
       const targeted = rp.questions.length > 0 && rp.worksheet.length === 0;
       progress('question-fix', 'running', `${pfx}Runde ${round}: ${findingsLabel(rp.items)}` + (targeted ? ` · Q${rp.questions.join(', Q')}` : ' · Aufgaben neu'));
       let candidate;
@@ -702,8 +718,10 @@
     if (!repairs.some(r => r.variant === (tag || undefined) && (r.target === 'questions' || r.target === 'worksheet'))) {
       progress('question-fix', 'skip', maxRounds ? pfx + 'nicht nötig' : 'automatische Korrektur aus');
     }
-    if (!repairs.some(r => r.variant === (tag || undefined) && r.target === 'pretask')) {
-      progress('pretask-fix', 'skip', !plan.preTask ? 'keine Pre-Task' : maxRounds ? pfx + 'nicht nötig' : 'automatische Korrektur aus');
+    for (const phase of ['pre', 'post']) {
+      if (repairs.some(r => r.variant === (tag || undefined) && r.target === phase + 'task')) continue;
+      const planned = phase === 'pre' ? plan.preTask : plan.postTask;
+      progress(phase + 'task-fix', 'skip', !planned ? (phase === 'pre' ? 'keine Pre-Task' : 'keine Post-Task') : maxRounds ? pfx + 'nicht nötig' : 'automatische Korrektur aus');
     }
     return { worksheet, questionFindings, reviewFindings, review, content, contentFindings };
   }
@@ -760,8 +778,10 @@
     for (const v of variants) {
       const list = f.filter(x => x.group === 'questions' && (v.key ? x.variant === v.key : !x.variant));
       if (list.length) html += `<h3>Questions${v.label ? ' — ' + esc(v.label) : ''}</h3>` + table(list);
-      const pre = f.filter(x => x.group === 'pretask' && (v.key ? x.variant === v.key : !x.variant));
-      if (pre.length) html += `<h3>Pre-Task${v.label ? ' — ' + esc(v.label) : ''}</h3>` + table(pre);
+      for (const [g, title] of [['pretask', 'Pre-Task'], ['posttask', 'Post-Task']]) {
+        const list2 = f.filter(x => x.group === g && (v.key ? x.variant === v.key : !x.variant));
+        if (list2.length) html += `<h3>${title}${v.label ? ' — ' + esc(v.label) : ''}</h3>` + table(list2);
+      }
     }
     const repairs = (m.quality.repairs || []).filter(r => r.accepted);
     if (repairs.length) {
@@ -1323,7 +1343,7 @@
     });
     const bySection = {};
     for (const r of res.results) (bySection[r.section] = bySection[r.section] || []).push(r);
-    const SECTION_NAMES = { 0: 'Vollständigkeit', 1: 'Ziel der Anwendung', 2: 'Hauptnavigation', 3: 'Grundaufbau des Creators', 4: 'Source & Unit', 5: 'Content', 6: 'Language Level', 7: 'Vocabulary Settings', 8: 'Listening – Audio Structure', 9: 'Listening Presets', 10: 'Speaker Distribution', 11: 'Turn Length', 12: 'Audio Length', 13: 'Speaker Profiles', 14: 'Emotion & Delivery Tags', 15: 'Natural Speech Settings', 16: 'Information Explicitness', 17: 'Reading – Text Structure', 18: 'Worksheet', 19: 'Number of Questions', 20: 'Listening / Reading Skills', 21: 'Higher-Order Thinking', 22: 'Question Difficulty', 23: 'Automatic Skill Mix', 24: 'Manual Skill Mix', 25: 'Question Formats', 26: 'Question Order', 27: 'Pre-Listening / Pre-Reading', 28: 'Output', 29: 'Quality Check', 30: 'Advanced Settings', 31: 'Simple vs. Advanced Mode', 32: 'Beispielkonfiguration', 33: 'Word-Export (formatiert, typgerecht)', 34: 'Schwierigkeitsmesser & Niveau der Fragen', 35: 'Pre-Task: Typen, Sozialformen, Anforderungsniveau' };
+    const SECTION_NAMES = { 0: 'Vollständigkeit', 1: 'Ziel der Anwendung', 2: 'Hauptnavigation', 3: 'Grundaufbau des Creators', 4: 'Source & Unit', 5: 'Content', 6: 'Language Level', 7: 'Vocabulary Settings', 8: 'Listening – Audio Structure', 9: 'Listening Presets', 10: 'Speaker Distribution', 11: 'Turn Length', 12: 'Audio Length', 13: 'Speaker Profiles', 14: 'Emotion & Delivery Tags', 15: 'Natural Speech Settings', 16: 'Information Explicitness', 17: 'Reading – Text Structure', 18: 'Worksheet', 19: 'Number of Questions', 20: 'Listening / Reading Skills', 21: 'Higher-Order Thinking', 22: 'Question Difficulty', 23: 'Automatic Skill Mix', 24: 'Manual Skill Mix', 25: 'Question Formats', 26: 'Question Order', 27: 'Pre-Listening / Pre-Reading', 28: 'Output', 29: 'Quality Check', 30: 'Advanced Settings', 31: 'Simple vs. Advanced Mode', 32: 'Beispielkonfiguration', 33: 'Word-Export (formatiert, typgerecht)', 34: 'Schwierigkeitsmesser & Niveau der Fragen', 35: 'Pre-Task: Typen, Sozialformen, Anforderungsniveau', 36: 'Post-Task: Typen, Sozialformen, Anforderungsniveau' };
     $('#check-summary').innerHTML = `<span class="big">${res.summary.pass} / ${res.summary.total}</span> Anforderungen bestanden` + (res.summary.fail ? ` · <span class="bad">${res.summary.fail} nicht bestanden</span>` : ' · alle Konzeptpunkte mit echten Funktionen belegt');
     el.innerHTML = Object.keys(bySection).sort((a, b) => Number(a) - Number(b)).map(sec => `<section class="check-section"><h3>§${sec} ${esc(SECTION_NAMES[sec] || '')} <span class="muted">${bySection[sec].filter(r => r.status === 'pass').length}/${bySection[sec].length}</span></h3><div class="table-wrap"><table class="check-table"><tbody>` + bySection[sec].map(r => `<tr class="qc-${r.status}"><td class="qc-status">${r.status}</td><td><code>${esc(r.id)}</code></td><td>${esc(r.title)}<div class="muted small">${esc(r.kind)}${r.key ? ' · ' + esc(r.key) : ''}</div></td><td class="muted">${esc(r.detail)}</td></tr>`).join('') + '</tbody></table></div></section>').join('');
   }

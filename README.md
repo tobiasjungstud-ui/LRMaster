@@ -38,10 +38,15 @@ scripts/coverage-report.js  schreibt CONCEPT_COVERAGE.md (npm run coverage)
 7. **Claude-Review** – Beurteilung der Regeln, die Lesen erfordern (Eindeutigkeit, Ableitbarkeit, Distraktoren, Niveau, echte Inferenz, Natürlichkeit, Thema, keine Spoiler im Pre-Task).
 8. **Automatische Korrektur** – siehe unten: beanstandete Fragen werden gezielt ersetzt, der Text bei Bedarf überarbeitet, danach wird erneut geordnet, gemessen und geprüft.
 9. **Pre-Task** (Option, siehe unten) – Aufgaben vor dem Hören/Lesen; Typ, Sozialform, Arbeitsweise und Zeit sind pro Aufgabe geplant, werden geprüft und bei Bedarf gezielt neu erstellt, ohne die Fragen anzutasten.
-10. **Fremdwörter** (Option) – der Messer wählt die Wörter über dem Niveau (ohne Zielvokabular), Claude erklärt sie in einfachem Englisch mit deutscher Entsprechung; das Glossar steht auf Seite 1 des Fragebogens.
-11. **Ausgabe** – Student Version (ohne Skript beim Listening, ausser die Option *Skript auf der letzten Seite* ist gewählt; bei *Beide* eine Version pro Niveau), Teacher Version (Skript mit Zeilennummern und Vokabel-Highlight, verwendete Items, Messung, Lösungsschlüssel je Niveau mit Skill/Difficulty/Evidenz/Begründung, Qualitätsbericht), Prompts und JSON; Download als **Word (.docx)** (Schülerversion A/B, Lehrerversion), HTML, Markdown oder JSON, Druck, Speicherung.
+10. **Post-Task** (Option, siehe unten) – Aufgaben nach dem Hören/Lesen, geplant und geprüft wie die Pre-Task, aber mit umgekehrter Anforderung: sie müssen am Material ansetzen und über die Verständnisfragen hinausgehen.
+11. **Fremdwörter** (Option) – der Messer wählt die Wörter über dem Niveau (ohne Zielvokabular), Claude erklärt sie in einfachem Englisch mit deutscher Entsprechung; das Glossar steht auf Seite 1 des Fragebogens.
+12. **Ausgabe** – Student Version (ohne Skript beim Listening, ausser die Option *Skript auf der letzten Seite* ist gewählt; bei *Beide* eine Version pro Niveau), Teacher Version (Skript mit Zeilennummern und Vokabel-Highlight, verwendete Items, Messung, Lösungsschlüssel je Niveau mit Skill/Difficulty/Evidenz/Begründung, Qualitätsbericht), Prompts und JSON; Download als **Word (.docx)** (Schülerversion A/B, Lehrerversion), HTML, Markdown oder JSON, Druck, Speicherung.
 
-## Pre-Task (Aufgaben vor dem Hören/Lesen)
+## Pre-Task und Post-Task (Aufgaben vor und nach dem Hören/Lesen)
+
+Beide Phasen laufen über **dieselbe geprüfte Mechanik** (`core.buildTaskPlan`, `quality.taskRules`, gemeinsamer Reparaturweg) und haben je einen eigenen Creator-Bereich.
+
+### Pre-Task
 
 Eigener Creator-Bereich mit denselben kriterienorientierten Einstellungen wie die Fragen:
 
@@ -62,7 +67,21 @@ Typ, Sozialform, Arbeitsweise und Zeit sind pro Aufgabenposition **fest geplant*
 
 **Kontrollmechanismen** (Gruppe „Pre-Task“ im Qualitätsbericht): `pretask.present` (Anzahl und Typ je Position, blockierend), `pretask.social_forms` (Sozialformen und deren Anzahl, blockierend), `pretask.modes` (mündlich/schriftlich wie eingestellt, nie mündlich in Einzelarbeit, blockierend), `pretask.focus` (Wortschatzaufgaben verwenden das Zielvokabular, Themenaufgaben das Thema), `pretask.criteria` (Gelingenskriterien vorhanden und kurz), `pretask.time` (Zeitangaben im Budget), `pretask.language` (Wörter über dem eingestellten Niveau in der Aufgabenstellung – mit dem Schwierigkeitsmesser gemessen) sowie vier Claude-Prüfungen: `pretask.no_spoilers` (nimmt keine Antwort vorweg, blockierend), `pretask.solvable_before` (ohne das Material lösbar, blockierend), `pretask.social_fits` (Sozialform und Arbeitsweise passen zur Aufgabe), `pretask.confrontation` (die Konfrontationsaufgabe konfrontiert wirklich – nur aktiv, wenn eine geplant ist).
 
-**Gezielte Korrektur:** Pre-Task-Befunde haben einen eigenen Reparaturweg. Claude bekommt Material, die bereits fertigen Fragen (»nimm davon nichts vorweg«), die aktuellen Aufgaben und die Befunde im Wortlaut und schreibt nur die Pre-Task neu; die Fragen bleiben unangetastet. Übernommen wird auch hier nur, was die Prüfung verbessert.
+### Post-Task
+
+Dieselben Einstellungen (Anzahl, Sozialformen, mündlich/schriftlich, Anforderungsniveau, Hilfen, Sprachniveau, Gelingenskriterien, Zeitbudget) – mit eigener Typenliste und umgekehrter Logik: Die Aufgaben **setzen am Material an** und gehen **über die Verständnisfragen hinaus**.
+
+| Einstellung | Bedeutung |
+|---|---|
+| Fokus | Inhalt weiterdenken · Zielvokabular produktiv anwenden · beides |
+| Aufgabentypen | Diskussion, **Debatte (Pro/Contra)**, Rollenspiel/Simulation, Transfer auf die eigene Lebenswelt, **Sprachmittlung/Zusammenfassung**, Stellungnahme, kreatives Produkt, Wortschatz anwenden, Mini-Recherche, Partnerfeedback |
+| Anforderungsniveau | wiedergeben und ordnen → eng anwenden → übertragen und verknüpfen → eigenes Produkt und Position → bewerten, kritisieren, frei gestalten |
+
+Jede Post-Task-Aufgabe nennt zusätzlich ihren **Ansatzpunkt im Material** (`reference`) und ihr **Produkt** (`product`, was am Ende abgegeben oder gezeigt wird).
+
+**Kontrollen Post-Task:** dieselben sieben deterministischen Regeln wie oben (`posttask.present`, `social_forms`, `modes`, `focus`, `criteria`, `time`, `language`) plus `posttask.product` (Ansatzpunkt und Produkt benannt) sowie die Claude-Prüfungen `posttask.uses_material` (setzt nachweislich am Material an, blockierend), `posttask.beyond_questions` (lässt sich nicht durch Wiederholen einer Verständnisfrage lösen, blockierend), `posttask.social_fits` und `posttask.mediation` (Adressat und Zweck genannt – nur aktiv, wenn eine Sprachmittlung geplant ist).
+
+**Gezielte Korrektur:** Pre-Task- und Post-Task-Befunde haben je einen eigenen Reparaturweg. Claude bekommt Material, die fertigen Fragen (bei der Pre-Task »nimm davon nichts vorweg«, bei der Post-Task »wiederhole sie nicht«), die aktuellen Aufgaben und die Befunde im Wortlaut und schreibt nur diese Phase neu; Fragen und die jeweils andere Phase bleiben unangetastet. Übernommen wird auch hier nur, was die Prüfung verbessert.
 
 ## Schwierigkeitsmesser (`level.js`, `wordlist.js`)
 
@@ -129,7 +148,7 @@ Das Arbeitsblatt ist ein echtes Arbeitsblatt: Name-/Klasse-/Datum-Zeile, Aufgabe
 
 ## Kontrollmechanismen
 
-- **Konzept-Manifest** (`app/manifest.js`): 249 Anforderungen aus dem Konzeptdokument und den Auftragserweiterungen (§33 Word-Export, §34 Schwierigkeitsmesser & Niveau der Fragen, §35 Pre-Task), jede mit Prüfart:
+- **Konzept-Manifest** (`app/manifest.js`): 278 Anforderungen aus dem Konzeptdokument und den Auftragserweiterungen (§33 Word-Export, §34 Schwierigkeitsmesser & Niveau der Fragen, §35 Pre-Task, §36 Post-Task), jede mit Prüfart:
   - `setting` – Steuerelement existiert **und** die Änderung des Werts verändert nachweislich mindestens einen Prompt (Prompt-Sensitivitätstest; tote Einstellungen fallen durch).
   - `function` – Verhalten wird mit echten Eingaben ausgeführt (z. B. Preset *Interview* ⇒ Anteile 25/75, Skill-Mix verschiebt sich mit der Schwierigkeit, Beispielkonfiguration §32 reproduziert alle Werte).
   - `rule` – Qualitätsregel existiert als Messfunktion oder als Review-Kriterium und wird im Review-Prompt an Claude übergeben.

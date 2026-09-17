@@ -395,3 +395,5 @@ mark.vocab { background: var(--mark); color: inherit; border-radius: 3px; paddin
 .pretask .criteria { margin-top: .5rem; }
 .pretask .criteria h4 { font-size: .72rem; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 0 0 .2rem; }
 .pretask .criteria ul { margin: 0 0 0 1.1rem; font-size: .9rem; }
+.pretask.posttask { border-left-color: #6b7280; }
+.pretask .product { margin: .35rem 0 0; font-size: .92rem; }

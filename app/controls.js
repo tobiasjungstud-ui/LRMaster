@@ -23,6 +23,9 @@
     questionCount: { custom: 'Custom' },
     skillMixMode: { auto: 'Balanced Question Mix (automatic)', custom: 'Custom Question Mix' },
     autoFix: { off: 'Aus – Befunde nur melden', fail: 'Fehler automatisch beheben', all: 'Fehler und Warnungen automatisch beheben' },
+    postTaskFocus: { content: 'Inhalt weiterdenken', vocabulary: 'Wortschatz produktiv anwenden', both: 'Inhalt und Wortschatz' },
+    postTaskSocialMode: { auto: 'Automatisch verteilen', custom: 'Selbst festlegen' },
+    postTaskLevel: { auto: 'Wie die Fragen', A: 'Niveau A – B1.2', B: 'Niveau B – B1.1' },
     preTaskFocus: { topic: 'Thema (Vorwissen, Haltungen, Erwartungen)', vocabulary: 'Wortschatz (Zielvokabular der Unit)', both: 'Thema und Wortschatz' },
     preTaskSocialMode: { auto: 'Automatisch verteilen', custom: 'Selbst festlegen' },
     preTaskLevel: { auto: 'Wie die Fragen', A: 'Niveau A – B1.2', B: 'Niveau B – B1.1' },
@@ -36,6 +39,8 @@
 
   const RANGE_ENDS = {
     preTaskDifficulty: ['Reproduktiv', 'Position beziehen'],
+    postTaskDifficulty: ['Wiedergeben', 'Eigenes Produkt'],
+    postTaskScaffolding: ['Keine Hilfen', 'Volle Hilfen'],
     preTaskScaffolding: ['Keine Hilfen', 'Volle Hilfen'],
     languageComplexity: ['Simple', 'Complex'],
     grammarComplexity: ['Elementary', 'Full range'],
@@ -79,6 +84,17 @@
     preTaskCriteria: 'Gelingenskriterien in Schülersprache („I can name three reasons …“) pro Aufgabe. Werden auf dem Arbeitsblatt ausgewiesen und geprüft.',
     preTaskLevel: 'Sprachniveau der Aufgabenstellung. Wörter darüber werden gemeldet – die Schülerinnen lesen die Aufgabe, bevor sie das Material kennen.',
     preTaskMinutes: 'Zeitbudget für die ganze Pre-Task. Wird auf die Aufgaben verteilt und auf dem Arbeitsblatt ausgewiesen.',
+    postTask: 'Aufgaben nach dem Hören/Lesen: das Verstandene weiterdenken, anwenden, aushandeln und in ein eigenes Produkt überführen. Jede Aufgabe muss nachweislich am Material ansetzen und über die Verständnisfragen hinausgehen – beides wird geprüft.',
+    postTaskFocus: 'Ob die Aufgaben den Inhalt weiterdenken, das Zielvokabular produktiv einfordern oder beides.',
+    postTaskTypes: 'Diskussion, Debatte (Pro/Contra), Rollenspiel, Transfer auf die eigene Lebenswelt, Sprachmittlung/Zusammenfassung, Stellungnahme, kreatives Produkt, Wortschatz anwenden, Mini-Recherche, Partnerfeedback.',
+    postTaskSocialMode: 'Automatisch: Einzel- und Partnerarbeit tragen die Sequenz, Gruppen- und Plenumsarbeit kommen bei längeren Sequenzen dazu; es gibt immer genug interaktive Formen für die mündlichen Aufgaben.',
+    customPostTaskSocial: 'Wie viele Aufgaben in Einzel-, Partner-, Gruppen- und Plenumsarbeit. Die Summe muss der Anzahl Aufgaben entsprechen.',
+    postTaskOralCount: 'Wie viele der Aufgaben mündlich gelöst werden. Mündliche Aufgaben brauchen Partner-, Gruppen- oder Plenumsarbeit.',
+    postTaskDifficulty: 'Von wiedergeben und ordnen über anwenden und übertragen bis eigenes Produkt, Position und Kritik.',
+    postTaskScaffolding: 'Hilfen in der Aufgabe: Beispiel, Wortspeicher, Satzanfänge, Musterlösung.',
+    postTaskCriteria: 'Gelingenskriterien in Schülersprache pro Aufgabe – die Grundlage für Partnerfeedback und Bewertung.',
+    postTaskLevel: 'Sprachniveau der Aufgabenstellung.',
+    postTaskMinutes: 'Zeitbudget für die ganze Post-Task, auf die Aufgaben verteilt.',
     autoFormatMix: 'ON: the app assigns the enabled formats evenly to the questions. OFF: Claude chooses freely among the enabled formats.',
     speakingSpeed: 'Determines the words per minute used to convert the audio length into a word count.',
     autoFix: 'Gefundene Probleme werden nicht nur gemeldet: Die Anwendung lässt die betroffenen Fragen gezielt ersetzen bzw. den Text überarbeiten und prüft danach erneut.',
@@ -109,8 +125,10 @@
       case 'multiselect': {
         const labels = def.key === 'questionFormats' ? Object.fromEntries(core.QUESTION_FORMATS.map(f => [f.key, f.label]))
           : def.key === 'higherOrderTypes' ? Object.fromEntries(core.HIGHER_ORDER_TYPES.map(t => [t.key, t.label]))
-          : def.key === 'preTaskTypes' ? Object.fromEntries(core.PRE_TASK_TYPES.map(t => [t.key, t.label])) : {};
-        const titles = def.key === 'preTaskTypes' ? Object.fromEntries(core.PRE_TASK_TYPES.map(t => [t.key, t.definition])) : {};
+          : def.key === 'preTaskTypes' ? Object.fromEntries(core.PRE_TASK_TYPES.map(t => [t.key, t.label]))
+          : def.key === 'postTaskTypes' ? Object.fromEntries(core.POST_TASK_TYPES.map(t => [t.key, t.label])) : {};
+        const typeDefs = def.key === 'preTaskTypes' ? core.PRE_TASK_TYPES : def.key === 'postTaskTypes' ? core.POST_TASK_TYPES : [];
+        const titles = Object.fromEntries(typeDefs.map(t => [t.key, t.definition]));
         return `<fieldset class="field field-multi" data-field="${def.key}" data-setting="${def.key}" id="${id}"><legend>${esc(def.label)}</legend><div class="chips">${def.options.map(o => `<label class="chip"${titles[o] ? ` title="${esc(titles[o])}"` : ''}><input type="checkbox" value="${esc(o)}" data-multi="${def.key}"><span>${esc(labels[o] || o)}</span></label>`).join('')}</div>${help}</fieldset>`;
       }
       case 'text':
@@ -131,8 +149,9 @@
     { n: 5, id: 'vocab', title: 'Vocabulary' },
     { n: 6, id: 'worksheet', title: 'Worksheet & Questions' },
     { n: 7, id: 'pretask', title: 'Pre-Task' },
-    { n: 8, id: 'advanced', title: 'Advanced Settings' },
-    { n: 9, id: 'generate', title: 'Generate' },
+    { n: 8, id: 'posttask', title: 'Post-Task' },
+    { n: 9, id: 'advanced', title: 'Advanced Settings' },
+    { n: 10, id: 'generate', title: 'Generate' },
   ];
 
   // Ordering inside sections follows the concept.
@@ -145,7 +164,8 @@
     5: ['vocabUsage', 'targetVocabMin', 'targetVocabMax', 'vocabSelectionMode', 'selectedVocab', 'highlightVocab'],
     6: ['createWorksheet', 'questionCount', 'questionCountCustom', 'questionLevel', 'questionDifficulty', 'glossary', 'appendScript', 'skillMixMode', 'customSkillMix', 'questionFormats', 'autoFormatMix', 'higherOrder', 'higherOrderCount', 'higherOrderTypes'],
     7: ['preTask', 'preTaskFocus', 'preTaskCount', 'preTaskTypes', 'preTaskSocialMode', 'customPreTaskSocial', 'preTaskOralCount', 'preTaskMinutes', 'preTaskDifficulty', 'preTaskScaffolding', 'preTaskLevel', 'preTaskCriteria'],
-    8: ['grammarComplexity', 'vocabularyDifficulty', 'idiomaticLanguage', 'paragraphLength', 'dialogueProportion', 'styleBalance', 'distractorDifficulty', 'inferenceLevel', 'autoFix', 'autoFixRounds'],
+    8: ['postTask', 'postTaskFocus', 'postTaskCount', 'postTaskTypes', 'postTaskSocialMode', 'customPostTaskSocial', 'postTaskOralCount', 'postTaskMinutes', 'postTaskDifficulty', 'postTaskScaffolding', 'postTaskLevel', 'postTaskCriteria'],
+    9: ['grammarComplexity', 'vocabularyDifficulty', 'idiomaticLanguage', 'paragraphLength', 'dialogueProportion', 'styleBalance', 'distractorDifficulty', 'inferenceLevel', 'autoFix', 'autoFixRounds'],
   };
 
   const ADVANCED_GROUPS = [
@@ -154,6 +174,7 @@
     { title: 'Language', keys: ['cefr', 'levelMeter', 'grammarComplexity', 'vocabularyDifficulty', 'vocabUsage', 'idiomaticLanguage'] },
     { title: 'Questions', keys: ['questionCount', 'questionLevel', 'questionDifficulty', 'skillMixMode', 'questionFormats', 'distractorDifficulty', 'inferenceLevel', 'glossary', 'appendScript'] },
     { title: 'Pre-Task', keys: ['preTask', 'preTaskTypes', 'preTaskCount', 'preTaskSocialMode', 'preTaskOralCount', 'preTaskDifficulty', 'preTaskScaffolding', 'preTaskCriteria'] },
+    { title: 'Post-Task', keys: ['postTask', 'postTaskTypes', 'postTaskCount', 'postTaskSocialMode', 'postTaskOralCount', 'postTaskDifficulty', 'postTaskScaffolding', 'postTaskCriteria'] },
     { title: 'Qualität', keys: ['autoFix', 'autoFixRounds'] },
   ];
 
@@ -161,8 +182,8 @@
     switch (sectionN) {
       case 2: return '<div class="field field-actions" data-field="topicSuggest"><button type="button" class="btn secondary" id="btn-suggest-topics">Generate topic for me</button><div id="topic-suggestions" class="suggestions" hidden></div></div>';
       case 4: return '<div class="field field-actions" data-mode="listening" data-field="turnPresets"><div class="field-label">Turn length presets</div><div class="chips" id="turn-presets">' + Object.keys(core.TURN_PRESETS).map(k => `<button type="button" class="chip-btn" data-turn-preset="${k}" title="${esc(core.TURN_PRESETS[k].hint)}">${esc(core.TURN_PRESETS[k].label)}</button>`).join('') + '</div><p class="help" id="audio-estimate"></p></div>';
-      case 8: return '<div class="advanced-index"><p class="help">All fine-grained controls at a glance. Values shown here are the same settings as in the sections above.</p>' + ADVANCED_GROUPS.map(g => `<div class="adv-group"><h4>${g.title}</h4><ul>${g.keys.map(k => `<li><a href="#" data-jump="${k}">${esc(core.SCHEMA_BY_KEY[k] ? core.SCHEMA_BY_KEY[k].label : k)}</a></li>`).join('')}</ul></div>`).join('') + '</div>';
-      case 9: return '<div id="validation" class="validation" hidden></div><div id="plan-preview" class="plan-preview"></div><div class="generate-row"><button type="button" class="btn primary" id="btn-generate">Generate</button><button type="button" class="btn danger" id="btn-stop" hidden>Stop</button><span id="claude-status" class="status"></span></div><div id="progress" class="progress" hidden></div>';
+      case 9: return '<div class="advanced-index"><p class="help">All fine-grained controls at a glance. Values shown here are the same settings as in the sections above.</p>' + ADVANCED_GROUPS.map(g => `<div class="adv-group"><h4>${g.title}</h4><ul>${g.keys.map(k => `<li><a href="#" data-jump="${k}">${esc(core.SCHEMA_BY_KEY[k] ? core.SCHEMA_BY_KEY[k].label : k)}</a></li>`).join('')}</ul></div>`).join('') + '</div>';
+      case 10: return '<div id="validation" class="validation" hidden></div><div id="plan-preview" class="plan-preview"></div><div class="generate-row"><button type="button" class="btn primary" id="btn-generate">Generate</button><button type="button" class="btn danger" id="btn-stop" hidden>Stop</button><span id="claude-status" class="status"></span></div><div id="progress" class="progress" hidden></div>';
       default: return '';
     }
   }

@@ -130,6 +130,43 @@ test('pre-task findings get their own repair bucket', () => {
   assert.equal(rp.content.length, 1);
   assert.equal(rp.worksheet.length, 0);
 });
+test('post-task: same planner, own types, product and reference', () => {
+  const s = core.normalizeState({ kind: 'reading', createWorksheet: true, postTask: true, postTaskCount: 4,
+    postTaskTypes: ['debate', 'mediation', 'creative', 'peerfeedback'], postTaskOralCount: 2, postTaskMinutes: 24 });
+  const tasks = core.postTaskSequence(s);
+  assert.equal(tasks.length, 4);
+  assert.equal(tasks.filter(t => t.mode === 'oral').length, 2);
+  assert.ok(tasks.filter(t => t.mode === 'oral').every(t => t.socialForm !== 'single'));
+  assert.equal(tasks.reduce((a, t) => a + t.minutes, 0), 24);
+  assert.equal(tasks[0].type, 'debate');
+  // the generic planner is what both phases use
+  assert.deepEqual(core.buildTaskPlan(s, 'post'), core.buildPostTaskPlan(s));
+  const p = quality.normalizePreTask({ type: 'mediation', prompt: 'x', reference: 'line 3', product: 'a short mail' }, 0);
+  assert.equal(p.reference, 'line 3'); assert.equal(p.product, 'a short mail');
+});
+test('post-task checks mirror the pre-task checks and add product/reference', () => {
+  const ids = quality.RULES.map(r => r.id);
+  for (const id of ['present', 'social_forms', 'modes', 'focus', 'criteria', 'time', 'language']) {
+    assert.ok(ids.includes('pretask.' + id), 'pretask.' + id);
+    assert.ok(ids.includes('posttask.' + id), 'posttask.' + id);
+  }
+  for (const id of ['posttask.product', 'posttask.uses_material', 'posttask.beyond_questions', 'posttask.mediation']) assert.ok(ids.includes(id), id);
+  const m = fixture.material({ preTask: true, postTask: true }, 'listening');
+  const bad = JSON.parse(JSON.stringify(m.worksheet));
+  bad.postTasks[0].socialForm = 'plenary';
+  bad.postTasks[1].product = '';
+  const found = quality.runDeterministic(m.settings, m.plan, m.content, bad);
+  assert.equal(found.find(f => f.id === 'posttask.social_forms').status, 'fail');
+  assert.equal(found.find(f => f.id === 'posttask.product').status, 'fail');
+  assert.equal(found.find(f => f.id === 'pretask.social_forms').status, 'pass', 'the pre-task must not be affected');
+  const rp = quality.repairPlan(found.filter(f => f.status === 'fail'), 'fail');
+  assert.equal(rp.postTasks.length, 2);
+  assert.equal(rp.preTasks.length, 0);
+  const patched = quality.applyPostTaskPatch(m.worksheet, { postTasks: m.worksheet.postTasks.map((p, i) => (i ? p : Object.assign({}, p, { prompt: 'new' }))) });
+  assert.equal(patched.preTasks, m.worksheet.preTasks);
+  assert.equal(patched.questions, m.worksheet.questions);
+  assert.deepEqual(quality.changedPostTasks(m.worksheet, patched), [1]);
+});
 test('question levels: A/B bands, variants and prompts', () => {
   const s = core.normalizeState({ kind: 'reading', questionLevel: 'both', cefr: 'B1.2' });
   assert.deepEqual(core.questionVariants(s).map(v => v.key), ['A', 'B']);

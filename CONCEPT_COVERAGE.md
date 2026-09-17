@@ -2,7 +2,7 @@
 
 Erzeugt von `npm run coverage`. Jede Zeile ist eine Anforderung aus `docs/Konzept_Listening_Reading_Creator.md`, gebunden an die Stelle im Code, die sie umsetzt, und das Ergebnis der automatischen Prüfung (`npm test`).
 
-**Ergebnis: 249 von 249 Anforderungen bestanden.**
+**Ergebnis: 278 von 278 Anforderungen bestanden.**
 
 Prüfarten: **setting** – Steuerelement vorhanden und Änderung des Werts verändert nachweislich den Prompt an Claude · **function** – Verhalten wird mit echten Eingaben ausgeführt und verglichen · **rule** – Qualitätsregel existiert als Messung oder Claude-Review-Kriterium · **render** – Ausgabe wird auf einer Fixture gerendert und inhaltlich geprüft · **ui** – Navigations-/Strukturelement existiert.
 
@@ -34,7 +34,7 @@ Prüfarten: **setting** – Steuerelement vorhanden und Änderung des Werts ver�
 | ✅ | `S02.dialogs_in_page` | Anlegen, Umbenennen und Löschen laufen über seiteneigene Dialoge (im Artifact-Frame sind window.prompt/confirm nicht verlässlich) | function | Funktion (siehe Check im Manifest) |
 | ✅ | `S02.unit_listing` | Lehrmittel zeigt Units (Unit 1, Unit 2, …) | ui | Element `#textbook-list` |
 
-## §3 Grundaufbau des Creators (10/10)
+## §3 Grundaufbau des Creators (11/11)
 
 | Status | ID | Anforderung | Art | Umsetzung |
 |---|---|---|---|---|
@@ -45,8 +45,9 @@ Prüfarten: **setting** – Steuerelement vorhanden und Änderung des Werts ver�
 | ✅ | `S03.section_5` | Creator-Bereich 5: Vocabulary | ui | Element `#sec-vocab[data-step="5"]` |
 | ✅ | `S03.section_6` | Creator-Bereich 6: Worksheet & Questions | ui | Element `#sec-worksheet[data-step="6"]` |
 | ✅ | `S03.section_7` | Creator-Bereich 7: Pre-Task | ui | Element `#sec-pretask[data-step="7"]` |
-| ✅ | `S03.section_8` | Creator-Bereich 8: Advanced Settings | ui | Element `#sec-advanced[data-step="8"]` |
-| ✅ | `S03.section_9` | Creator-Bereich 9: Generate | ui | Element `#sec-generate[data-step="9"]` |
+| ✅ | `S03.section_8` | Creator-Bereich 8: Post-Task | ui | Element `#sec-posttask[data-step="8"]` |
+| ✅ | `S03.section_9` | Creator-Bereich 9: Advanced Settings | ui | Element `#sec-advanced[data-step="9"]` |
+| ✅ | `S03.section_10` | Creator-Bereich 10: Generate | ui | Element `#sec-generate[data-step="10"]` |
 | ✅ | `S03.collapsible` | Bereiche einzeln auf-/zuklappbar | ui | Element `[data-toggle-step="4"]` |
 
 ## §4 Source & Unit (3/3)
@@ -430,6 +431,39 @@ Prüfarten: **setting** – Steuerelement vorhanden und Änderung des Werts ver�
 | ✅ | `S35.repair` | Beanstandete Pre-Task wird gezielt neu erstellt, die Fragen bleiben unverändert | function | Funktion (siehe Check im Manifest) |
 | ✅ | `S35.output` | Sozialform, Arbeitsweise, Zeit und Kriterien stehen auf dem Arbeitsblatt (Bildschirm, Word, Markdown); Lehrerversion mit Pre-Task-Übersicht | render | render.js (renderStudentHTML / renderTeacherHTML) |
 
+## §36 Post-Task: Typen, Sozialformen, Anforderungsniveau (28/28)
+
+| Status | ID | Anforderung | Art | Umsetzung |
+|---|---|---|---|---|
+| ✅ | `S36.section` | Eigener Creator-Bereich „Post-Task“ | ui | Element `#sec-posttask[data-step="8"]` |
+| ✅ | `S36.toggle` | Post-Task erstellen (Aufgaben nach dem Hören/Lesen) | setting | Setting `postTask` (core.SCHEMA → Control `[data-setting="postTask"]` → prompts.js) |
+| ✅ | `S36.focus` | Post-Task um den Inhalt, ums Vokabular oder um beides | setting | Setting `postTaskFocus` (core.SCHEMA → Control `[data-setting="postTaskFocus"]` → prompts.js) |
+| ✅ | `S36.count` | Anzahl der Post-Task-Aufgaben einstellbar | setting | Setting `postTaskCount` (core.SCHEMA → Control `[data-setting="postTaskCount"]` → prompts.js) |
+| ✅ | `S36.types` | Aufgabentypen: Diskussion, Debatte, Rollenspiel, Transfer, Sprachmittlung, Stellungnahme, kreatives Produkt, Wortschatz, Recherche, Partnerfeedback | setting | Setting `postTaskTypes` (core.SCHEMA → Control `[data-setting="postTaskTypes"]` → prompts.js) |
+| ✅ | `S36.social_mode` | Sozialformen automatisch verteilen oder selbst festlegen | setting | Setting `postTaskSocialMode` (core.SCHEMA → Control `[data-setting="postTaskSocialMode"]` → prompts.js) |
+| ✅ | `S36.social_custom` | Wie viele Einzel-, Partner-, Gruppen- und Plenumsarbeiten | setting | Setting `customPostTaskSocial` (core.SCHEMA → Control `[data-setting="customPostTaskSocial"]` → prompts.js) |
+| ✅ | `S36.oral` | Wie viele Aufgaben mündlich gelöst werden (nur mit interaktiver Sozialform) | setting | Setting `postTaskOralCount` (core.SCHEMA → Control `[data-setting="postTaskOralCount"]` → prompts.js) |
+| ✅ | `S36.difficulty` | Kriterienorientiertes Anforderungsniveau (wiedergeben bis eigenes Produkt und Kritik) | setting | Setting `postTaskDifficulty` (core.SCHEMA → Control `[data-setting="postTaskDifficulty"]` → prompts.js) |
+| ✅ | `S36.scaffolding` | Hilfestellungen (Beispiel, Wortspeicher, Satzanfänge, Musterlösung) | setting | Setting `postTaskScaffolding` (core.SCHEMA → Control `[data-setting="postTaskScaffolding"]` → prompts.js) |
+| ✅ | `S36.level` | Sprachniveau der Aufgabenstellung (wie die Fragen, Niveau A oder B) | setting | Setting `postTaskLevel` (core.SCHEMA → Control `[data-setting="postTaskLevel"]` → prompts.js) |
+| ✅ | `S36.criteria` | Gelingenskriterien pro Aufgabe, auf dem Arbeitsblatt ausgewiesen | setting | Setting `postTaskCriteria` (core.SCHEMA → Control `[data-setting="postTaskCriteria"]` → prompts.js) |
+| ✅ | `S36.minutes` | Zeitbudget der Post-Task, auf die Aufgaben verteilt | setting | Setting `postTaskMinutes` (core.SCHEMA → Control `[data-setting="postTaskMinutes"]` → prompts.js) |
+| ✅ | `S36.shared_planner` | Pre- und Post-Task werden von derselben geprüften Mechanik geplant (Typ, Sozialform, Arbeitsweise, Zeit pro Position) | function | Funktion (siehe Check im Manifest) |
+| ✅ | `S36.rule_present` | Kontrolle: Anzahl und Typen der Post-Task-Aufgaben stimmen | rule | Quality rule `posttask.present` (gemessen in quality.js) |
+| ✅ | `S36.rule_social` | Kontrolle: Sozialformen entsprechen den Einstellungen | rule | Quality rule `posttask.social_forms` (gemessen in quality.js) |
+| ✅ | `S36.rule_modes` | Kontrolle: mündliche und schriftliche Aufgaben wie eingestellt, mündlich nie in Einzelarbeit | rule | Quality rule `posttask.modes` (gemessen in quality.js) |
+| ✅ | `S36.rule_focus` | Kontrolle: Inhalt weitergedacht, Zielvokabular produktiv verwendet | rule | Quality rule `posttask.focus` (gemessen in quality.js) |
+| ✅ | `S36.rule_criteria` | Kontrolle: Gelingenskriterien vorhanden und kurz | rule | Quality rule `posttask.criteria` (gemessen in quality.js) |
+| ✅ | `S36.rule_time` | Kontrolle: Zeitangaben vorhanden und im Budget | rule | Quality rule `posttask.time` (gemessen in quality.js) |
+| ✅ | `S36.rule_language` | Kontrolle: Aufgabenstellung bleibt auf dem eingestellten Sprachniveau | rule | Quality rule `posttask.language` (gemessen in quality.js) |
+| ✅ | `S36.rule_product` | Kontrolle: jede Aufgabe nennt ihren Ansatzpunkt im Material und ihr Produkt | rule | Quality rule `posttask.product` (gemessen in quality.js) |
+| ✅ | `S36.rule_uses_material` | Kontrolle (Claude): Post-Task setzt am Material an | rule | Quality rule `posttask.uses_material` (Claude-Review über buildReviewPrompt) |
+| ✅ | `S36.rule_beyond` | Kontrolle (Claude): Post-Task geht über die Verständnisfragen hinaus | rule | Quality rule `posttask.beyond_questions` (Claude-Review über buildReviewPrompt) |
+| ✅ | `S36.rule_social_fits` | Kontrolle (Claude): Sozialform und Arbeitsweise passen zur Aufgabe | rule | Quality rule `posttask.social_fits` (Claude-Review über buildReviewPrompt) |
+| ✅ | `S36.rule_mediation` | Kontrolle (Claude): Sprachmittlung nennt Adressat und Zweck | rule | Quality rule `posttask.mediation` (Claude-Review über buildReviewPrompt) |
+| ✅ | `S36.repair` | Beanstandete Post-Task wird gezielt neu erstellt, Fragen und Pre-Task bleiben unverändert | function | Funktion (siehe Check im Manifest) |
+| ✅ | `S36.output` | Post-Task steht nach den Fragen auf dem Arbeitsblatt (Bildschirm, Word, Markdown) mit Sozialform, Arbeitsweise, Zeit, Produkt und Kriterien; Lehrerversion mit Übersicht | render | render.js (renderStudentHTML / renderTeacherHTML) |
+
 ## Einstellungen (core.SCHEMA)
 
 | Key | Typ | Bereich | Modus | Simple Mode | Default |
@@ -442,9 +476,9 @@ Prüfarten: **setting** – Steuerelement vorhanden und Änderung des Werts ver�
 | `cefr` | select | 3 | both | ja | `"B1.1"` |
 | `levelMeter` | toggle | 3 | both | ja | `true` |
 | `languageComplexity` | range | 3 | both | nein | `50` |
-| `grammarComplexity` | range | 8 | both | nein | `50` |
-| `vocabularyDifficulty` | range | 8 | both | nein | `50` |
-| `idiomaticLanguage` | range | 8 | both | nein | `40` |
+| `grammarComplexity` | range | 9 | both | nein | `50` |
+| `vocabularyDifficulty` | range | 9 | both | nein | `50` |
+| `idiomaticLanguage` | range | 9 | both | nein | `40` |
 | `format` | select | 4 | listening | ja | `"dialogue"` |
 | `speakerCount` | select | 4 | listening | ja | `3` |
 | `preset` | select | 4 | listening | ja | `"natural"` |
@@ -464,9 +498,9 @@ Prüfarten: **setting** – Steuerelement vorhanden und Änderung des Werts ver�
 | `lengthMode` | select | 4 | reading | ja | `"words"` |
 | `wordCount` | number | 4 | reading | ja | `450` |
 | `a4Pages` | select | 4 | reading | ja | `"1"` |
-| `paragraphLength` | select | 8 | reading | nein | `"medium"` |
-| `dialogueProportion` | range | 8 | reading | nein | `20` |
-| `styleBalance` | range | 8 | reading | nein | `50` |
+| `paragraphLength` | select | 9 | reading | nein | `"medium"` |
+| `dialogueProportion` | range | 9 | reading | nein | `20` |
+| `styleBalance` | range | 9 | reading | nein | `50` |
 | `vocabUsage` | range | 5 | both | nein | `50` |
 | `targetVocabMin` | number | 5 | both | nein | `8` |
 | `targetVocabMax` | number | 5 | both | nein | `12` |
@@ -487,10 +521,10 @@ Prüfarten: **setting** – Steuerelement vorhanden und Änderung des Werts ver�
 | `higherOrder` | toggle | 6 | both | nein | `false` |
 | `higherOrderCount` | number | 6 | both | nein | `2` |
 | `higherOrderTypes` | multiselect | 6 | both | nein | `["interpretation","transfer","evaluation"]` |
-| `distractorDifficulty` | range | 8 | both | nein | `50` |
-| `inferenceLevel` | range | 8 | both | nein | `50` |
-| `autoFix` | select | 8 | both | nein | `"all"` |
-| `autoFixRounds` | number | 8 | both | nein | `2` |
+| `distractorDifficulty` | range | 9 | both | nein | `50` |
+| `inferenceLevel` | range | 9 | both | nein | `50` |
+| `autoFix` | select | 9 | both | nein | `"all"` |
+| `autoFixRounds` | number | 9 | both | nein | `2` |
 | `preTask` | toggle | 7 | both | nein | `false` |
 | `preTaskFocus` | select | 7 | both | nein | `"both"` |
 | `preTaskCount` | number | 7 | both | nein | `2` |
@@ -503,6 +537,18 @@ Prüfarten: **setting** – Steuerelement vorhanden und Änderung des Werts ver�
 | `preTaskScaffolding` | range | 7 | both | nein | `50` |
 | `preTaskCriteria` | toggle | 7 | both | nein | `true` |
 | `preTaskMinutes` | number | 7 | both | nein | `8` |
+| `postTask` | toggle | 8 | both | nein | `false` |
+| `postTaskFocus` | select | 8 | both | nein | `"both"` |
+| `postTaskCount` | number | 8 | both | nein | `2` |
+| `postTaskTypes` | multiselect | 8 | both | nein | `["discussion","transfer"]` |
+| `postTaskSocialMode` | select | 8 | both | nein | `"auto"` |
+| `customPostTaskSocial` | map | 8 | both | nein | `{"single":1,"pair":1,"group":0,"plenary":0}` |
+| `postTaskOralCount` | number | 8 | both | nein | `1` |
+| `postTaskDifficulty` | range | 8 | both | nein | `60` |
+| `postTaskLevel` | select | 8 | both | nein | `"auto"` |
+| `postTaskScaffolding` | range | 8 | both | nein | `50` |
+| `postTaskCriteria` | toggle | 8 | both | nein | `true` |
+| `postTaskMinutes` | number | 8 | both | nein | `15` |
 
 ## Qualitätsregeln (quality.RULES)
 
@@ -548,3 +594,15 @@ Prüfarten: **setting** – Steuerelement vorhanden und Änderung des Werts ver�
 | `pretask.solvable_before` | pretask | llm | ja | Pre-task is solvable without the material |
 | `pretask.social_fits` | pretask | llm | nein | Social form and working mode fit the task |
 | `pretask.confrontation` | pretask | llm | nein | Confrontation task really confronts |
+| `posttask.present` | posttask | deterministic | ja | Number and types of the post-tasks match the plan |
+| `posttask.social_forms` | posttask | deterministic | ja | Social forms match the settings (individual, partner, group, plenary) |
+| `posttask.modes` | posttask | deterministic | ja | Oral and written tasks as configured |
+| `posttask.focus` | posttask | deterministic | nein | Post-task takes the content further and uses the target vocabulary as configured |
+| `posttask.criteria` | posttask | deterministic | nein | Every post-task carries observable success criteria |
+| `posttask.time` | posttask | deterministic | nein | Time budget of the post-task is kept |
+| `posttask.language` | posttask | deterministic | nein | Post-task instructions stay at the configured level |
+| `posttask.product` | posttask | deterministic | nein | Every post-task names what it starts from and what is produced |
+| `posttask.uses_material` | posttask | llm | ja | Post-task builds on the material |
+| `posttask.beyond_questions` | posttask | llm | ja | Post-task goes beyond the comprehension questions |
+| `posttask.social_fits` | posttask | llm | nein | Social form and working mode fit the task |
+| `posttask.mediation` | posttask | llm | nein | Mediation task names addressee and purpose |
