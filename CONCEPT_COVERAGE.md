@@ -380,7 +380,7 @@ Prüfarten: **setting** – Steuerelement vorhanden und Änderung des Werts ver�
 | ✅ | `S33.reading_text_in_student` | Word-Schülerversion enthält beim Reading den Text im Layout des Texttyps und danach das Arbeitsblatt | function | Funktion (siehe Check im Manifest) |
 | ✅ | `S33.html_matches` | Die Bildschirmvorschau zeigt denselben Texttyp-Aufbau wie das Word-Dokument | function | Funktion (siehe Check im Manifest) |
 
-## §34  (13/13)
+## §34 Schwierigkeitsmesser & Niveau der Fragen (13/13)
 
 | Status | ID | Anforderung | Art | Umsetzung |
 |---|---|---|---|---|

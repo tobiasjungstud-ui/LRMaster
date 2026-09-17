@@ -1265,13 +1265,14 @@
     const el = $('#check-results');
     const res = checks.run({
       hasControl: sel => { try { return !!document.querySelector(sel); } catch (e) { return false; } },
-      pipelineSource: generate.toString(),
+      // The pipeline is generate() plus the per-worksheet stage it delegates to.
+      pipelineSource: generate.toString() + '\n' + produceWorksheet.toString(),
       uiSource: Object.values(window.LR.ui).map(v => typeof v === 'function' ? v.toString() : '').join('\n'),
       pipeline: generate,
     });
     const bySection = {};
     for (const r of res.results) (bySection[r.section] = bySection[r.section] || []).push(r);
-    const SECTION_NAMES = { 0: 'Vollständigkeit', 1: 'Ziel der Anwendung', 2: 'Hauptnavigation', 3: 'Grundaufbau des Creators', 4: 'Source & Unit', 5: 'Content', 6: 'Language Level', 7: 'Vocabulary Settings', 8: 'Listening – Audio Structure', 9: 'Listening Presets', 10: 'Speaker Distribution', 11: 'Turn Length', 12: 'Audio Length', 13: 'Speaker Profiles', 14: 'Emotion & Delivery Tags', 15: 'Natural Speech Settings', 16: 'Information Explicitness', 17: 'Reading – Text Structure', 18: 'Worksheet', 19: 'Number of Questions', 20: 'Listening / Reading Skills', 21: 'Higher-Order Thinking', 22: 'Question Difficulty', 23: 'Automatic Skill Mix', 24: 'Manual Skill Mix', 25: 'Question Formats', 26: 'Question Order', 27: 'Pre-Listening / Pre-Reading', 28: 'Output', 29: 'Quality Check', 30: 'Advanced Settings', 31: 'Simple vs. Advanced Mode', 32: 'Beispielkonfiguration', 33: 'Word-Export (formatiert, typgerecht)' };
+    const SECTION_NAMES = { 0: 'Vollständigkeit', 1: 'Ziel der Anwendung', 2: 'Hauptnavigation', 3: 'Grundaufbau des Creators', 4: 'Source & Unit', 5: 'Content', 6: 'Language Level', 7: 'Vocabulary Settings', 8: 'Listening – Audio Structure', 9: 'Listening Presets', 10: 'Speaker Distribution', 11: 'Turn Length', 12: 'Audio Length', 13: 'Speaker Profiles', 14: 'Emotion & Delivery Tags', 15: 'Natural Speech Settings', 16: 'Information Explicitness', 17: 'Reading – Text Structure', 18: 'Worksheet', 19: 'Number of Questions', 20: 'Listening / Reading Skills', 21: 'Higher-Order Thinking', 22: 'Question Difficulty', 23: 'Automatic Skill Mix', 24: 'Manual Skill Mix', 25: 'Question Formats', 26: 'Question Order', 27: 'Pre-Listening / Pre-Reading', 28: 'Output', 29: 'Quality Check', 30: 'Advanced Settings', 31: 'Simple vs. Advanced Mode', 32: 'Beispielkonfiguration', 33: 'Word-Export (formatiert, typgerecht)', 34: 'Schwierigkeitsmesser & Niveau der Fragen' };
     $('#check-summary').innerHTML = `<span class="big">${res.summary.pass} / ${res.summary.total}</span> Anforderungen bestanden` + (res.summary.fail ? ` · <span class="bad">${res.summary.fail} nicht bestanden</span>` : ' · alle Konzeptpunkte mit echten Funktionen belegt');
     el.innerHTML = Object.keys(bySection).sort((a, b) => Number(a) - Number(b)).map(sec => `<section class="check-section"><h3>§${sec} ${esc(SECTION_NAMES[sec] || '')} <span class="muted">${bySection[sec].filter(r => r.status === 'pass').length}/${bySection[sec].length}</span></h3><div class="table-wrap"><table class="check-table"><tbody>` + bySection[sec].map(r => `<tr class="qc-${r.status}"><td class="qc-status">${r.status}</td><td><code>${esc(r.id)}</code></td><td>${esc(r.title)}<div class="muted small">${esc(r.kind)}${r.key ? ' · ' + esc(r.key) : ''}</div></td><td class="muted">${esc(r.detail)}</td></tr>`).join('') + '</tbody></table></div></section>').join('');
   }
@@ -1324,5 +1325,5 @@
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init); else init();
 
-  window.LR.ui = { app, generate, produceWorksheet, store, caps, showView, openCreator, importState, detectUnits, fetchTopics, confirmImport, newTextbook, askText, askConfirm, clone, parsePasted, initLevelPage, download };
+  window.LR.ui = { app, generate, produceWorksheet, store, caps, showView, openCreator, importState, detectUnits, fetchTopics, confirmImport, newTextbook, askText, askConfirm, clone, parsePasted, initLevelPage, download, renderOutput, renderQualityPanel };
 })();
