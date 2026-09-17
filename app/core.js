@@ -168,10 +168,47 @@
     'annoyed', 'quietly', 'confused', 'relieved', 'thoughtful', 'serious',
   ];
 
+  /*
+   * Pre-task types (concept §27 plus the task forms of a Lernaufgabe). The
+   * order is the didactic order in which the forms are used before a text:
+   * confront, activate, collect, take a position, ask, pre-teach, predict.
+   * `definition` goes into the prompt, `interaction` says how strongly the
+   * form asks for exchange (used to match social forms), `oral` marks forms
+   * that are naturally spoken.
+   */
   const PRE_TASK_TYPES = [
-    { key: 'prediction', label: 'Prediction' },
-    { key: 'vocabulary', label: 'Vocabulary Activation' },
-    { key: 'speaking',   label: 'Speaking Prompt' },
+    { key: 'confrontation', label: 'Konfrontationsaufgabe', short: 'Konfrontation', interaction: 3, oral: true,
+      definition: 'Confrontation task: a pointed claim, dilemma or contradiction about the topic that learners must take a position on BEFORE they meet the material. It can honestly be argued both ways, it creates the need to find out, and the material must not be needed to answer it.' },
+    { key: 'activation', label: 'Vorwissen aktivieren', short: 'Vorwissen', interaction: 2, oral: true,
+      definition: 'Activating prior knowledge: learners collect what they already know, have experienced or believe about the topic.' },
+    { key: 'brainstorm', label: 'Wortfeld / Brainstorming', short: 'Wortfeld', interaction: 2, oral: false,
+      definition: 'Word field: learners collect words and ideas around the topic (mind map, list, categories) and so build the vocabulary the material will use.' },
+    { key: 'ranking', label: 'Ranking / Positionierung', short: 'Ranking', interaction: 3, oral: true,
+      definition: 'Ranking: learners order, weigh or place given statements or items (most to least important, agree/disagree line) and justify the order.' },
+    { key: 'survey', label: 'Klassenumfrage', short: 'Umfrage', interaction: 3, oral: true,
+      definition: 'Class survey: learners ask several classmates the same one or two questions and note the answers.' },
+    { key: 'speaking', label: 'Speaking Prompt', short: 'Sprechimpuls', interaction: 3, oral: true,
+      definition: 'Speaking prompt: a short spoken exchange about the topic, with a clear question and a turn for each partner.' },
+    { key: 'vocabulary', label: 'Vocabulary Activation', short: 'Wortschatz', interaction: 1, oral: false,
+      definition: 'Vocabulary activation: pre-teach target words of the unit — matching, completing, sorting, or using them in own sentences. The words must be the target vocabulary listed above.' },
+    { key: 'hypothesis', label: 'Fragen & Hypothesen', short: 'Hypothesen', interaction: 2, oral: false,
+      definition: 'Questions and hypotheses: learners write down questions they expect the material to answer, or hypotheses they will verify while listening/reading.' },
+    { key: 'prediction', label: 'Prediction', short: 'Prediction', interaction: 1, oral: false,
+      definition: 'Prediction: from the title and the kind of material, learners predict what will be said or written.' },
+  ];
+  const PRE_TASK_TYPE_KEYS = PRE_TASK_TYPES.map(t => t.key);
+
+  /** Social forms of a pre-task (Einzel-, Partner-, Gruppen-, Plenumsarbeit). */
+  const SOCIAL_FORMS = [
+    { key: 'single', label: 'Einzelarbeit', en: 'on your own', interaction: 0, weight: 2 },
+    { key: 'pair', label: 'Partnerarbeit', en: 'with your partner', interaction: 2, weight: 2 },
+    { key: 'group', label: 'Gruppenarbeit', en: 'in a group of three or four', interaction: 3, weight: 1 },
+    { key: 'plenary', label: 'Plenum / ganze Klasse', en: 'with the whole class', interaction: 3, weight: 1 },
+  ];
+  const SOCIAL_FORM_KEYS = SOCIAL_FORMS.map(f => f.key);
+  const PRE_TASK_MODES = [
+    { key: 'written', label: 'schriftlich', en: 'written — learners write their answer down' },
+    { key: 'oral', label: 'mündlich', en: 'oral — learners speak; nothing has to be written down' },
   ];
 
   const AUDIO_LENGTHS = [
@@ -242,9 +279,9 @@
     { key: 'cefr', type: 'select', default: 'B1.1', options: CEFR_BANDS, section: 3, mode: 'both', simple: true, label: 'CEFR level' },
     { key: 'levelMeter', type: 'toggle', default: true, section: 3, mode: 'both', simple: true, label: 'Schwierigkeit messen und nachsteuern' },
     { key: 'languageComplexity', type: 'range', default: 50, min: 0, max: 100, section: 3, mode: 'both', simple: false, label: 'Language Complexity' },
-    { key: 'grammarComplexity', type: 'range', default: 50, min: 0, max: 100, section: 7, mode: 'both', simple: false, label: 'Grammar complexity' },
-    { key: 'vocabularyDifficulty', type: 'range', default: 50, min: 0, max: 100, section: 7, mode: 'both', simple: false, label: 'Vocabulary difficulty' },
-    { key: 'idiomaticLanguage', type: 'range', default: 40, min: 0, max: 100, section: 7, mode: 'both', simple: false, label: 'Idiomatic language' },
+    { key: 'grammarComplexity', type: 'range', default: 50, min: 0, max: 100, section: 8, mode: 'both', simple: false, label: 'Grammar complexity' },
+    { key: 'vocabularyDifficulty', type: 'range', default: 50, min: 0, max: 100, section: 8, mode: 'both', simple: false, label: 'Vocabulary difficulty' },
+    { key: 'idiomaticLanguage', type: 'range', default: 40, min: 0, max: 100, section: 8, mode: 'both', simple: false, label: 'Idiomatic language' },
     // 4 Structure — listening
     { key: 'format', type: 'select', default: 'dialogue', options: ['monologue', 'dialogue', 'conversation'], section: 4, mode: 'listening', simple: true, label: 'Format' },
     { key: 'speakerCount', type: 'select', default: 3, options: [3, 4, 5, 6], section: 4, mode: 'listening', simple: true, label: 'Number of speakers' },
@@ -266,9 +303,9 @@
     { key: 'lengthMode', type: 'select', default: 'words', options: ['words', 'a4'], section: 4, mode: 'reading', simple: true, label: 'Length' },
     { key: 'wordCount', type: 'number', default: 450, min: 80, max: 2000, section: 4, mode: 'reading', simple: true, label: 'Word count' },
     { key: 'a4Pages', type: 'select', default: '1', options: ['0.5', '1', '1.5', '2'], section: 4, mode: 'reading', simple: true, label: 'Approximate A4 length' },
-    { key: 'paragraphLength', type: 'select', default: 'medium', options: ['short', 'medium', 'long'], section: 7, mode: 'reading', simple: false, label: 'Paragraph length' },
-    { key: 'dialogueProportion', type: 'range', default: 20, min: 0, max: 100, section: 7, mode: 'reading', simple: false, label: 'Dialogue proportion' },
-    { key: 'styleBalance', type: 'range', default: 50, min: 0, max: 100, section: 7, mode: 'reading', simple: false, label: 'Narrative vs. informational style' },
+    { key: 'paragraphLength', type: 'select', default: 'medium', options: ['short', 'medium', 'long'], section: 8, mode: 'reading', simple: false, label: 'Paragraph length' },
+    { key: 'dialogueProportion', type: 'range', default: 20, min: 0, max: 100, section: 8, mode: 'reading', simple: false, label: 'Dialogue proportion' },
+    { key: 'styleBalance', type: 'range', default: 50, min: 0, max: 100, section: 8, mode: 'reading', simple: false, label: 'Narrative vs. informational style' },
     // 5 Vocabulary
     { key: 'vocabUsage', type: 'range', default: 50, min: 0, max: 100, section: 5, mode: 'both', simple: false, label: 'Vocabulary Usage' },
     { key: 'targetVocabMin', type: 'number', default: 8, min: 0, max: 40, section: 5, mode: 'both', simple: false, label: 'Target vocabulary (min)' },
@@ -291,12 +328,23 @@
     { key: 'higherOrder', type: 'toggle', default: false, section: 6, mode: 'both', simple: false, label: 'Higher-Order Questions' },
     { key: 'higherOrderCount', type: 'number', default: 2, min: 1, max: 5, section: 6, mode: 'both', simple: false, label: 'Number of higher-order questions' },
     { key: 'higherOrderTypes', type: 'multiselect', default: ['interpretation', 'transfer', 'evaluation'], options: HIGHER_ORDER_TYPES.map(t => t.key), section: 6, mode: 'both', simple: false, label: 'Higher-order types' },
-    { key: 'distractorDifficulty', type: 'range', default: 50, min: 0, max: 100, section: 7, mode: 'both', simple: false, label: 'Distractor difficulty' },
-    { key: 'inferenceLevel', type: 'range', default: 50, min: 0, max: 100, section: 7, mode: 'both', simple: false, label: 'Inference level' },
-    { key: 'autoFix', type: 'select', default: 'all', options: ['off', 'fail', 'all'], section: 7, mode: 'both', simple: false, label: 'Automatische Korrektur' },
-    { key: 'autoFixRounds', type: 'number', default: 2, min: 1, max: 4, section: 7, mode: 'both', simple: false, label: 'Korrekturrunden (max.)' },
-    { key: 'preTask', type: 'toggle', default: false, section: 6, mode: 'both', simple: false, label: 'Create Pre-Task' },
-    { key: 'preTaskTypes', type: 'multiselect', default: ['prediction', 'vocabulary'], options: PRE_TASK_TYPES.map(t => t.key), section: 6, mode: 'both', simple: false, label: 'Pre-task types' },
+    { key: 'distractorDifficulty', type: 'range', default: 50, min: 0, max: 100, section: 8, mode: 'both', simple: false, label: 'Distractor difficulty' },
+    { key: 'inferenceLevel', type: 'range', default: 50, min: 0, max: 100, section: 8, mode: 'both', simple: false, label: 'Inference level' },
+    { key: 'autoFix', type: 'select', default: 'all', options: ['off', 'fail', 'all'], section: 8, mode: 'both', simple: false, label: 'Automatische Korrektur' },
+    { key: 'autoFixRounds', type: 'number', default: 2, min: 1, max: 4, section: 8, mode: 'both', simple: false, label: 'Korrekturrunden (max.)' },
+    // 7 Pre-task
+    { key: 'preTask', type: 'toggle', default: false, section: 7, mode: 'both', simple: false, label: 'Create Pre-Task' },
+    { key: 'preTaskFocus', type: 'select', default: 'both', options: ['topic', 'vocabulary', 'both'], section: 7, mode: 'both', simple: false, label: 'Fokus der Pre-Task' },
+    { key: 'preTaskCount', type: 'number', default: 2, min: 1, max: 6, section: 7, mode: 'both', simple: false, label: 'Anzahl Pre-Task-Aufgaben' },
+    { key: 'preTaskTypes', type: 'multiselect', default: ['prediction', 'vocabulary'], options: PRE_TASK_TYPE_KEYS, section: 7, mode: 'both', simple: false, label: 'Aufgabentypen (inkl. Konfrontationsaufgabe)' },
+    { key: 'preTaskSocialMode', type: 'select', default: 'auto', options: ['auto', 'custom'], section: 7, mode: 'both', simple: false, label: 'Sozialformen' },
+    { key: 'customPreTaskSocial', type: 'map', default: { single: 1, pair: 1, group: 0, plenary: 0 }, section: 7, mode: 'both', simple: false, label: 'Sozialformen pro Aufgabe' },
+    { key: 'preTaskOralCount', type: 'number', default: 1, min: 0, max: 6, section: 7, mode: 'both', simple: false, label: 'Davon mündlich' },
+    { key: 'preTaskDifficulty', type: 'range', default: 40, min: 0, max: 100, section: 7, mode: 'both', simple: false, label: 'Anforderungsniveau der Pre-Task' },
+    { key: 'preTaskLevel', type: 'select', default: 'auto', options: ['auto', 'A', 'B'], section: 7, mode: 'both', simple: false, label: 'Sprachniveau der Aufgabenstellung' },
+    { key: 'preTaskScaffolding', type: 'range', default: 50, min: 0, max: 100, section: 7, mode: 'both', simple: false, label: 'Hilfestellungen' },
+    { key: 'preTaskCriteria', type: 'toggle', default: true, section: 7, mode: 'both', simple: false, label: 'Gelingenskriterien ausweisen' },
+    { key: 'preTaskMinutes', type: 'number', default: 8, min: 2, max: 30, section: 7, mode: 'both', simple: false, label: 'Zeitbudget insgesamt (Minuten)' },
   ];
   const SCHEMA_BY_KEY = Object.fromEntries(SCHEMA.map(s => [s.key, s]));
 
@@ -574,6 +622,127 @@
     return seq;
   }
 
+  /* ------------------------------------------------------------------ */
+  /* Pre-task planning (concept §27 + task forms)                         */
+  /* ------------------------------------------------------------------ */
+
+  function preTaskCount(state) { return clamp(Number(state.preTaskCount) || 1, 1, 6); }
+
+  /** CEFR band the pre-task instructions are written at. */
+  function preTaskBand(state) {
+    const lv = QUESTION_LEVELS[state.preTaskLevel];
+    if (lv) return lv.bands[0];
+    return questionBands(state)[0];
+  }
+
+  /** Allowed types in didactic order. */
+  function preTaskTypes(state) {
+    const chosen = new Set(state.preTaskTypes || []);
+    return PRE_TASK_TYPE_KEYS.filter(k => chosen.has(k));
+  }
+
+  /** How many tasks of each type: the chosen types are used round by round. */
+  function preTaskTypeMix(types, n) {
+    const mix = {};
+    for (const t of types) mix[t] = 0;
+    for (let i = 0; i < n && types.length; i++) mix[types[i % types.length]] += 1;
+    return mix;
+  }
+
+  /**
+   * Automatic social forms: individual and partner work carry the plan, group
+   * and plenary come in on longer sequences, and there are always at least as
+   * many interactive forms as there are oral tasks.
+   */
+  function autoPreTaskSocial(n, oral) {
+    const counts = { single: 0, pair: 0, group: 0, plenary: 0 };
+    const total = SOCIAL_FORMS.reduce((a, f) => a + f.weight, 0);
+    const exact = SOCIAL_FORMS.map(f => f.weight / total * n);
+    const base = exact.map(v => Math.floor(v));
+    let rest = n - base.reduce((a, b) => a + b, 0);
+    exact.map((v, i) => ({ i, frac: v - Math.floor(v) })).sort((a, b) => b.frac - a.frac)
+      .forEach(o => { if (rest > 0) { base[o.i] += 1; rest -= 1; } });
+    SOCIAL_FORMS.forEach((f, i) => { counts[f.key] = base[i]; });
+    // Enough interactive forms for the oral tasks: turn single work into pair work.
+    let interactive = counts.pair + counts.group + counts.plenary;
+    while (interactive < Math.min(oral, n) && counts.single > 0) { counts.single -= 1; counts.pair += 1; interactive += 1; }
+    return counts;
+  }
+
+  /** The social-form counts that will be used: automatic or the teacher's own. */
+  function effectivePreTaskSocial(state) {
+    const n = preTaskCount(state);
+    if (state.preTaskSocialMode === 'custom') {
+      const mix = {};
+      for (const k of SOCIAL_FORM_KEYS) mix[k] = Math.max(0, Math.round(Number((state.customPreTaskSocial || {})[k]) || 0));
+      return mix;
+    }
+    return autoPreTaskSocial(n, clamp(Number(state.preTaskOralCount) || 0, 0, n));
+  }
+
+  /**
+   * One planned pre-task per position: type, social form, mode and minutes.
+   * Forms that ask for exchange go to the types that ask for exchange, and the
+   * oral tasks are placed on the most interactive positions.
+   */
+  function preTaskSequence(state) {
+    const n = preTaskCount(state);
+    const types = preTaskTypes(state);
+    if (!types.length) return [];
+    const mix = preTaskTypeMix(types, n);
+    const seq = [];
+    for (const t of types) for (let i = 0; i < mix[t]; i++) seq.push(t);
+    const forms = [];
+    const social = effectivePreTaskSocial(state);
+    for (const k of SOCIAL_FORM_KEYS) for (let i = 0; i < (social[k] || 0); i++) forms.push(k);
+    while (forms.length < seq.length) forms.push('single');
+    forms.length = seq.length;
+    // Most interactive form to the most interaction-hungry task type.
+    const byInteraction = seq.map((t, i) => ({ i, t, w: (PRE_TASK_TYPES.find(x => x.key === t) || {}).interaction || 0 }))
+      .sort((a, b) => b.w - a.w || a.i - b.i);
+    const sortedForms = forms.slice().sort((a, b) => formInteraction(b) - formInteraction(a));
+    const assigned = [];
+    byInteraction.forEach((o, k) => { assigned[o.i] = sortedForms[k]; });
+    // Oral tasks: the positions with the most interactive form (and the types that are spoken anyway).
+    const oral = clamp(Number(state.preTaskOralCount) || 0, 0, n);
+    const oralPick = new Set(seq.map((t, i) => ({ i, score: formInteraction(assigned[i]) * 2 + ((PRE_TASK_TYPES.find(x => x.key === t) || {}).oral ? 1 : 0) }))
+      .sort((a, b) => b.score - a.score || a.i - b.i).slice(0, oral).map(o => o.i));
+    const minutes = splitMinutes(clamp(Number(state.preTaskMinutes) || 2, 2, 30), n);
+    return seq.map((t, i) => ({ n: i + 1, type: t, socialForm: assigned[i], mode: oralPick.has(i) ? 'oral' : 'written', minutes: minutes[i] }));
+  }
+  function formInteraction(key) { const f = SOCIAL_FORMS.find(x => x.key === key); return f ? f.interaction : 0; }
+  /** Split a time budget over n tasks, at least one minute each. */
+  function splitMinutes(total, n) {
+    const each = Math.max(1, Math.floor(total / n));
+    const out = new Array(n).fill(each);
+    let rest = total - each * n;
+    for (let i = 0; i < n && rest > 0; i++, rest--) out[i] += 1;
+    return out;
+  }
+
+  function buildPreTaskPlan(state) {
+    if (!state.createWorksheet || !state.preTask) return null;
+    const tasks = preTaskSequence(state);
+    const counts = {};
+    for (const t of tasks) counts[t.socialForm] = (counts[t.socialForm] || 0) + 1;
+    return {
+      count: tasks.length,
+      focus: state.preTaskFocus,
+      types: preTaskTypes(state),
+      typeMix: preTaskTypeMix(preTaskTypes(state), preTaskCount(state)),
+      tasks,
+      socialMix: counts,
+      socialMode: state.preTaskSocialMode,
+      oralCount: tasks.filter(t => t.mode === 'oral').length,
+      difficulty: clamp(Number(state.preTaskDifficulty) || 0, 0, 100),
+      band: preTaskBand(state),
+      level: QUESTION_LEVELS[state.preTaskLevel] ? state.preTaskLevel : null,
+      scaffolding: clamp(Number(state.preTaskScaffolding) || 0, 0, 100),
+      criteria: state.preTaskCriteria !== false,
+      minutes: tasks.reduce((a, t) => a + t.minutes, 0),
+    };
+  }
+
   function availableFormats(state) {
     const n = effectiveSpeakerCount(state);
     return (state.questionFormats || []).filter(k => {
@@ -664,6 +833,18 @@
       if (state.preTask && (!state.preTaskTypes || state.preTaskTypes.length === 0)) {
         errors.push({ key: 'preTaskTypes', message: 'Bitte mindestens eine Pre-Task-Form auswählen.' });
       }
+      if (state.preTask) {
+        const n = preTaskCount(state);
+        const oral = Number(state.preTaskOralCount) || 0;
+        if (oral > n) errors.push({ key: 'preTaskOralCount', message: `Höchstens ${n} mündliche Aufgaben möglich (so viele Pre-Task-Aufgaben sind geplant).` });
+        if (state.preTaskSocialMode === 'custom') {
+          const mix = effectivePreTaskSocial(state);
+          const sum = SOCIAL_FORM_KEYS.reduce((a, k) => a + (mix[k] || 0), 0);
+          if (sum !== n) errors.push({ key: 'customPreTaskSocial', message: `Die Sozialformen ergeben ${sum} Aufgaben, geplant sind ${n}.` });
+          const interactive = (mix.pair || 0) + (mix.group || 0) + (mix.plenary || 0);
+          if (oral > interactive) errors.push({ key: 'preTaskOralCount', message: `Mündliche Aufgaben brauchen Partner-, Gruppen- oder Plenumsarbeit: ${oral} mündlich, aber nur ${interactive} interaktive Sozialform(en).` });
+        }
+      }
     }
     return errors;
   }
@@ -721,7 +902,8 @@
       formatSequence: state.autoFormatMix ? assignFormats(skills, formats) : null,
       higherOrderCount: state.createWorksheet && state.higherOrder ? clamp(Number(state.higherOrderCount) || 1, 1, 5) : 0,
       higherOrderTypes: state.higherOrder ? (state.higherOrderTypes || []) : [],
-      preTaskTypes: state.createWorksheet && state.preTask ? (state.preTaskTypes || []) : [],
+      preTaskTypes: state.createWorksheet && state.preTask ? preTaskTypes(state) : [],
+      preTask: buildPreTaskPlan(state),
     };
     return plan;
   }
@@ -770,7 +952,8 @@
 
   return {
     CEFR_BANDS, SKILLS, SKILL_KEYS, HIGHER_ORDER_TYPES, QUESTION_FORMATS, FORMAT_KEYS, TEXT_TYPES,
-    EMOTION_TAGS, PRE_TASK_TYPES, AUDIO_LENGTHS, QUESTION_COUNTS, PRESETS, TURN_PRESETS,
+    EMOTION_TAGS, PRE_TASK_TYPES, PRE_TASK_TYPE_KEYS, SOCIAL_FORMS, SOCIAL_FORM_KEYS, PRE_TASK_MODES,
+    AUDIO_LENGTHS, QUESTION_COUNTS, PRESETS, TURN_PRESETS,
     META_SPECS, TEXT_TYPE_DESIGN, designIdFor,
     SCHEMA, SCHEMA_BY_KEY, SIMPLE_MODE_KEYS, EXAMPLE_CONFIG, WORDS_PER_A4,
     defaults, normalizeState, clone,
@@ -779,6 +962,7 @@
     turnWordTarget, emotionTagTarget, questionCount, questionBand, autoSkillMix, effectiveSkillMix,
     QUESTION_LEVELS, QUESTION_LEVEL_KEYS, questionVariants, variantState, effectiveQuestionDifficulty, questionBands,
     skillSequence, availableFormats, assignFormats, targetVocabulary, validateState, buildPlan,
+    preTaskCount, preTaskTypes, preTaskTypeMix, autoPreTaskSocial, effectivePreTaskSocial, preTaskSequence, buildPreTaskPlan, preTaskBand, splitMinutes,
     applyExampleConfig,
   };
 });

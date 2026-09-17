@@ -384,3 +384,14 @@ mark.vocab { background: var(--mark); color: inherit; border-radius: 3px; paddin
 .lv-verdict { padding: .4rem .6rem; border-radius: 8px; background: var(--ground); }
 .lv-desc { margin-top: .6rem; }
 .sheet .badge { font-size: .7rem; padding: .1rem .4rem; border-radius: 999px; background: var(--ground); }
+
+/* Pre-task: social form, working mode, time and success criteria */
+.pretask { border-left: 3px solid var(--line); padding: .1rem 0 .1rem .8rem; margin: .8rem 0; }
+.pretask[data-mode="oral"] { border-left-color: var(--accent, #8a5a00); }
+.pretask-meta { display: flex; flex-wrap: wrap; justify-content: flex-start; gap: .35rem; margin: .2rem 0 .5rem; }
+.pretask-meta .badge { font-size: .72rem; padding: .1rem .45rem; border-radius: 999px; background: var(--ground); border: 1px solid var(--line); white-space: nowrap; }
+.pretask-meta .badge.mode.oral { background: #fdf3e0; }
+.pretask-items { margin: .3rem 0 .4rem 1.1rem; }
+.pretask .criteria { margin-top: .5rem; }
+.pretask .criteria h4 { font-size: .72rem; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 0 0 .2rem; }
+.pretask .criteria ul { margin: 0 0 0 1.1rem; font-size: .9rem; }

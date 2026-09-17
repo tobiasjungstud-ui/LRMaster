@@ -240,6 +240,32 @@
     return out;
   }
 
+  /** One pre-task as the pipeline stores it (concept §27 and the task forms). */
+  function normalizePreTask(p, i) {
+    const pick = (v, list, fallback) => (list.includes(String(v || '').toLowerCase()) ? String(v).toLowerCase() : fallback);
+    return {
+      n: Number(p.n) || (typeof i === 'number' ? i + 1 : 1),
+      type: String(p.type || '').toLowerCase(),
+      title: String(p.title || ''),
+      prompt: String(p.prompt || ''),
+      items: Array.isArray(p.items) ? p.items.map(String) : [],
+      socialForm: pick(p.socialForm, core.SOCIAL_FORM_KEYS, 'single'),
+      mode: pick(p.mode, ['written', 'oral'], 'written'),
+      minutes: Math.max(0, Math.round(Number(p.minutes) || 0)),
+      criteria: Array.isArray(p.criteria) ? p.criteria.map(String).filter(Boolean) : [],
+      vocabUsed: Array.isArray(p.vocabUsed) ? p.vocabUsed.map(String) : [],
+      materials: String(p.materials || ''),
+      teacherNote: String(p.teacherNote || ''),
+    };
+  }
+
+  /** Replace the pre-tasks of a worksheet, keeping the planned order and numbering. */
+  function applyPreTaskPatch(worksheet, patch) {
+    const list = Array.isArray(patch) ? patch : (patch && patch.preTasks) || [];
+    if (!list.length) return worksheet;
+    return Object.assign({}, worksheet, { preTasks: list.map((p, i) => normalizePreTask(p, i)) });
+  }
+
   function normalizeQuestion(q, i) {
     const n = Number(q.n) || i + 1;
     const out = Object.assign({}, q, {
@@ -265,10 +291,7 @@
     const ws = {
       title: String(raw.title || '').trim(),
       instructions: String(raw.instructions || '').trim(),
-      preTasks: Array.isArray(raw.preTasks) ? raw.preTasks.filter(p => p && typeof p === 'object').map(p => ({
-        type: String(p.type || '').toLowerCase(), title: String(p.title || ''), prompt: String(p.prompt || ''),
-        items: Array.isArray(p.items) ? p.items.map(String) : [], teacherNote: String(p.teacherNote || ''),
-      })) : [],
+      preTasks: Array.isArray(raw.preTasks) ? raw.preTasks.filter(p => p && typeof p === 'object').map(normalizePreTask) : [],
       questions: Array.isArray(raw.questions) ? raw.questions.filter(q => q && typeof q === 'object').map(normalizeQuestion) : [],
       higherOrder: Array.isArray(raw.higherOrder) ? raw.higherOrder.filter(q => q && typeof q === 'object').map((q, i) => ({
         n: Number(q.n) || i + 1, type: String(q.type || '').toLowerCase(), prompt: String(q.prompt || ''), answer: q.answer, rationale: String(q.rationale || ''),
@@ -351,6 +374,10 @@
       structures: m.structures.map(x => ({ key: x.key, label: x.label, count: x.count, examples: x.examples })),
       hardWords: m.hardWords.slice(0, 40) };
   }
+
+  function socialLabel(key) { const f = core.SOCIAL_FORMS.find(x => x.key === key); return f ? f.label : key; }
+  /** Everything a pre-task shows the students, as one string. */
+  function preTaskText(p) { return [p.title, p.prompt, (p.items || []).join(' '), (p.vocabUsed || []).join(' ')].filter(Boolean).join(' '); }
 
   function finding(rule, status, detail, extra) {
     return Object.assign({ id: rule.id, group: rule.group, title: rule.title, kind: rule.kind, status, detail: detail || '' }, extra || {});
@@ -534,22 +561,107 @@
         const ok = ho.length === want && mixedIn === 0 && badType === 0;
         return finding(this, ok ? 'pass' : 'fail', `${ho.length} higher-order task(s), ${want} planned` + (mixedIn ? `; ${mixedIn} mixed into the comprehension questions` : '') + (badType ? `; ${badType} with a type that is not enabled` : '') + '.');
       } },
-    { id: 'pretask.present', group: 'questions', kind: 'deterministic', title: 'Pre-task types as configured', needsWorksheet: true, blocking: false,
+    { id: 'pretask.present', group: 'pretask', kind: 'deterministic', title: 'Number and types of the pre-tasks match the plan', needsWorksheet: true, blocking: true,
       check(ctx) {
-        const want = ctx.plan.preTaskTypes;
-        const got = ctx.worksheet.preTasks.map(p => p.type);
-        const missing = want.filter(t => !got.includes(t));
-        const extra = got.filter(t => !want.includes(t));
-        return finding(this, missing.length === 0 && extra.length === 0 ? 'pass' : 'fail', (missing.length ? 'Missing: ' + missing.join(', ') + '. ' : '') + (extra.length ? 'Unexpected: ' + extra.join(', ') : '') || (want.length ? 'All pre-tasks present.' : 'No pre-task requested.'));
+        const plan = ctx.plan.preTask;
+        const got = ctx.worksheet.preTasks;
+        if (!plan) return finding(this, got.length ? 'fail' : 'pass', got.length ? `${got.length} pre-task(s) although none was requested.` : 'No pre-task requested.');
+        const wrong = plan.tasks.filter((t, i) => !got[i] || got[i].type !== t.type).map(t => `P${t.n} (${(got[t.n - 1] || {}).type || 'missing'} instead of ${t.type})`);
+        const status = got.length !== plan.count || wrong.length ? 'fail' : 'pass';
+        return finding(this, status, status === 'pass' ? `${plan.count} pre-task(s) of the planned types.` : `${got.length} of ${plan.count} pre-task(s)` + (wrong.length ? '; wrong type at ' + wrong.join(', ') : '') + '.', { preTasks: wrong.map(w => Number(/P(\d+)/.exec(w)[1])) });
       } },
-    { id: 'pretask.no_spoilers', group: 'questions', kind: 'llm', title: 'Pre-task does not give away answers', needsWorksheet: true, needsPreTask: true, criterion: 'the pre-task does not anticipate any answer of the comprehension questions', blocking: true },
+    { id: 'pretask.social_forms', group: 'pretask', kind: 'deterministic', title: 'Social forms match the settings (individual, partner, group, plenary)', needsWorksheet: true, needsPreTask: true, blocking: true,
+      check(ctx) {
+        const plan = ctx.plan.preTask;
+        const got = ctx.worksheet.preTasks;
+        const wrong = plan.tasks.filter((t, i) => got[i] && got[i].socialForm !== t.socialForm).map(t => `P${t.n} (${got[t.n - 1].socialForm} instead of ${t.socialForm})`);
+        const counts = {};
+        for (const p of got) counts[p.socialForm] = (counts[p.socialForm] || 0) + 1;
+        const diffs = core.SOCIAL_FORM_KEYS.filter(k => (counts[k] || 0) !== (plan.socialMix[k] || 0)).map(k => `${k} ${counts[k] || 0}/${plan.socialMix[k] || 0}`);
+        const status = wrong.length || diffs.length ? 'fail' : 'pass';
+        return finding(this, status, status === 'pass'
+          ? core.SOCIAL_FORM_KEYS.filter(k => plan.socialMix[k]).map(k => `${plan.socialMix[k]}× ${socialLabel(k)}`).join(', ') + '.'
+          : (wrong.length ? 'Wrong social form at ' + wrong.join(', ') + '. ' : '') + (diffs.length ? 'Counts (got/planned): ' + diffs.join(', ') : ''), { preTasks: wrong.map(w => Number(/P(\d+)/.exec(w)[1])) });
+      } },
+    { id: 'pretask.modes', group: 'pretask', kind: 'deterministic', title: 'Oral and written tasks as configured', needsWorksheet: true, needsPreTask: true, blocking: true,
+      check(ctx) {
+        const plan = ctx.plan.preTask;
+        const got = ctx.worksheet.preTasks;
+        const wrong = plan.tasks.filter((t, i) => got[i] && got[i].mode !== t.mode).map(t => `P${t.n} (${got[t.n - 1].mode} instead of ${t.mode})`);
+        const oral = got.filter(p => p.mode === 'oral');
+        const lonely = oral.filter(p => p.socialForm === 'single').map(p => 'P' + p.n);
+        const status = wrong.length || oral.length !== plan.oralCount ? 'fail' : lonely.length ? 'warn' : 'pass';
+        return finding(this, status, status === 'pass' ? `${plan.oralCount} of ${plan.count} task(s) oral.`
+          : (wrong.length ? 'Wrong mode at ' + wrong.join(', ') + '. ' : '') + (oral.length !== plan.oralCount ? `${oral.length} oral task(s), ${plan.oralCount} planned. ` : '') + (lonely.length ? 'Oral task in individual work: ' + lonely.join(', ') : ''),
+        { preTasks: wrong.concat(lonely).map(w => Number(/(\d+)/.exec(w)[1])) });
+      } },
+    { id: 'pretask.focus', group: 'pretask', kind: 'deterministic', title: 'Pre-task prepares topic and target vocabulary as configured', needsWorksheet: true, needsPreTask: true, blocking: false,
+      check(ctx) {
+        const plan = ctx.plan.preTask;
+        const got = ctx.worksheet.preTasks;
+        const vocabTasks = got.filter(p => p.type === 'vocabulary');
+        const problems = [];
+        for (const p of vocabTasks) {
+          const used = vocabMatches(preTaskText(p), ctx.plan.vocabulary).found;
+          if (used.length < 2) problems.push(`P${p.n} uses ${used.length} target word(s)`);
+        }
+        if (plan.focus !== 'topic' && !vocabTasks.length) {
+          const anyVocab = got.some(p => vocabMatches(preTaskText(p), ctx.plan.vocabulary).found.length >= 2);
+          if (!anyVocab) problems.push('no task works with the target vocabulary');
+        }
+        if (plan.focus !== 'vocabulary') {
+          const topic = String(ctx.plan.topic || ctx.plan.unitTopic || '').toLowerCase().split(/[^a-zäöü]+/).filter(w => w.length > 3);
+          const all = got.map(preTaskText).join(' ').toLowerCase();
+          if (topic.length && !topic.some(w => all.includes(w.slice(0, Math.max(4, w.length - 2))))) problems.push('no task mentions the topic');
+        }
+        return finding(this, problems.length ? 'warn' : 'pass', problems.length ? problems.join('; ') + '.' : `Focus "${plan.focus}" covered.`,
+          { preTasks: problems.map(x => Number((/P(\d+)/.exec(x) || [])[1])).filter(Boolean) });
+      } },
+    { id: 'pretask.criteria', group: 'pretask', kind: 'deterministic', title: 'Every pre-task carries observable success criteria', needsWorksheet: true, needsPreTask: true, blocking: false,
+      check(ctx) {
+        const plan = ctx.plan.preTask;
+        if (!plan.criteria) return finding(this, 'pass', 'Success criteria not requested.');
+        const bad = ctx.worksheet.preTasks.filter(p => p.criteria.length < 1).map(p => 'P' + p.n);
+        const wordy = ctx.worksheet.preTasks.filter(p => p.criteria.some(c => wordCount(c) > 20)).map(p => 'P' + p.n);
+        const status = bad.length ? 'fail' : wordy.length ? 'warn' : 'pass';
+        return finding(this, status, bad.length ? 'No success criteria at ' + bad.join(', ') + '.' : wordy.length ? 'Criteria too long at ' + wordy.join(', ') + '.' : 'All pre-tasks carry success criteria.',
+          { preTasks: bad.concat(wordy).map(x => Number(/(\d+)/.exec(x)[1])) });
+      } },
+    { id: 'pretask.time', group: 'pretask', kind: 'deterministic', title: 'Time budget of the pre-task is kept', needsWorksheet: true, needsPreTask: true, blocking: false,
+      check(ctx) {
+        const plan = ctx.plan.preTask;
+        const got = ctx.worksheet.preTasks;
+        const missing = got.filter(p => !p.minutes).map(p => 'P' + p.n);
+        const total = got.reduce((a, p) => a + p.minutes, 0);
+        const off = Math.abs(total - plan.minutes) > Math.max(2, plan.minutes * 0.25);
+        const status = missing.length || off ? 'warn' : 'pass';
+        return finding(this, status, (missing.length ? 'No time given at ' + missing.join(', ') + '. ' : '') + `${total} min planned, budget ${plan.minutes} min.`,
+          { preTasks: missing.map(x => Number(/(\d+)/.exec(x)[1])) });
+      } },
+    { id: 'pretask.language', group: 'pretask', kind: 'deterministic', title: 'Pre-task instructions stay at the configured level', needsWorksheet: true, needsPreTask: true, blocking: false,
+      check(ctx) {
+        const plan = ctx.plan.preTask;
+        const exclude = (ctx.plan.vocabulary || []).map(w => w.word);
+        const problems = [];
+        for (const p of ctx.worksheet.preTasks) {
+          const hard = level.hardWordsFor(p.prompt + ' ' + (p.title || ''), plan.band, exclude);
+          if (hard.length > 1) problems.push(`P${p.n}: ${hard.slice(0, 5).map(h => h.word).join(', ')}`);
+        }
+        return finding(this, problems.length ? 'warn' : 'pass', problems.length ? `Words above ${plan.band} in the instructions — ` + problems.join('; ') + '.' : `Instructions stay within ${plan.band}.`,
+          { preTasks: problems.map(x => Number(/P(\d+)/.exec(x)[1])) });
+      } },
+    { id: 'pretask.no_spoilers', group: 'pretask', kind: 'llm', title: 'Pre-task does not give away answers', needsWorksheet: true, needsPreTask: true, criterion: 'no pre-task anticipates any answer of the comprehension questions or states information that the material is supposed to deliver', blocking: true },
+    { id: 'pretask.solvable_before', group: 'pretask', kind: 'llm', title: 'Pre-task is solvable without the material', needsWorksheet: true, needsPreTask: true, criterion: 'every pre-task can be carried out before the audio/text is known, from the students\' own knowledge, opinions and the words given in the task', blocking: true },
+    { id: 'pretask.social_fits', group: 'pretask', kind: 'llm', title: 'Social form and working mode fit the task', needsWorksheet: true, needsPreTask: true, criterion: 'each pre-task really needs its social form (partner/group/plenary tasks give every person something to do and a reason to exchange) and oral tasks ask for speaking rather than writing', blocking: false },
+    { id: 'pretask.confrontation', group: 'pretask', kind: 'llm', title: 'Confrontation task really confronts', needsWorksheet: true, needsPreTaskType: 'confrontation', criterion: 'the confrontation task states a claim, dilemma or contradiction that can honestly be argued both ways, makes students take a position and creates curiosity about the material without answering itself', blocking: false },
   ];
 
   function applicableRules(state, plan, worksheet) {
     return RULES.filter(r => {
       if (r.only && r.only !== state.kind) return false;
       if (r.needsWorksheet && !worksheet) return false;
-      if (r.needsPreTask && (!worksheet || worksheet.preTasks.length === 0)) return false;
+      if (r.needsPreTask && !(plan.preTask && plan.preTask.count)) return false;
+      if (r.needsPreTaskType && !(plan.preTask && plan.preTask.types.includes(r.needsPreTaskType))) return false;
       return true;
     });
   }
@@ -602,11 +714,27 @@
       if (f.group === 'questions' && qs.length && !STRUCTURAL.includes(f.id)) qs.forEach(n => questions.add(n));
       else global.push(f);
     }
-    return { items, questions: [...questions].sort((a, b) => a - b), global, content: global.filter(f => f.group !== 'questions'), worksheet: global.filter(f => f.group === 'questions') };
+    return {
+      items, questions: [...questions].sort((a, b) => a - b), global,
+      content: global.filter(f => f.group !== 'questions' && f.group !== 'pretask'),
+      worksheet: global.filter(f => f.group === 'questions'),
+      preTasks: global.filter(f => f.group === 'pretask'),
+    };
   }
 
   /* Problems that a single replaced question cannot fix. */
   const STRUCTURAL = ['questions.count', 'questions.skill_distribution', 'questions.higher_order_separate', 'pretask.present'];
+
+  /** Which pre-task numbers changed between two worksheets. */
+  function changedPreTasks(before, after) {
+    const out = [];
+    const byN = new Map((after.preTasks || []).map(p => [Number(p.n), p]));
+    for (const p of before.preTasks || []) {
+      const b = byN.get(Number(p.n));
+      if (!b || JSON.stringify(b) !== JSON.stringify(p)) out.push(Number(p.n));
+    }
+    return out;
+  }
 
   /** Lower is better: failures weigh ten times a warning. */
   function problemScore(findings) {
@@ -656,7 +784,8 @@
     RULES, words, wordCount, normalizeForSearch, materialText, findQuotePosition, stem, wordVariants, vocabKeys, vocabParts,
     vocabMatches, highlightRanges, highlightSegments,
     speakerStats, tagStats, normalizeContent, normalizeMeta, normalizeWorksheet, normalizeQuestion,
-    repairable, repairPlan, problemScore, applyQuestionPatch, changedQuestions, STRUCTURAL, applicableRules, runDeterministic,
+    repairable, repairPlan, problemScore, applyQuestionPatch, applyPreTaskPatch, changedQuestions, changedPreTasks, STRUCTURAL, applicableRules, runDeterministic,
+    normalizePreTask, preTaskText, socialLabel,
     runContentChecks, llmRules, mergeReview, blockingFailures, summarize,
     chronologyReport, enforceChronology, normalizeGlossary, slimMeasurement,
   };

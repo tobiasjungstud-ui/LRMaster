@@ -37,8 +37,32 @@ scripts/coverage-report.js  schreibt CONCEPT_COVERAGE.md (npm run coverage)
 6. **Aufgaben-Prüfung** – gemessen: Anzahl, Skill-Verteilung (Summen), erlaubte Formate und Format-Verteilung, Chronologie, Stufe je Frage innerhalb des erlaubten Fragen-Niveaus, Duplikate, auffindbare Evidenz, Higher-Order getrennt, Pre-Task-Typen.
 7. **Claude-Review** – Beurteilung der Regeln, die Lesen erfordern (Eindeutigkeit, Ableitbarkeit, Distraktoren, Niveau, echte Inferenz, Natürlichkeit, Thema, keine Spoiler im Pre-Task).
 8. **Automatische Korrektur** – siehe unten: beanstandete Fragen werden gezielt ersetzt, der Text bei Bedarf überarbeitet, danach wird erneut geordnet, gemessen und geprüft.
-9. **Fremdwörter** (Option) – der Messer wählt die Wörter über dem Niveau (ohne Zielvokabular), Claude erklärt sie in einfachem Englisch mit deutscher Entsprechung; das Glossar steht auf Seite 1 des Fragebogens.
-10. **Ausgabe** – Student Version (ohne Skript beim Listening, ausser die Option *Skript auf der letzten Seite* ist gewählt; bei *Beide* eine Version pro Niveau), Teacher Version (Skript mit Zeilennummern und Vokabel-Highlight, verwendete Items, Messung, Lösungsschlüssel je Niveau mit Skill/Difficulty/Evidenz/Begründung, Qualitätsbericht), Prompts und JSON; Download als **Word (.docx)** (Schülerversion A/B, Lehrerversion), HTML, Markdown oder JSON, Druck, Speicherung.
+9. **Pre-Task** (Option, siehe unten) – Aufgaben vor dem Hören/Lesen; Typ, Sozialform, Arbeitsweise und Zeit sind pro Aufgabe geplant, werden geprüft und bei Bedarf gezielt neu erstellt, ohne die Fragen anzutasten.
+10. **Fremdwörter** (Option) – der Messer wählt die Wörter über dem Niveau (ohne Zielvokabular), Claude erklärt sie in einfachem Englisch mit deutscher Entsprechung; das Glossar steht auf Seite 1 des Fragebogens.
+11. **Ausgabe** – Student Version (ohne Skript beim Listening, ausser die Option *Skript auf der letzten Seite* ist gewählt; bei *Beide* eine Version pro Niveau), Teacher Version (Skript mit Zeilennummern und Vokabel-Highlight, verwendete Items, Messung, Lösungsschlüssel je Niveau mit Skill/Difficulty/Evidenz/Begründung, Qualitätsbericht), Prompts und JSON; Download als **Word (.docx)** (Schülerversion A/B, Lehrerversion), HTML, Markdown oder JSON, Druck, Speicherung.
+
+## Pre-Task (Aufgaben vor dem Hören/Lesen)
+
+Eigener Creator-Bereich mit denselben kriterienorientierten Einstellungen wie die Fragen:
+
+| Einstellung | Bedeutung |
+|---|---|
+| Fokus | Thema, Zielvokabular oder beides – bei „Wortschatz“ und „beides“ muss nachweislich mit den Unit-Wörtern gearbeitet werden |
+| Anzahl | 1–6 Aufgaben |
+| Aufgabentypen | **Konfrontationsaufgabe** (zugespitzte These/Dilemma, beidseitig vertretbar), Vorwissen aktivieren, Wortfeld/Brainstorming, Ranking/Positionierung, Klassenumfrage, Sprechimpuls, Wortschatz vorentlasten, Fragen & Hypothesen, Prediction. Die gewählten Typen werden reihum verteilt, in didaktischer Reihenfolge |
+| Sozialformen | automatisch verteilt oder selbst gesetzt: wie viele **Einzel-, Partner-, Gruppen- und Plenumsarbeiten** |
+| Davon mündlich | wie viele Aufgaben rein mündlich gelöst werden; mündliche Aufgaben bekommen immer eine interaktive Sozialform (sonst greift die Validierung) |
+| Anforderungsniveau | reproduktiv (sammeln, zuordnen) → anwenden und verknüpfen → begründen und abwägen → Position beziehen |
+| Hilfestellungen | Beispiel, Wortspeicher, Satzanfänge, Musterlösung – erscheinen als Elemente unter der Aufgabe |
+| Sprachniveau | Aufgabenstellung wie die Fragen, Niveau A oder B (die Klasse liest sie, bevor sie das Material kennt) |
+| Gelingenskriterien | 2–3 beobachtbare Kriterien in Schülersprache pro Aufgabe |
+| Zeitbudget | Minuten insgesamt, auf die Aufgaben verteilt und auf dem Arbeitsblatt ausgewiesen |
+
+Typ, Sozialform, Arbeitsweise und Zeit sind pro Aufgabenposition **fest geplant** und werden Claude so übergeben – damit lässt sich jede davon deterministisch nachprüfen.
+
+**Kontrollmechanismen** (Gruppe „Pre-Task“ im Qualitätsbericht): `pretask.present` (Anzahl und Typ je Position, blockierend), `pretask.social_forms` (Sozialformen und deren Anzahl, blockierend), `pretask.modes` (mündlich/schriftlich wie eingestellt, nie mündlich in Einzelarbeit, blockierend), `pretask.focus` (Wortschatzaufgaben verwenden das Zielvokabular, Themenaufgaben das Thema), `pretask.criteria` (Gelingenskriterien vorhanden und kurz), `pretask.time` (Zeitangaben im Budget), `pretask.language` (Wörter über dem eingestellten Niveau in der Aufgabenstellung – mit dem Schwierigkeitsmesser gemessen) sowie vier Claude-Prüfungen: `pretask.no_spoilers` (nimmt keine Antwort vorweg, blockierend), `pretask.solvable_before` (ohne das Material lösbar, blockierend), `pretask.social_fits` (Sozialform und Arbeitsweise passen zur Aufgabe), `pretask.confrontation` (die Konfrontationsaufgabe konfrontiert wirklich – nur aktiv, wenn eine geplant ist).
+
+**Gezielte Korrektur:** Pre-Task-Befunde haben einen eigenen Reparaturweg. Claude bekommt Material, die bereits fertigen Fragen (»nimm davon nichts vorweg«), die aktuellen Aufgaben und die Befunde im Wortlaut und schreibt nur die Pre-Task neu; die Fragen bleiben unangetastet. Übernommen wird auch hier nur, was die Prüfung verbessert.
 
 ## Schwierigkeitsmesser (`level.js`, `wordlist.js`)
 
@@ -105,7 +129,7 @@ Das Arbeitsblatt ist ein echtes Arbeitsblatt: Name-/Klasse-/Datum-Zeile, Aufgabe
 
 ## Kontrollmechanismen
 
-- **Konzept-Manifest** (`app/manifest.js`): 222 Anforderungen aus dem Konzeptdokument und den Auftragserweiterungen (§33 Word-Export, §34 Schwierigkeitsmesser & Niveau der Fragen), jede mit Prüfart:
+- **Konzept-Manifest** (`app/manifest.js`): 249 Anforderungen aus dem Konzeptdokument und den Auftragserweiterungen (§33 Word-Export, §34 Schwierigkeitsmesser & Niveau der Fragen, §35 Pre-Task), jede mit Prüfart:
   - `setting` – Steuerelement existiert **und** die Änderung des Werts verändert nachweislich mindestens einen Prompt (Prompt-Sensitivitätstest; tote Einstellungen fallen durch).
   - `function` – Verhalten wird mit echten Eingaben ausgeführt (z. B. Preset *Interview* ⇒ Anteile 25/75, Skill-Mix verschiebt sich mit der Schwierigkeit, Beispielkonfiguration §32 reproduziert alle Werte).
   - `rule` – Qualitätsregel existiert als Messfunktion oder als Review-Kriterium und wird im Review-Prompt an Claude übergeben.

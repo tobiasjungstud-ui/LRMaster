@@ -113,7 +113,14 @@
     const refs = kind === 'reading' ? ['[¶1]', '[¶2]', '[¶3]'] : ['[1]', '[2]', '[5]'];
     return {
       title: 'Fixture worksheet title', instructions: 'Fixture instruction sentence.',
-      preTasks: [{ type: 'prediction', title: 'Guess', prompt: 'Fixture prediction prompt', items: [], teacherNote: '' }],
+      preTasks: [
+        { n: 1, type: 'vocabulary', title: 'Fixture vocabulary title', prompt: 'Match the words argue, trust and apologise to the pictures and tell your partner about friends.',
+          items: ['argue', 'trust', 'apologise'], socialForm: 'pair', mode: 'oral', minutes: 4,
+          criteria: ['I can use the three words in a sentence.'], vocabUsed: ['argue', 'trust', 'apologise'], materials: '', teacherNote: 'Fixture teacher note.' },
+        { n: 2, type: 'prediction', title: 'Guess', prompt: 'Look at the title about friends and communication and write down what you will hear.',
+          items: [], socialForm: 'single', mode: 'written', minutes: 4,
+          criteria: ['I can write two guesses.'], vocabUsed: [], materials: '', teacherNote: '' },
+      ],
       questions: [
         { n: 1, skill: 'gist', format: 'multiple_choice', difficulty: 'B1.1', prompt: 'What is the conversation mainly about?', options: ['Fixture option one', 'Fixture option two', 'Fixture option three'], answer: 'B', evidenceQuote: quotes[0], evidenceRef: refs[0], rationale: '' },
         { n: 2, skill: 'specific', format: 'short_answer', difficulty: 'B1.1', prompt: 'Fixture specific question?', answer: 'Fixture specific answer', evidenceQuote: quotes[0], evidenceRef: refs[0], rationale: '' },

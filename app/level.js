@@ -396,6 +396,32 @@
     return measured.hardWords.filter(h => wanted.includes(h.band)).slice(0, max || 12);
   }
 
+  /**
+   * The highest frequency rank a word may have so that a learner at the band
+   * can be expected to know it (derived from the lexB2/lexC thresholds).
+   */
+  function maxRankFor(band) {
+    return { 'A2.1': 1200, 'A2.2': 1600, 'B1.1': 2000, 'B1.2': 2800, 'B2.1': 3500, 'B2.2': 5000 }[band] || 2800;
+  }
+
+  /** Words of a text that are above what the band can be expected to know. */
+  function hardWordsFor(text, band, exclude) {
+    const limit = maxRankFor(band);
+    const skip = new Set((exclude || []).flatMap(w => String(typeof w === 'string' ? w : w.word).toLowerCase().split(/\s+/)));
+    const out = new Map();
+    const stripped = stripDirections(text);
+    for (const t of tokenize(stripped)) {
+      const lower = t.word.toLowerCase();
+      if (FUNCTION_WORDS.has(lower) || skip.has(lower)) continue;
+      if (/^\p{Lu}/u.test(t.word) && t.index > 0) continue; // names and sentence starts are not the point here
+      const rank = rankOf(t.word);
+      const lemma = lemmaOf(t.word);
+      if (skip.has(lemma)) continue;
+      if (rank === null || rank > limit) out.set(lemma, { lemma, word: t.word, rank, count: (out.get(lemma) || { count: 0 }).count + 1 });
+    }
+    return [...out.values()].sort((a, b) => (b.rank || 99999) - (a.rank || 99999));
+  }
+
   /** Text lines for a prompt: numeric targets of a band. */
   function targetLines(band, kind) {
     const t = targetsFor(band);
@@ -410,5 +436,5 @@
     return lines;
   }
 
-  return { BANDS, DESCRIPTORS, DIMENSIONS, measure, compare, targetsFor, targetLines, glossaryCandidates, rankOf, rankBand, lemmaOf, tokenize, sentences, candidates, americanize };
+  return { BANDS, DESCRIPTORS, DIMENSIONS, measure, compare, targetsFor, targetLines, glossaryCandidates, rankOf, rankBand, lemmaOf, tokenize, sentences, candidates, americanize, maxRankFor, hardWordsFor, stripDirections };
 });

@@ -140,7 +140,7 @@
   add({ id: 'S02.unit_listing', section: 2, title: 'Lehrmittel zeigt Units (Unit 1, Unit 2, …)', kind: 'ui', selector: '#textbook-list' });
 
   /* §3 Grundaufbau */
-  for (const s of [[1, 'source', 'Source & Unit'], [2, 'content', 'Content'], [3, 'level', 'Language Level'], [4, 'structure', 'Text / Audio Structure'], [5, 'vocab', 'Vocabulary'], [6, 'worksheet', 'Worksheet & Questions'], [7, 'advanced', 'Advanced Settings'], [8, 'generate', 'Generate']]) {
+  for (const s of [[1, 'source', 'Source & Unit'], [2, 'content', 'Content'], [3, 'level', 'Language Level'], [4, 'structure', 'Text / Audio Structure'], [5, 'vocab', 'Vocabulary'], [6, 'worksheet', 'Worksheet & Questions'], [7, 'pretask', 'Pre-Task'], [8, 'advanced', 'Advanced Settings'], [9, 'generate', 'Generate']]) {
     add({ id: `S03.section_${s[0]}`, section: 3, title: `Creator-Bereich ${s[0]}: ${s[2]}`, kind: 'ui', selector: `#sec-${s[1]}[data-step="${s[0]}"]` });
   }
   add({ id: 'S03.collapsible', section: 3, title: 'Bereiche einzeln auf-/zuklappbar', kind: 'ui', selector: '[data-toggle-step="4"]' });
@@ -407,8 +407,8 @@
 
   /* §27 Pre-task */
   add({ id: 'S27.toggle', section: 27, title: 'Create Pre-Task', kind: 'setting', key: 'preTask', alt: true });
-  add({ id: 'S27.types', section: 27, title: 'Formen Prediction / Vocabulary Activation / Speaking Prompt', kind: 'setting', key: 'preTaskTypes', alt: ['speaking'], given: { preTask: true },
-    extra(env) { return ok(deepEq(env.core.PRE_TASK_TYPES.map(t => t.key), ['prediction', 'vocabulary', 'speaking'])); } });
+  add({ id: 'S27.types', section: 27, title: 'Formen Prediction / Vocabulary Activation / Speaking Prompt (plus weitere Aufgabentypen, §35)', kind: 'setting', key: 'preTaskTypes', alt: ['speaking'], given: { preTask: true },
+    extra(env) { return ok(['prediction', 'vocabulary', 'speaking'].every(k => env.core.PRE_TASK_TYPE_KEYS.includes(k))); } });
   add({ id: 'S27.no_spoilers', section: 27, title: 'Pre-Task nimmt keine Antworten vorweg', kind: 'rule', ruleId: 'pretask.no_spoilers',
     extra(env) { const s = env.state({ preTask: true }); const p = env.prompts.buildQuestionPrompt(s, env.core.buildPlan(s, env.ctx), env.fixture.content()); return ok(/must NOT give away/.test(p)); } });
 
@@ -833,6 +833,184 @@
       const md = env.render.renderMarkdown(m);
       const off = env.render.renderStudentHTML(env.fixture.material({ appendScript: false }, 'listening'));
       return ok(st.indexOf('Questions') < st.indexOf('class="block script appendix') && st.includes(env.render.esc(last)) && !off.includes(env.render.esc(last)) && doc.indexOf(m.worksheet.questions[0].prompt) < doc.indexOf(last) && md.indexOf('### Script') < md.indexOf('## Teacher version'), 'script appendix incomplete');
+    } });
+
+
+  /* §35 Pre-Task: Aufgabentypen, Sozialformen, Anforderungsniveau (Auftragserweiterung) */
+  const preState = (env, over) => env.state(Object.assign({ createWorksheet: true, preTask: true }, over || {}));
+  const prePlan = (env, over) => env.core.buildPlan(preState(env, over), env.ctx);
+  const prePrompt = (env, over) => { const s = preState(env, over); return env.prompts.buildQuestionPrompt(s, env.core.buildPlan(s, env.ctx), env.fixture.content()); };
+  const preFind = (env, id, over, mutate) => {
+    const m = env.fixture.material(Object.assign({ preTask: true }, over || {}), 'listening');
+    if (mutate) mutate(m.worksheet.preTasks, m);
+    return env.quality.runDeterministic(m.settings, m.plan, m.content, m.worksheet).find(f => f.id === id);
+  };
+
+  add({ id: 'S35.section', section: 35, title: 'Eigener Creator-Bereich „Pre-Task“', kind: 'ui', selector: '#sec-pretask[data-step="7"]' });
+  add({ id: 'S35.focus', section: 35, title: 'Pre-Task ums Thema, ums Vokabular oder um beides', kind: 'setting', key: 'preTaskFocus', alt: 'vocabulary', given: { preTask: true },
+    extra(env) {
+      const t = prePrompt(env, { preTaskFocus: 'topic' }), v = prePrompt(env, { preTaskFocus: 'vocabulary' });
+      return ok(/prior knowledge, attitudes and expectations/.test(t) && /every task works with those words/.test(v) && /Target vocabulary of the unit/.test(v));
+    } });
+  add({ id: 'S35.count', section: 35, title: 'Anzahl der Pre-Task-Aufgaben einstellbar', kind: 'setting', key: 'preTaskCount', alt: 5, given: { preTask: true },
+    extra(env) {
+      const p = prePlan(env, { preTaskCount: 5 });
+      return ok(p.preTask.count === 5 && p.preTask.tasks.length === 5 && p.preTask.tasks.every((t, i) => t.n === i + 1) && /exactly 5 pre-task/.test(prePrompt(env, { preTaskCount: 5 })));
+    } });
+  add({ id: 'S35.types', section: 35, title: 'Aufgabentypen wählbar: Konfrontation, Vorwissen, Wortfeld, Ranking, Umfrage, Sprechimpuls, Wortschatz, Hypothesen, Prediction', kind: 'setting', key: 'preTaskTypes', alt: ['confrontation'], given: { preTask: true },
+    extra(env) {
+      const keys = env.core.PRE_TASK_TYPE_KEYS;
+      const complete = ['confrontation', 'activation', 'brainstorm', 'ranking', 'survey', 'speaking', 'vocabulary', 'hypothesis', 'prediction'].every(k => keys.includes(k));
+      const defined = env.core.PRE_TASK_TYPES.every(t => t.definition && t.definition.length > 40);
+      const p = prePlan(env, { preTaskCount: 4, preTaskTypes: ['confrontation', 'ranking'] });
+      const mix = p.preTask.typeMix;
+      return ok(complete && defined && mix.confrontation === 2 && mix.ranking === 2, 'types incomplete or not distributed');
+    } });
+  add({ id: 'S35.confrontation', section: 35, title: 'Konfrontationsaufgabe: zugespitzte These/Dilemma, beidseitig vertretbar, ohne das Material lösbar', kind: 'function',
+    check(env) {
+      const p = prePrompt(env, { preTaskTypes: ['confrontation'], preTaskCount: 1 });
+      const rule = env.quality.RULES.find(r => r.id === 'pretask.confrontation');
+      const planned = env.core.buildPlan(preState(env, { preTaskTypes: ['confrontation'] }), env.ctx);
+      const other = env.core.buildPlan(preState(env, { preTaskTypes: ['prediction'] }), env.ctx);
+      const onA = env.quality.applicableRules(preState(env, { preTaskTypes: ['confrontation'] }), planned, env.fixture.material({ preTask: true }).worksheet).some(r => r.id === 'pretask.confrontation');
+      const onB = env.quality.applicableRules(preState(env, { preTaskTypes: ['prediction'] }), other, env.fixture.material({ preTask: true }).worksheet).some(r => r.id === 'pretask.confrontation');
+      return ok(/take a position on BEFORE/.test(p) && /argued both ways/.test(p) && rule && onA && !onB, 'confrontation task not demanded or not checked');
+    } });
+  add({ id: 'S35.social_mode', section: 35, title: 'Sozialformen automatisch verteilen oder selbst festlegen', kind: 'setting', key: 'preTaskSocialMode', alt: 'custom',
+    given: { preTask: true, customPreTaskSocial: { single: 0, pair: 0, group: 1, plenary: 1 } },
+    extra(env) {
+      const auto = prePlan(env, {}).preTask.socialMix;
+      const own = prePlan(env, { preTaskSocialMode: 'custom', customPreTaskSocial: { single: 0, pair: 0, group: 1, plenary: 1 } }).preTask.socialMix;
+      return ok(!deepEq(auto, own) && (own.group || 0) === 1 && (own.plenary || 0) === 1, 'the own mix does not reach the plan');
+    } });
+  add({ id: 'S35.social_custom', section: 35, title: 'Wie viele Einzel-, Partner-, Gruppen- und Plenumsarbeiten', kind: 'setting', key: 'customPreTaskSocial', alt: { single: 0, pair: 0, group: 1, plenary: 1 }, given: { preTask: true, preTaskSocialMode: 'custom' },
+    extra(env) {
+      const p = prePlan(env, { preTaskSocialMode: 'custom', customPreTaskSocial: { single: 0, pair: 2, group: 0, plenary: 0 } });
+      const forms = p.preTask.tasks.map(t => t.socialForm);
+      const labels = env.core.SOCIAL_FORMS.map(f => f.key);
+      return ok(deepEq(labels, ['single', 'pair', 'group', 'plenary']) && forms.every(f => f === 'pair') && /with your partner/.test(prePrompt(env, { preTaskSocialMode: 'custom', customPreTaskSocial: { single: 0, pair: 2, group: 0, plenary: 0 } })), forms.join(','));
+    } });
+  add({ id: 'S35.oral', section: 35, title: 'Wie viele Aufgaben mündlich gelöst werden (nur mit interaktiver Sozialform)', kind: 'setting', key: 'preTaskOralCount', alt: 2, given: { preTask: true },
+    extra(env) {
+      const p = prePlan(env, { preTaskCount: 3, preTaskOralCount: 2 });
+      const oral = p.preTask.tasks.filter(t => t.mode === 'oral');
+      const lonely = oral.filter(t => t.socialForm === 'single');
+      const errs = env.core.validateState(preState(env, { preTaskCount: 2, preTaskOralCount: 2, preTaskSocialMode: 'custom', customPreTaskSocial: { single: 2, pair: 0, group: 0, plenary: 0 } }), env.ctx).map(e => e.key);
+      return ok(oral.length === 2 && lonely.length === 0 && errs.includes('preTaskOralCount') && /nothing has to be written down/.test(prePrompt(env, { preTaskOralCount: 1 })), 'oral tasks not planned or not guarded');
+    } });
+  add({ id: 'S35.social_auto', section: 35, title: 'Automatische Sozialformen: genug interaktive Formen für die mündlichen Aufgaben, feste Zuordnung pro Aufgabe', kind: 'function',
+    check(env) {
+      for (let n = 1; n <= 6; n++) for (let oral = 0; oral <= n; oral++) {
+        const mix = env.core.autoPreTaskSocial(n, oral);
+        const sum = env.core.SOCIAL_FORM_KEYS.reduce((a, k) => a + mix[k], 0);
+        const inter = mix.pair + mix.group + mix.plenary;
+        if (sum !== n || inter < oral) return `n=${n} oral=${oral} → ${JSON.stringify(mix)}`;
+      }
+      const p = prePlan(env, { preTaskCount: 3, preTaskTypes: ['speaking', 'vocabulary', 'prediction'], preTaskOralCount: 1 });
+      const prompt = prePrompt(env, { preTaskCount: 3, preTaskTypes: ['speaking', 'vocabulary', 'prediction'], preTaskOralCount: 1 });
+      const fixed = p.preTask.tasks.every(t => prompt.includes(`"socialForm": "${t.socialForm}"`) && prompt.includes(`"mode": "${t.mode}"`));
+      return ok(fixed, 'the plan is not handed to Claude per task');
+    } });
+  add({ id: 'S35.difficulty', section: 35, title: 'Kriterienorientiertes Anforderungsniveau der Pre-Task (reproduktiv bis Position beziehen)', kind: 'setting', key: 'preTaskDifficulty', alt: 95, given: { preTask: true },
+    extra(env) { return ok(/reproductive — collect, name, tick/.test(prePrompt(env, { preTaskDifficulty: 0 })) && /argue a dilemma from both sides/.test(prePrompt(env, { preTaskDifficulty: 100 }))); } });
+  add({ id: 'S35.scaffolding', section: 35, title: 'Hilfestellungen (Beispiel, Wortspeicher, Satzanfänge, Musterlösung)', kind: 'setting', key: 'preTaskScaffolding', alt: 95, given: { preTask: true },
+    extra(env) { return ok(/none — the bare task/.test(prePrompt(env, { preTaskScaffolding: 0 })) && /word bank, sentence starters, a model answer/.test(prePrompt(env, { preTaskScaffolding: 100 }))); } });
+  add({ id: 'S35.level', section: 35, title: 'Sprachniveau der Aufgabenstellung (wie die Fragen, Niveau A oder B)', kind: 'setting', key: 'preTaskLevel', alt: 'A', given: { preTask: true },
+    extra(env) {
+      const a = prePlan(env, { preTaskLevel: 'A' }).preTask.band, b = prePlan(env, { preTaskLevel: 'B' }).preTask.band;
+      return ok(a === 'B1.2' && b === 'B1.1' && /Language of the instructions/.test(prePrompt(env, {})));
+    } });
+  add({ id: 'S35.criteria', section: 35, title: 'Gelingenskriterien pro Aufgabe (kriterienorientiert), auf dem Arbeitsblatt ausgewiesen', kind: 'setting', key: 'preTaskCriteria', alt: false, given: { preTask: true },
+    extra(env) {
+      const m = env.fixture.material({ preTask: true }, 'listening');
+      const st = env.render.renderStudentHTML(m);
+      const doc = docText(env, m, 'student');
+      const crit = m.worksheet.preTasks[0].criteria[0];
+      return ok(/observable statements in student language/.test(prePrompt(env, {})) && /"criteria" is an empty array/.test(prePrompt(env, { preTaskCriteria: false }))
+        && st.includes('Success criteria') && st.includes(env.render.esc(crit)) && doc.includes(crit), 'success criteria missing in prompt or output');
+    } });
+  add({ id: 'S35.minutes', section: 35, title: 'Zeitbudget der Pre-Task, auf die Aufgaben verteilt', kind: 'setting', key: 'preTaskMinutes', alt: 20, given: { preTask: true },
+    extra(env) {
+      const p = prePlan(env, { preTaskCount: 3, preTaskMinutes: 9 });
+      return ok(p.preTask.tasks.reduce((a, t) => a + t.minutes, 0) === 9 && p.preTask.tasks.every(t => t.minutes >= 1) && /total 9 minutes/.test(prePrompt(env, { preTaskCount: 3, preTaskMinutes: 9 })));
+    } });
+
+  /* Kontrollen */
+  add({ id: 'S35.rule_present', section: 35, title: 'Kontrolle: Anzahl und Typen der Pre-Task-Aufgaben stimmen', kind: 'rule', ruleId: 'pretask.present',
+    extra(env) {
+      const good = preFind(env, 'pretask.present');
+      const bad = preFind(env, 'pretask.present', {}, (pre) => pre.pop());
+      const wrongType = preFind(env, 'pretask.present', {}, (pre) => { pre[0].type = 'ranking'; });
+      return ok(good.status === 'pass' && bad.status === 'fail' && wrongType.status === 'fail', `${good.status}/${bad.status}/${wrongType.status}`);
+    } });
+  add({ id: 'S35.rule_social', section: 35, title: 'Kontrolle: Sozialformen entsprechen den Einstellungen', kind: 'rule', ruleId: 'pretask.social_forms',
+    extra(env) {
+      const good = preFind(env, 'pretask.social_forms');
+      const bad = preFind(env, 'pretask.social_forms', {}, (pre) => { pre[0].socialForm = 'group'; });
+      return ok(good.status === 'pass' && bad.status === 'fail' && bad.preTasks.includes(1), `${good.status}/${bad.status}`);
+    } });
+  add({ id: 'S35.rule_modes', section: 35, title: 'Kontrolle: mündliche und schriftliche Aufgaben wie eingestellt, mündlich nie in Einzelarbeit', kind: 'rule', ruleId: 'pretask.modes',
+    extra(env) {
+      const good = preFind(env, 'pretask.modes');
+      const bad = preFind(env, 'pretask.modes', {}, (pre) => { pre[0].mode = 'written'; });
+      const lonely = preFind(env, 'pretask.modes', {}, (pre) => { pre[1].mode = 'oral'; pre[0].mode = 'written'; });
+      return ok(good.status === 'pass' && bad.status === 'fail' && lonely.status !== 'pass', `${good.status}/${bad.status}/${lonely.status}`);
+    } });
+  add({ id: 'S35.rule_focus', section: 35, title: 'Kontrolle: Wortschatzaufgaben arbeiten mit dem Zielvokabular, Themenaufgaben mit dem Thema', kind: 'rule', ruleId: 'pretask.focus',
+    extra(env) {
+      const good = preFind(env, 'pretask.focus');
+      const bad = preFind(env, 'pretask.focus', {}, (pre) => { pre[0].prompt = 'Talk about anything you like.'; pre[0].items = []; pre[0].vocabUsed = []; });
+      return ok(good.status === 'pass' && bad.status === 'warn', `${good.status}/${bad.status}`);
+    } });
+  add({ id: 'S35.rule_criteria', section: 35, title: 'Kontrolle: Gelingenskriterien vorhanden und kurz', kind: 'rule', ruleId: 'pretask.criteria',
+    extra(env) {
+      const good = preFind(env, 'pretask.criteria');
+      const bad = preFind(env, 'pretask.criteria', {}, (pre) => { pre[0].criteria = []; });
+      const off = preFind(env, 'pretask.criteria', { preTaskCriteria: false }, (pre) => { pre[0].criteria = []; });
+      return ok(good.status === 'pass' && bad.status === 'fail' && off.status === 'pass', `${good.status}/${bad.status}/${off.status}`);
+    } });
+  add({ id: 'S35.rule_time', section: 35, title: 'Kontrolle: Zeitangaben vorhanden und im Budget', kind: 'rule', ruleId: 'pretask.time',
+    extra(env) {
+      const good = preFind(env, 'pretask.time');
+      const bad = preFind(env, 'pretask.time', {}, (pre) => { pre[0].minutes = 40; });
+      return ok(good.status === 'pass' && bad.status === 'warn', `${good.status}/${bad.status}`);
+    } });
+  add({ id: 'S35.rule_language', section: 35, title: 'Kontrolle: Aufgabenstellung bleibt auf dem eingestellten Sprachniveau', kind: 'rule', ruleId: 'pretask.language',
+    extra(env) {
+      const good = preFind(env, 'pretask.language');
+      const bad = preFind(env, 'pretask.language', {}, (pre) => { pre[0].prompt = 'Scrutinise the ostensibly innocuous ramifications and corroborate your conjecture.'; });
+      return ok(good.status === 'pass' && bad.status === 'warn' && /ostensibly|scrutinise|ramification|corroborate|conjecture/i.test(bad.detail), `${good.status}/${bad.status}: ${bad.detail}`);
+    } });
+  add({ id: 'S35.rule_spoilers', section: 35, title: 'Kontrolle (Claude): Pre-Task nimmt keine Antwort vorweg', kind: 'rule', ruleId: 'pretask.no_spoilers' });
+  add({ id: 'S35.rule_solvable', section: 35, title: 'Kontrolle (Claude): Pre-Task ist ohne das Material lösbar', kind: 'rule', ruleId: 'pretask.solvable_before' });
+  add({ id: 'S35.rule_social_fits', section: 35, title: 'Kontrolle (Claude): Sozialform und Arbeitsweise passen zur Aufgabe', kind: 'rule', ruleId: 'pretask.social_fits' });
+  add({ id: 'S35.rule_confrontation', section: 35, title: 'Kontrolle (Claude): Konfrontationsaufgabe konfrontiert wirklich', kind: 'rule', ruleId: 'pretask.confrontation' });
+  add({ id: 'S35.repair', section: 35, title: 'Beanstandete Pre-Task wird gezielt neu erstellt, die Fragen bleiben unverändert', kind: 'function',
+    check(env) {
+      const m = env.fixture.material({ preTask: true }, 'listening');
+      const f = preFind(env, 'pretask.criteria', {}, (pre) => { pre[0].criteria = []; });
+      const rp = env.quality.repairPlan([f], 'all');
+      const prompt = env.prompts.buildPreTaskRepairPrompt(m.settings, m.plan, m.content, m.worksheet, [f], '');
+      const patched = env.quality.applyPreTaskPatch(m.worksheet, { preTasks: [Object.assign({}, m.worksheet.preTasks[0], { prompt: 'Replaced pre-task prompt.' }), m.worksheet.preTasks[1]] });
+      const src = env.pipelineSource || '';
+      const wired = !src || (/buildPreTaskRepairPrompt/.test(src) && /applyPreTaskPatch/.test(src) && /target: 'pretask'/.test(src));
+      return ok(rp.preTasks.length === 1 && rp.questions.length === 0 && rp.worksheet.length === 0
+        && /The comprehension questions stay exactly as they are/.test(prompt) && /Pre-task \(before listening\)/.test(prompt)
+        && patched.questions === m.worksheet.questions && patched.preTasks[0].prompt === 'Replaced pre-task prompt.'
+        && deepEq(env.quality.changedPreTasks(m.worksheet, patched), [1]) && wired, 'targeted pre-task repair incomplete');
+    } });
+  add({ id: 'S35.output', section: 35, title: 'Sozialform, Arbeitsweise, Zeit und Kriterien stehen auf dem Arbeitsblatt (Bildschirm, Word, Markdown); Lehrerversion mit Pre-Task-Übersicht', kind: 'render',
+    check(env) {
+      const m = env.fixture.material({ preTask: true }, 'listening');
+      const st = env.render.renderStudentHTML(m);
+      const t = env.render.renderTeacherHTML(m);
+      const md = env.render.renderMarkdown(m);
+      const ds = docText(env, m, 'student');
+      const dt = docText(env, m, 'teacher');
+      const note = m.worksheet.preTasks[0].teacherNote;
+      return ok(/Partnerarbeit/.test(st) && /mündlich/.test(st) && /4 min/.test(st) && /Success criteria/.test(st)
+        && /Partnerarbeit/.test(md) && /Partnerarbeit/.test(ds) && /Success criteria/.test(ds)
+        && t.includes(env.render.esc(note)) && /Sozialform/.test(dt) && dt.includes(note), 'pre-task details missing in an output');
     } });
 
   return { REQUIREMENTS: M };

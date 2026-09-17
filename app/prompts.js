@@ -233,6 +233,66 @@
     return (content.paragraphs || []).map((p, i) => `[¶${i + 1}] ${p}`).join('\n\n');
   }
 
+  function preTaskTypeDef(key) { const t = core.PRE_TASK_TYPES.find(x => x.key === key); return t ? t.definition : key; }
+  function preTaskTypeLabel(key) { const t = core.PRE_TASK_TYPES.find(x => x.key === key); return t ? t.label : key; }
+  function socialFormLabel(key) { const f = core.SOCIAL_FORMS.find(x => x.key === key); return f ? f.label : key; }
+  function socialFormEn(key) { const f = core.SOCIAL_FORMS.find(x => x.key === key); return f ? f.en : key; }
+  function modeEn(key) { const m = core.PRE_TASK_MODES.find(x => x.key === key); return m ? m.en : key; }
+
+  /**
+   * The pre-task order (concept §27 and the task forms of a Lernaufgabe).
+   * Type, social form, working mode and time are fixed per task so that the
+   * checks can verify them; everything else is Claude's.
+   */
+  function preTaskBlock(state, plan) {
+    const isL = state.kind === 'listening';
+    const pt = plan.preTask;
+    if (!pt || !pt.count) return '## Pre-task\nNone: "preTasks" is an empty array.';
+    const vocab = plan.vocabulary.map(w => w.word);
+    const focus = pt.focus === 'vocabulary'
+      ? 'the TARGET VOCABULARY of the unit — every task works with those words'
+      : pt.focus === 'topic'
+        ? 'the TOPIC — prior knowledge, attitudes and expectations, not single words'
+        : 'the TOPIC and the TARGET VOCABULARY — at least one task activates prior knowledge about the topic and at least one works with the target words';
+    const lines = [
+      '## Pre-task (before ' + (isL ? 'listening' : 'reading') + ')',
+      `Write exactly ${pt.count} pre-task(s) in the array "preTasks", in the given order. Type, social form, working mode and time are FIXED for every position:`,
+      pt.tasks.map(t => `P${t.n}: ${preTaskTypeLabel(t.type)} ("type": "${t.type}") · "socialForm": "${t.socialForm}" (${socialFormEn(t.socialForm)}) · "mode": "${t.mode}" (${modeEn(t.mode)}) · "minutes": ${t.minutes}\n    ${preTaskTypeDef(t.type)}`).join('\n'),
+      `What the pre-tasks prepare: ${focus}. Target vocabulary of the unit: ${vocab.join(', ') || '–'}.`,
+      `Language of the instructions, options and examples: CEFR ${pt.band}` + (pt.level ? ` (${core.QUESTION_LEVELS[pt.level].label})` : '') + '. Students read them before they know the material, so keep them short and unambiguous.',
+      `Cognitive demand: ${scale(pt.difficulty, [
+        'reproductive — collect, name, tick, match; everything is given',
+        'mostly reproductive with one small step of own thinking',
+        'apply and connect — compare, sort, give a reason for a choice',
+        'reason and judge — weigh arguments, justify a position, formulate a hypothesis',
+        'evaluate and decide — argue a dilemma from both sides and commit to a position',
+      ])}.`,
+      `Support (scaffolding): ${scale(pt.scaffolding, [
+        'none — the bare task',
+        'a short example',
+        'a word bank or sentence starters where they help',
+        'word bank AND sentence starters, plus a worked example',
+        'full support: word bank, sentence starters, a model answer and a structure to fill in',
+      ])}. Put such support into "items".`,
+    ];
+    if (pt.criteria) {
+      lines.push('Success criteria: give every task 2–3 short "criteria" — observable statements in student language and in English that say when the task is done well ("I can name three reasons why …", "We have agreed on an order and can justify it"). They describe what the students produce, not what they understand.');
+    } else {
+      lines.push('Success criteria: not required, "criteria" is an empty array.');
+    }
+    lines.push('Rules for every pre-task:\n'
+      + `- It must be solvable WITHOUT the ${isL ? 'audio' : 'text'} and must NOT give away any answer of the comprehension questions.\n`
+      + '- An oral task gives a real reason to speak (a question to the partner, a position to defend, information the other side does not have) and asks for nothing in writing.\n'
+      + '- A written task says exactly what is written down and where (list, table, sentences).\n'
+      + '- Partner, group and plenary tasks say what each person does, so that nobody can sit back.\n'
+      + '- A vocabulary task uses only words from the target vocabulary above and lists them in "vocabUsed".\n'
+      + '- A confrontation task states the claim or dilemma itself; it is honestly arguable both ways and is not answered by the material alone.\n'
+      + `- The time in "minutes" must be realistic for the task in a class of 20 students (total ${pt.minutes} minutes).\n`
+      + '- "materials": what the teacher has to prepare (empty string if nothing).');
+    lines.push('Shape: {"n": 1, "type": "…", "title": "…", "prompt": "the instruction as the students read it", "items": ["word bank / statements / sentence starters"], "socialForm": "single|pair|group|plenary", "mode": "written|oral", "minutes": 3, "criteria": ["…"], "vocabUsed": ["…"], "materials": "…", "teacherNote": "what the teacher should watch for and how the task is picked up afterwards"}');
+    return lines.join('\n');
+  }
+
   /** Questions follow the timeline of the material — always, checked automatically. */
   function chronologyRule(isL) {
     const medium = isL ? 'audio' : 'text';
@@ -288,12 +348,7 @@
       lines.push('## Higher-order thinking\nNone: "higherOrder" is an empty array.');
     }
 
-    if (plan.preTaskTypes.length > 0) {
-      const desc = { prediction: 'Prediction — e.g. from the title: what will the speakers/text probably discuss?', vocabulary: 'Vocabulary Activation — pre-teach 2–4 relevant target words with a short activity', speaking: 'Speaking Prompt — a short partner question on the topic' };
-      lines.push('## Pre-task\n' + `Create one pre-${isL ? 'listening' : 'reading'} task per type: ${plan.preTaskTypes.map(t => desc[t]).join('; ')}. Pre-tasks must NOT give away any answer to the questions. Shape: {"type": "prediction|vocabulary|speaking", "title": "…", "prompt": "…", "items": ["…"] (optional), "teacherNote": "…"}.`);
-    } else {
-      lines.push('## Pre-task\nNone: "preTasks" is an empty array.');
-    }
+    lines.push(preTaskBlock(state, plan));
 
     lines.push('## Student instruction\nWrite "instructions": a short instruction for students (1–2 sentences) at their level, and "title": the worksheet title.');
     lines.push('Reply with only a JSON object: {"title": "…", "instructions": "…", "preTasks": [...], "questions": [{"n": 1, "skill": "gist|specific|detail|connecting|inference|attitude|purpose|context", "format": "…", "difficulty": "CEFR band", "prompt": "…", …format fields…, "answer": …, "evidenceQuote": "…", "evidenceRef": "…", "rationale": "…"}], "higherOrder": [{"n": 1, "type": "…", "prompt": "…", "answer": "…", "rationale": "…"}]}');
@@ -314,6 +369,7 @@
       state.kind === 'listening' ? `Speakers and target shares: ${plan.speakers.map(s => `${s.label} ${s.share} %`).join(', ')}; emotion tags: ${state.emotionTags}; naturalness ${state.naturalness}/100` : `Text type: ${state.textType}`,
       worksheet ? `Planned skills: ${core.SKILL_KEYS.filter(k => plan.skillMix[k]).map(k => `${plan.skillMix[k]}× ${k}`).join(', ')}; allowed question bands: ${plan.questionBands.join(', ')}` + (plan.questionLevel ? ` (${plan.questionLevelLabel})` : '') : 'No worksheet.',
       worksheet ? 'Questions must follow the order of the material — the timeline (gist may be first/last).' : '',
+      worksheet && plan.preTask ? `Pre-task plan: ${plan.preTask.tasks.map(t => `P${t.n} ${t.type}/${t.socialForm}/${t.mode}/${t.minutes}min`).join(', ')}; focus ${plan.preTask.focus}; language ${plan.preTask.band}; demand ${plan.preTask.difficulty}/100; success criteria ${plan.preTask.criteria ? 'required' : 'not required'}` : '',
     ].filter(Boolean).join('\n'));
     lines.push('## Material\n' + contentAsText(content, state));
     if (worksheet) lines.push('## Worksheet (JSON)\n' + JSON.stringify({ preTasks: worksheet.preTasks, questions: worksheet.questions, higherOrder: worksheet.higherOrder }, null, 0).slice(0, 30000));
@@ -393,6 +449,24 @@
     if (formats.length) lines.push('## Format shapes\n' + formats.map(f => `- ${f}: ${FORMAT_SHAPES[f]}`).join('\n'));
     lines.push('Reply with only a JSON object holding the replacements: {"questions": [' + targets.map(n => `{"n": ${n}, "skill": "…", "format": "…", "difficulty": "…", "prompt": "…", …format fields…, "answer": …, "evidenceQuote": "…", "evidenceRef": "…", "rationale": "…"}`).join(', ') + ']}');
     return lines.join('\n\n');
+  }
+
+  /**
+   * Targeted repair of the pre-task: the questions stay untouched, only the
+   * pre-tasks are written again with the findings in front of them.
+   */
+  function buildPreTaskRepairPrompt(state, plan, content, worksheet, findings, fixInstructions) {
+    const isL = state.kind === 'listening';
+    return [
+      `You are revising the pre-${isL ? 'listening' : 'reading'} tasks of a worksheet. The comprehension questions stay exactly as they are; write the pre-tasks again so that every problem below is gone.`,
+      '## Material\n' + contentAsText(content, state),
+      '## Comprehension questions that follow (do not anticipate any of these answers)\n'
+        + (worksheet.questions || []).map(q => `Q${q.n} (${skillLabel(q.skill)}): ${q.prompt || q.statement || ''} → ${Array.isArray(q.answer) ? q.answer.join(' / ') : q.answer}`).join('\n'),
+      '## Current pre-tasks\n' + JSON.stringify(worksheet.preTasks || [], null, 0).slice(0, 12000),
+      '## What is wrong\n' + findingsBlock(findings) + (fixInstructions ? '\n\nReviewer instructions: ' + fixInstructions : ''),
+      preTaskBlock(state, plan),
+      'Reply with only a JSON object: {"preTasks": [ … the complete new list in the fixed order … ]}',
+    ].join('\n\n');
   }
 
   /* ------------------------------------------------------------------ */
@@ -505,6 +579,6 @@
     buildTopicPrompt, buildContentPrompt, buildQuestionPrompt, buildReviewPrompt,
     buildContentRevisionPrompt, buildQuestionRevisionPrompt, buildQuestionRepairPrompt, findingsBlock, buildVocabParsePrompt,
     buildUnitDetectPrompt, buildUnitTopicPrompt, buildAllPrompts, buildGlossaryPrompt, buildLevelOpinionPrompt,
-    chronologyRule, levelTargetBlock, questionLevelLines,
+    chronologyRule, levelTargetBlock, questionLevelLines, preTaskBlock, buildPreTaskRepairPrompt,
   };
 });

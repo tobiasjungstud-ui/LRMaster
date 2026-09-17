@@ -2,7 +2,7 @@
 
 Erzeugt von `npm run coverage`. Jede Zeile ist eine Anforderung aus `docs/Konzept_Listening_Reading_Creator.md`, gebunden an die Stelle im Code, die sie umsetzt, und das Ergebnis der automatischen Prüfung (`npm test`).
 
-**Ergebnis: 222 von 222 Anforderungen bestanden.**
+**Ergebnis: 249 von 249 Anforderungen bestanden.**
 
 Prüfarten: **setting** – Steuerelement vorhanden und Änderung des Werts verändert nachweislich den Prompt an Claude · **function** – Verhalten wird mit echten Eingaben ausgeführt und verglichen · **rule** – Qualitätsregel existiert als Messung oder Claude-Review-Kriterium · **render** – Ausgabe wird auf einer Fixture gerendert und inhaltlich geprüft · **ui** – Navigations-/Strukturelement existiert.
 
@@ -34,7 +34,7 @@ Prüfarten: **setting** – Steuerelement vorhanden und Änderung des Werts ver�
 | ✅ | `S02.dialogs_in_page` | Anlegen, Umbenennen und Löschen laufen über seiteneigene Dialoge (im Artifact-Frame sind window.prompt/confirm nicht verlässlich) | function | Funktion (siehe Check im Manifest) |
 | ✅ | `S02.unit_listing` | Lehrmittel zeigt Units (Unit 1, Unit 2, …) | ui | Element `#textbook-list` |
 
-## §3 Grundaufbau des Creators (9/9)
+## §3 Grundaufbau des Creators (10/10)
 
 | Status | ID | Anforderung | Art | Umsetzung |
 |---|---|---|---|---|
@@ -44,8 +44,9 @@ Prüfarten: **setting** – Steuerelement vorhanden und Änderung des Werts ver�
 | ✅ | `S03.section_4` | Creator-Bereich 4: Text / Audio Structure | ui | Element `#sec-structure[data-step="4"]` |
 | ✅ | `S03.section_5` | Creator-Bereich 5: Vocabulary | ui | Element `#sec-vocab[data-step="5"]` |
 | ✅ | `S03.section_6` | Creator-Bereich 6: Worksheet & Questions | ui | Element `#sec-worksheet[data-step="6"]` |
-| ✅ | `S03.section_7` | Creator-Bereich 7: Advanced Settings | ui | Element `#sec-advanced[data-step="7"]` |
-| ✅ | `S03.section_8` | Creator-Bereich 8: Generate | ui | Element `#sec-generate[data-step="8"]` |
+| ✅ | `S03.section_7` | Creator-Bereich 7: Pre-Task | ui | Element `#sec-pretask[data-step="7"]` |
+| ✅ | `S03.section_8` | Creator-Bereich 8: Advanced Settings | ui | Element `#sec-advanced[data-step="8"]` |
+| ✅ | `S03.section_9` | Creator-Bereich 9: Generate | ui | Element `#sec-generate[data-step="9"]` |
 | ✅ | `S03.collapsible` | Bereiche einzeln auf-/zuklappbar | ui | Element `[data-toggle-step="4"]` |
 
 ## §4 Source & Unit (3/3)
@@ -245,7 +246,7 @@ Prüfarten: **setting** – Steuerelement vorhanden und Änderung des Werts ver�
 | Status | ID | Anforderung | Art | Umsetzung |
 |---|---|---|---|---|
 | ✅ | `S27.toggle` | Create Pre-Task | setting | Setting `preTask` (core.SCHEMA → Control `[data-setting="preTask"]` → prompts.js) |
-| ✅ | `S27.types` | Formen Prediction / Vocabulary Activation / Speaking Prompt | setting | Setting `preTaskTypes` (core.SCHEMA → Control `[data-setting="preTaskTypes"]` → prompts.js) |
+| ✅ | `S27.types` | Formen Prediction / Vocabulary Activation / Speaking Prompt (plus weitere Aufgabentypen, §35) | setting | Setting `preTaskTypes` (core.SCHEMA → Control `[data-setting="preTaskTypes"]` → prompts.js) |
 | ✅ | `S27.no_spoilers` | Pre-Task nimmt keine Antworten vorweg | rule | Quality rule `pretask.no_spoilers` (Claude-Review über buildReviewPrompt) |
 
 ## §28 Output (15/15)
@@ -268,7 +269,7 @@ Prüfarten: **setting** – Steuerelement vorhanden und Änderung des Werts ver�
 | ✅ | `S28.teacher_rationale` | Teacher Version: Begründung für Inference-Fragen | render | render.js (renderStudentHTML / renderTeacherHTML) |
 | ✅ | `X.no_hardcoded_content` | Kontrolle: keine hartkodierten Textbausteine für Titel, Instruktion, Fragen, Pre-Tasks oder Themen | function | Funktion (siehe Check im Manifest) |
 
-## §29 Quality Check (33/33)
+## §29 Quality Check (32/32)
 
 | Status | ID | Anforderung | Art | Umsetzung |
 |---|---|---|---|---|
@@ -304,7 +305,6 @@ Prüfarten: **setting** – Steuerelement vorhanden und Änderung des Werts ver�
 | ✅ | `X.rule_questions.duplicates_llm` | Quality rule „questions.duplicates_llm“ (No two questions test exactly the same information (review)) – zusätzliche Regel über das Konzept hinaus | meta | `questions.duplicates_llm` — extra rule |
 | ✅ | `X.rule_questions.formats` | Quality rule „questions.formats“ (Only enabled response formats are used) – zusätzliche Regel über das Konzept hinaus | meta | `questions.formats` — extra rule |
 | ✅ | `X.rule_questions.evidence` | Quality rule „questions.evidence“ (Every question has verifiable evidence) – zusätzliche Regel über das Konzept hinaus | meta | `questions.evidence` — extra rule |
-| ✅ | `X.rule_pretask.present` | Quality rule „pretask.present“ (Pre-task types as configured) – zusätzliche Regel über das Konzept hinaus | meta | `pretask.present` — extra rule |
 
 ## §30 Advanced Settings (24/24)
 
@@ -398,6 +398,38 @@ Prüfarten: **setting** – Steuerelement vorhanden und Änderung des Werts ver�
 | ✅ | `S34.glossary` | Option „Fremdwörter auf der 1. Seite erklärt“: Messer wählt die Wörter über dem Niveau (ohne Zielvokabular), Claude erklärt sie; Ausgabe auf Seite 1 (HTML, Word) | setting | Setting `glossary` (core.SCHEMA → Control `[data-setting="glossary"]` → prompts.js) |
 | ✅ | `S34.append_script` | Option „Skript auf der letzten Seite abgebildet“ (Listening): Schülerversion endet mit dem Skript (HTML, Word, Markdown) | setting | Setting `appendScript` (core.SCHEMA → Control `[data-setting="appendScript"]` → prompts.js) |
 
+## §35 Pre-Task: Typen, Sozialformen, Anforderungsniveau (27/27)
+
+| Status | ID | Anforderung | Art | Umsetzung |
+|---|---|---|---|---|
+| ✅ | `S35.section` | Eigener Creator-Bereich „Pre-Task“ | ui | Element `#sec-pretask[data-step="7"]` |
+| ✅ | `S35.focus` | Pre-Task ums Thema, ums Vokabular oder um beides | setting | Setting `preTaskFocus` (core.SCHEMA → Control `[data-setting="preTaskFocus"]` → prompts.js) |
+| ✅ | `S35.count` | Anzahl der Pre-Task-Aufgaben einstellbar | setting | Setting `preTaskCount` (core.SCHEMA → Control `[data-setting="preTaskCount"]` → prompts.js) |
+| ✅ | `S35.types` | Aufgabentypen wählbar: Konfrontation, Vorwissen, Wortfeld, Ranking, Umfrage, Sprechimpuls, Wortschatz, Hypothesen, Prediction | setting | Setting `preTaskTypes` (core.SCHEMA → Control `[data-setting="preTaskTypes"]` → prompts.js) |
+| ✅ | `S35.confrontation` | Konfrontationsaufgabe: zugespitzte These/Dilemma, beidseitig vertretbar, ohne das Material lösbar | function | Funktion (siehe Check im Manifest) |
+| ✅ | `S35.social_mode` | Sozialformen automatisch verteilen oder selbst festlegen | setting | Setting `preTaskSocialMode` (core.SCHEMA → Control `[data-setting="preTaskSocialMode"]` → prompts.js) |
+| ✅ | `S35.social_custom` | Wie viele Einzel-, Partner-, Gruppen- und Plenumsarbeiten | setting | Setting `customPreTaskSocial` (core.SCHEMA → Control `[data-setting="customPreTaskSocial"]` → prompts.js) |
+| ✅ | `S35.oral` | Wie viele Aufgaben mündlich gelöst werden (nur mit interaktiver Sozialform) | setting | Setting `preTaskOralCount` (core.SCHEMA → Control `[data-setting="preTaskOralCount"]` → prompts.js) |
+| ✅ | `S35.social_auto` | Automatische Sozialformen: genug interaktive Formen für die mündlichen Aufgaben, feste Zuordnung pro Aufgabe | function | Funktion (siehe Check im Manifest) |
+| ✅ | `S35.difficulty` | Kriterienorientiertes Anforderungsniveau der Pre-Task (reproduktiv bis Position beziehen) | setting | Setting `preTaskDifficulty` (core.SCHEMA → Control `[data-setting="preTaskDifficulty"]` → prompts.js) |
+| ✅ | `S35.scaffolding` | Hilfestellungen (Beispiel, Wortspeicher, Satzanfänge, Musterlösung) | setting | Setting `preTaskScaffolding` (core.SCHEMA → Control `[data-setting="preTaskScaffolding"]` → prompts.js) |
+| ✅ | `S35.level` | Sprachniveau der Aufgabenstellung (wie die Fragen, Niveau A oder B) | setting | Setting `preTaskLevel` (core.SCHEMA → Control `[data-setting="preTaskLevel"]` → prompts.js) |
+| ✅ | `S35.criteria` | Gelingenskriterien pro Aufgabe (kriterienorientiert), auf dem Arbeitsblatt ausgewiesen | setting | Setting `preTaskCriteria` (core.SCHEMA → Control `[data-setting="preTaskCriteria"]` → prompts.js) |
+| ✅ | `S35.minutes` | Zeitbudget der Pre-Task, auf die Aufgaben verteilt | setting | Setting `preTaskMinutes` (core.SCHEMA → Control `[data-setting="preTaskMinutes"]` → prompts.js) |
+| ✅ | `S35.rule_present` | Kontrolle: Anzahl und Typen der Pre-Task-Aufgaben stimmen | rule | Quality rule `pretask.present` (gemessen in quality.js) |
+| ✅ | `S35.rule_social` | Kontrolle: Sozialformen entsprechen den Einstellungen | rule | Quality rule `pretask.social_forms` (gemessen in quality.js) |
+| ✅ | `S35.rule_modes` | Kontrolle: mündliche und schriftliche Aufgaben wie eingestellt, mündlich nie in Einzelarbeit | rule | Quality rule `pretask.modes` (gemessen in quality.js) |
+| ✅ | `S35.rule_focus` | Kontrolle: Wortschatzaufgaben arbeiten mit dem Zielvokabular, Themenaufgaben mit dem Thema | rule | Quality rule `pretask.focus` (gemessen in quality.js) |
+| ✅ | `S35.rule_criteria` | Kontrolle: Gelingenskriterien vorhanden und kurz | rule | Quality rule `pretask.criteria` (gemessen in quality.js) |
+| ✅ | `S35.rule_time` | Kontrolle: Zeitangaben vorhanden und im Budget | rule | Quality rule `pretask.time` (gemessen in quality.js) |
+| ✅ | `S35.rule_language` | Kontrolle: Aufgabenstellung bleibt auf dem eingestellten Sprachniveau | rule | Quality rule `pretask.language` (gemessen in quality.js) |
+| ✅ | `S35.rule_spoilers` | Kontrolle (Claude): Pre-Task nimmt keine Antwort vorweg | rule | Quality rule `pretask.no_spoilers` (Claude-Review über buildReviewPrompt) |
+| ✅ | `S35.rule_solvable` | Kontrolle (Claude): Pre-Task ist ohne das Material lösbar | rule | Quality rule `pretask.solvable_before` (Claude-Review über buildReviewPrompt) |
+| ✅ | `S35.rule_social_fits` | Kontrolle (Claude): Sozialform und Arbeitsweise passen zur Aufgabe | rule | Quality rule `pretask.social_fits` (Claude-Review über buildReviewPrompt) |
+| ✅ | `S35.rule_confrontation` | Kontrolle (Claude): Konfrontationsaufgabe konfrontiert wirklich | rule | Quality rule `pretask.confrontation` (Claude-Review über buildReviewPrompt) |
+| ✅ | `S35.repair` | Beanstandete Pre-Task wird gezielt neu erstellt, die Fragen bleiben unverändert | function | Funktion (siehe Check im Manifest) |
+| ✅ | `S35.output` | Sozialform, Arbeitsweise, Zeit und Kriterien stehen auf dem Arbeitsblatt (Bildschirm, Word, Markdown); Lehrerversion mit Pre-Task-Übersicht | render | render.js (renderStudentHTML / renderTeacherHTML) |
+
 ## Einstellungen (core.SCHEMA)
 
 | Key | Typ | Bereich | Modus | Simple Mode | Default |
@@ -410,9 +442,9 @@ Prüfarten: **setting** – Steuerelement vorhanden und Änderung des Werts ver�
 | `cefr` | select | 3 | both | ja | `"B1.1"` |
 | `levelMeter` | toggle | 3 | both | ja | `true` |
 | `languageComplexity` | range | 3 | both | nein | `50` |
-| `grammarComplexity` | range | 7 | both | nein | `50` |
-| `vocabularyDifficulty` | range | 7 | both | nein | `50` |
-| `idiomaticLanguage` | range | 7 | both | nein | `40` |
+| `grammarComplexity` | range | 8 | both | nein | `50` |
+| `vocabularyDifficulty` | range | 8 | both | nein | `50` |
+| `idiomaticLanguage` | range | 8 | both | nein | `40` |
 | `format` | select | 4 | listening | ja | `"dialogue"` |
 | `speakerCount` | select | 4 | listening | ja | `3` |
 | `preset` | select | 4 | listening | ja | `"natural"` |
@@ -432,9 +464,9 @@ Prüfarten: **setting** – Steuerelement vorhanden und Änderung des Werts ver�
 | `lengthMode` | select | 4 | reading | ja | `"words"` |
 | `wordCount` | number | 4 | reading | ja | `450` |
 | `a4Pages` | select | 4 | reading | ja | `"1"` |
-| `paragraphLength` | select | 7 | reading | nein | `"medium"` |
-| `dialogueProportion` | range | 7 | reading | nein | `20` |
-| `styleBalance` | range | 7 | reading | nein | `50` |
+| `paragraphLength` | select | 8 | reading | nein | `"medium"` |
+| `dialogueProportion` | range | 8 | reading | nein | `20` |
+| `styleBalance` | range | 8 | reading | nein | `50` |
 | `vocabUsage` | range | 5 | both | nein | `50` |
 | `targetVocabMin` | number | 5 | both | nein | `8` |
 | `targetVocabMax` | number | 5 | both | nein | `12` |
@@ -455,12 +487,22 @@ Prüfarten: **setting** – Steuerelement vorhanden und Änderung des Werts ver�
 | `higherOrder` | toggle | 6 | both | nein | `false` |
 | `higherOrderCount` | number | 6 | both | nein | `2` |
 | `higherOrderTypes` | multiselect | 6 | both | nein | `["interpretation","transfer","evaluation"]` |
-| `distractorDifficulty` | range | 7 | both | nein | `50` |
-| `inferenceLevel` | range | 7 | both | nein | `50` |
-| `autoFix` | select | 7 | both | nein | `"all"` |
-| `autoFixRounds` | number | 7 | both | nein | `2` |
-| `preTask` | toggle | 6 | both | nein | `false` |
-| `preTaskTypes` | multiselect | 6 | both | nein | `["prediction","vocabulary"]` |
+| `distractorDifficulty` | range | 8 | both | nein | `50` |
+| `inferenceLevel` | range | 8 | both | nein | `50` |
+| `autoFix` | select | 8 | both | nein | `"all"` |
+| `autoFixRounds` | number | 8 | both | nein | `2` |
+| `preTask` | toggle | 7 | both | nein | `false` |
+| `preTaskFocus` | select | 7 | both | nein | `"both"` |
+| `preTaskCount` | number | 7 | both | nein | `2` |
+| `preTaskTypes` | multiselect | 7 | both | nein | `["prediction","vocabulary"]` |
+| `preTaskSocialMode` | select | 7 | both | nein | `"auto"` |
+| `customPreTaskSocial` | map | 7 | both | nein | `{"single":1,"pair":1,"group":0,"plenary":0}` |
+| `preTaskOralCount` | number | 7 | both | nein | `1` |
+| `preTaskDifficulty` | range | 7 | both | nein | `40` |
+| `preTaskLevel` | select | 7 | both | nein | `"auto"` |
+| `preTaskScaffolding` | range | 7 | both | nein | `50` |
+| `preTaskCriteria` | toggle | 7 | both | nein | `true` |
+| `preTaskMinutes` | number | 7 | both | nein | `8` |
 
 ## Qualitätsregeln (quality.RULES)
 
@@ -495,5 +537,14 @@ Prüfarten: **setting** – Steuerelement vorhanden und Änderung des Werts ver�
 | `questions.inference_genuine` | questions | llm | ja | Inference questions are genuinely inferential |
 | `questions.evidence` | questions | deterministic | nein | Every question has verifiable evidence |
 | `questions.higher_order_separate` | questions | deterministic | nein | Higher-order tasks are separate and complete |
-| `pretask.present` | questions | deterministic | nein | Pre-task types as configured |
-| `pretask.no_spoilers` | questions | llm | ja | Pre-task does not give away answers |
+| `pretask.present` | pretask | deterministic | ja | Number and types of the pre-tasks match the plan |
+| `pretask.social_forms` | pretask | deterministic | ja | Social forms match the settings (individual, partner, group, plenary) |
+| `pretask.modes` | pretask | deterministic | ja | Oral and written tasks as configured |
+| `pretask.focus` | pretask | deterministic | nein | Pre-task prepares topic and target vocabulary as configured |
+| `pretask.criteria` | pretask | deterministic | nein | Every pre-task carries observable success criteria |
+| `pretask.time` | pretask | deterministic | nein | Time budget of the pre-task is kept |
+| `pretask.language` | pretask | deterministic | nein | Pre-task instructions stay at the configured level |
+| `pretask.no_spoilers` | pretask | llm | ja | Pre-task does not give away answers |
+| `pretask.solvable_before` | pretask | llm | ja | Pre-task is solvable without the material |
+| `pretask.social_fits` | pretask | llm | nein | Social form and working mode fit the task |
+| `pretask.confrontation` | pretask | llm | nein | Confrontation task really confronts |

@@ -81,6 +81,55 @@ test('chronology is enforced and blocking; skills and formats are checked by tot
   assert.equal(quality.runDeterministic(m.settings, m.plan, m.content, swapped).find(f => f.id === 'questions.skill_distribution').status, 'fail');
   assert.equal(quality.runDeterministic(m.settings, m.plan, m.content, r.worksheet).find(f => f.id === 'questions.skill_distribution').status, 'pass');
 });
+test('pre-task plan: types, social forms, oral tasks and time are fixed per position', () => {
+  const s = core.normalizeState({ kind: 'listening', createWorksheet: true, preTask: true, preTaskCount: 4,
+    preTaskTypes: ['confrontation', 'vocabulary', 'speaking', 'prediction'], preTaskOralCount: 2, preTaskMinutes: 10 });
+  const tasks = core.preTaskSequence(s);
+  assert.equal(tasks.length, 4);
+  assert.deepEqual(tasks.map(t => t.n), [1, 2, 3, 4]);
+  assert.equal(tasks.filter(t => t.mode === 'oral').length, 2);
+  assert.ok(tasks.filter(t => t.mode === 'oral').every(t => t.socialForm !== 'single'), 'oral task in individual work');
+  assert.equal(tasks.reduce((a, t) => a + t.minutes, 0), 10);
+  // the didactic order puts the confrontation task first
+  assert.equal(tasks[0].type, 'confrontation');
+});
+test('automatic social forms always fit the number of oral tasks', () => {
+  for (let n = 1; n <= 6; n++) for (let oral = 0; oral <= n; oral++) {
+    const mix = core.autoPreTaskSocial(n, oral);
+    assert.equal(core.SOCIAL_FORM_KEYS.reduce((a, k) => a + mix[k], 0), n, `n=${n}`);
+    assert.ok(mix.pair + mix.group + mix.plenary >= oral, `n=${n} oral=${oral}: ${JSON.stringify(mix)}`);
+  }
+});
+test('pre-task validation guards impossible combinations', () => {
+  const ctx = { textbook: { id: 't' }, unit: { id: 'u', words: [{ word: 'argue' }, { word: 'trust' }] } };
+  const base = { kind: 'listening', textbookId: 't', unitId: 'u', createWorksheet: true, preTask: true, targetVocabMin: 1, targetVocabMax: 2 };
+  const errs = (over) => core.validateState(core.normalizeState(Object.assign({}, base, over)), ctx).map(e => e.key);
+  assert.ok(errs({ preTaskCount: 2, preTaskOralCount: 4 }).includes('preTaskOralCount'));
+  assert.ok(errs({ preTaskCount: 3, preTaskSocialMode: 'custom', customPreTaskSocial: { single: 1, pair: 1, group: 0, plenary: 0 } }).includes('customPreTaskSocial'));
+  assert.ok(errs({ preTaskCount: 2, preTaskOralCount: 2, preTaskSocialMode: 'custom', customPreTaskSocial: { single: 2, pair: 0, group: 0, plenary: 0 } }).includes('preTaskOralCount'));
+  assert.deepEqual(errs({ preTaskCount: 2, preTaskOralCount: 1 }), []);
+});
+test('pre-task normalisation and targeted patch keep the questions', () => {
+  const p = quality.normalizePreTask({ type: 'Confrontation', prompt: 'x', socialForm: 'PAIR', mode: 'nonsense', minutes: '3.6', criteria: ['a', ''] }, 0);
+  assert.equal(p.n, 1); assert.equal(p.socialForm, 'pair'); assert.equal(p.mode, 'written');
+  assert.equal(p.minutes, 4); assert.deepEqual(p.criteria, ['a']);
+  const ws = fixture.worksheet('listening');
+  const patched = quality.applyPreTaskPatch(ws, { preTasks: [Object.assign({}, ws.preTasks[0], { prompt: 'new' }), ws.preTasks[1]] });
+  assert.equal(patched.questions, ws.questions);
+  assert.equal(patched.preTasks[0].prompt, 'new');
+  assert.deepEqual(quality.changedPreTasks(ws, patched), [1]);
+  assert.equal(quality.applyPreTaskPatch(ws, {}), ws);
+});
+test('pre-task findings get their own repair bucket', () => {
+  const findings = [{ id: 'pretask.criteria', group: 'pretask', status: 'fail', title: 'c' },
+    { id: 'questions.evidence', group: 'questions', status: 'fail', title: 'e', questions: [2] },
+    { id: 'content.word_count', group: 'content', status: 'fail', title: 'w' }];
+  const rp = quality.repairPlan(findings, 'fail');
+  assert.equal(rp.preTasks.length, 1);
+  assert.deepEqual(rp.questions, [2]);
+  assert.equal(rp.content.length, 1);
+  assert.equal(rp.worksheet.length, 0);
+});
 test('question levels: A/B bands, variants and prompts', () => {
   const s = core.normalizeState({ kind: 'reading', questionLevel: 'both', cefr: 'B1.2' });
   assert.deepEqual(core.questionVariants(s).map(v => v.key), ['A', 'B']);

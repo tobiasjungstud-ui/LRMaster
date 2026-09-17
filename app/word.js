@@ -497,17 +497,53 @@
       rows: [{ cells: [cell('Name:'), cell('Class:'), cell('Date:')] }] });
   }
 
+  function socialLabel(k) { const f = core.SOCIAL_FORMS.find(x => x.key === k); return f ? f.label : k; }
+  function socialEn(k) { const f = core.SOCIAL_FORMS.find(x => x.key === k); return f ? f.en : k; }
+  function modeLabel(k) { const m = core.PRE_TASK_MODES.find(x => x.key === k); return m ? m.label : k; }
+
   function preTaskBlocks(p, ctx, i) {
     const d = ctx.d;
+    const meta = [p.socialForm ? socialLabel(p.socialForm) + ' (' + socialEn(p.socialForm) + ')' : '', p.mode ? modeLabel(p.mode) : '', p.minutes ? p.minutes + ' min' : ''].filter(Boolean);
     const blocks = [
-      P(preLabel(p.type) + (p.title ? ': ' + p.title : ''), { after: 2, run: { font: WS.display, size: 9, bold: true, caps: true, letterSpacing: 1, color: d.accent } }),
-      P(p.prompt, { after: p.items && p.items.length ? 4 : 0, run: { font: WS.body, size: 10.5, color: INK } }),
+      P((p.n ? p.n + '. ' : '') + preLabel(p.type) + (p.title ? ': ' + p.title : ''), { after: 2, run: { font: WS.display, size: 9, bold: true, caps: true, letterSpacing: 1, color: d.accent } }),
     ];
+    if (meta.length) blocks.push(P(joinMeta(meta), { after: 4, run: { font: WS.body, size: 8.5, italic: true, color: GREY } }));
+    blocks.push(P(p.prompt, { after: p.items && p.items.length ? 4 : 0, run: { font: WS.body, size: 10.5, color: INK } }));
     if (p.items && p.items.length) {
       blocks.push(P(p.items.map(it => T('  ' + it + '  ', { font: WS.body, size: 10, color: INK, shd: 'FFFFFF' })).reduce((a, r) => a.concat([r, T('  ')]), []), { after: 0 }));
     }
-    if (p.type === 'speaking' || p.type === 'prediction') blocks.push(...answerLine(ctx, 0, 1));
+    if (p.mode !== 'oral') blocks.push(...answerLine(ctx, 0, p.type === 'vocabulary' || p.type === 'brainstorm' ? 2 : 1));
+    if (p.criteria && p.criteria.length) {
+      blocks.push(P('Success criteria', { before: 6, after: 2, run: { font: WS.display, size: 8, bold: true, caps: true, letterSpacing: 0.8, color: GREY } }));
+      p.criteria.forEach(c => blocks.push(P([checkbox(10), T(c, { font: WS.body, size: 9.5, color: INK })], { after: 1, left: 0.4, hanging: 0.4 })));
+    }
     return [box(blocks, { W: ctx.W, shd: 'F4F6F8', pad: 0.28, borders: {} }), SP(8)];
+  }
+
+  /** Teacher overview of the pre-task: form, mode, time, material and note. */
+  function preTaskTableBlocks(ctx) {
+    const { m } = ctx;
+    const list = (m.worksheet && m.worksheet.preTasks) || [];
+    if (!list.length) return [];
+    const accent = '274060';
+    const c5 = cols(ctx.W, [0.05, 0.19, 0.16, 0.12, 0.48]);
+    const head = (t) => ({ shd: accent, text: t, props: { after: 0, run: { font: WS.display, size: 8.5, bold: true, caps: true, letterSpacing: 0.6, color: 'FFFFFF' } } });
+    const rows = [{ header: true, cells: [head('P'), head('Form'), head('Sozialform'), head('Zeit'), head('Hinweis / Material')] }];
+    for (const p of list) {
+      rows.push({ cells: [
+        { text: String(p.n || ''), props: { after: 0, run: { font: WS.body, size: 9, bold: true, color: GREY } } },
+        { text: preLabel(p.type), props: { after: 0, run: { font: WS.body, size: 9, color: INK } } },
+        { text: socialLabel(p.socialForm) + ' · ' + modeLabel(p.mode), props: { after: 0, run: { font: WS.body, size: 9, color: GREY } } },
+        { text: (p.minutes || 0) + ' min', props: { after: 0, run: { font: WS.body, size: 9, color: GREY } } },
+        { text: [p.materials ? 'Material: ' + p.materials : '', p.teacherNote, (p.vocabUsed || []).length ? 'Wörter: ' + p.vocabUsed.join(', ') : '', (p.criteria || []).length ? 'Success criteria: ' + p.criteria.join(' / ') : ''].filter(Boolean).join(' — '), props: { after: 0, run: { font: WS.body, size: 8.5, color: GREY } } },
+      ] });
+    }
+    return [
+      P('Pre-Task', { after: 6, keepNext: true, run: { font: WS.display, size: 12, bold: true, color: INK } }),
+      TBL({ width: ctx.W, widthType: 'dxa', cols: c5, cellMargin: { top: 0.06, left: 0.1, bottom: 0.06, right: 0.1 },
+        borders: { top: hairline(SOFT), bottom: hairline(SOFT), insideH: hairline(LINE), insideV: hairline('EDF0F3') }, rows }),
+      SP(10),
+    ];
   }
 
   function questionBlocks(q, ctx) {
@@ -859,6 +895,7 @@
     const wsCtx = Object.assign({}, ctx, { W: usableWidth(M_DOC), margins: M_DOC });
     const rest = vocabBlocks(wsCtx)
       .concat(material.glossary && material.glossary.length ? [SP(14)].concat(glossaryBlocks(wsCtx)) : [])
+      .concat(material.worksheet && (material.worksheet.preTasks || []).length ? [SP(14)].concat(preTaskTableBlocks(wsCtx)) : [])
       .concat(material.worksheet ? [SP(14)].concat(keyBlocks(wsCtx)) : [])
       .concat(levelBlocks(wsCtx))
       .concat(qualityBlocks(wsCtx));

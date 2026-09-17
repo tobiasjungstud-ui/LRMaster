@@ -173,10 +173,27 @@
     return a;
   }
 
+  function socialLabel(k) { const f = core.SOCIAL_FORMS.find(x => x.key === k); return f ? f.label : k; }
+  function socialEn(k) { const f = core.SOCIAL_FORMS.find(x => x.key === k); return f ? f.en : k; }
+  function modeLabel(k) { const m = core.PRE_TASK_MODES.find(x => x.key === k); return m ? m.label : k; }
+
   function preTaskHtml(p, teacher) {
-    let html = `<section class="pretask"><h3>${esc(preLabel(p.type))}${p.title ? ': ' + esc(p.title) : ''}</h3><p>${esc(p.prompt)}</p>`;
-    if (p.items && p.items.length) html += '<ul>' + p.items.map(i => `<li>${esc(i)}</li>`).join('') + '</ul>';
-    if (teacher && p.teacherNote) html += `<p class="teacher-note">Teacher note: ${esc(p.teacherNote)}</p>`;
+    const badges = [
+      p.socialForm ? `<span class="badge social ${esc(p.socialForm)}">${esc(socialLabel(p.socialForm))} · ${esc(socialEn(p.socialForm))}</span>` : '',
+      p.mode ? `<span class="badge mode ${esc(p.mode)}">${p.mode === 'oral' ? '🗣 ' : '✎ '}${esc(modeLabel(p.mode))}</span>` : '',
+      p.minutes ? `<span class="badge time">${p.minutes} min</span>` : '',
+    ].filter(Boolean).join('');
+    let html = `<section class="pretask" data-mode="${esc(p.mode || 'written')}"><h3>${p.n ? esc(String(p.n)) + '. ' : ''}${esc(preLabel(p.type))}${p.title ? ': ' + esc(p.title) : ''}</h3>`;
+    if (badges) html += `<p class="pretask-meta">${badges}</p>`;
+    html += `<p>${esc(p.prompt)}</p>`;
+    if (p.items && p.items.length) html += '<ul class="pretask-items">' + p.items.map(i => `<li>${esc(i)}</li>`).join('') + '</ul>';
+    if (p.mode !== 'oral') html += '<p class="answer-line">_________________________________________________</p><p class="answer-line">_________________________________________________</p>';
+    if (p.criteria && p.criteria.length) html += '<div class="criteria"><h4>Success criteria</h4><ul>' + p.criteria.map(c => `<li>${esc(c)}</li>`).join('') + '</ul></div>';
+    if (teacher) {
+      if (p.vocabUsed && p.vocabUsed.length) html += `<p class="teacher-note">Target words used: ${p.vocabUsed.map(esc).join(', ')}</p>`;
+      if (p.materials) html += `<p class="teacher-note">Material: ${esc(p.materials)}</p>`;
+      if (p.teacherNote) html += `<p class="teacher-note">Teacher note: ${esc(p.teacherNote)}</p>`;
+    }
     html += '</section>';
     return html;
   }
@@ -324,6 +341,7 @@
   function repairLabel(r) {
     const v = r.variant ? `Niveau ${r.variant}: ` : '';
     if (r.target === 'order') return v + 'Fragen in die Reihenfolge des Materials gebracht: Q' + (r.questions || []).join(', Q');
+    if (r.target === 'pretask') return v + 'Pre-Task neu erstellt' + ((r.preTasks || []).length ? ': P' + r.preTasks.join(', P') : '');
     if (r.target === 'content') return 'Text überarbeitet';
     if (r.target === 'content+worksheet') return v + 'Text und Aufgaben neu erstellt';
     if (r.questions && r.questions.length) return v + 'Fragen ersetzt: Q' + r.questions.join(', Q');
@@ -347,7 +365,11 @@
     out.push('## Student version' + (variantsOf(m).length > 1 ? ' — ' + variantsOf(m).map(v => v.label).join(' / ') : ''));
     if (ws && ws.instructions) out.push(ws.instructions, '');
     if (m.glossary && m.glossary.length) out.push('### Words to know', ...m.glossary.map(g => `- **${g.form || g.word}** — ${g.explanation}${g.german ? ' (' + g.german + ')' : ''}`), '');
-    for (const p of (ws && ws.preTasks) || []) out.push(`### ${preLabel(p.type)}${p.title ? ': ' + p.title : ''}`, p.prompt, ...(p.items || []).map(i => `- ${i}`), '');
+    for (const p of (ws && ws.preTasks) || []) out.push(
+      `### ${p.n ? p.n + '. ' : ''}${preLabel(p.type)}${p.title ? ': ' + p.title : ''}`,
+      [socialLabel(p.socialForm), modeLabel(p.mode), p.minutes ? p.minutes + ' min' : ''].filter(Boolean).join(' · '),
+      '', p.prompt, ...(p.items || []).map(i => `- ${i}`),
+      ...((p.criteria || []).length ? ['', 'Success criteria:', ...p.criteria.map(c => `- ${c}`)] : []), '');
     if (!isL) out.push(...(m.content.paragraphs || []), '');
     for (const v of variantsOf(m).filter(x => x.worksheet)) {
     if (v.label) out.push(`### ${v.label}`);
@@ -379,6 +401,6 @@
     return out.join('\n');
   }
 
-  return { esc, seededShuffle, highlight, renderTextHTML, isHeadingLike, repairLabel, repairListHTML, renderStudentHTML, renderTeacherHTML, renderMarkdown, questionBody, answerText,
+  return { esc, seededShuffle, highlight, renderTextHTML, isHeadingLike, repairLabel, repairListHTML, renderStudentHTML, renderTeacherHTML, renderMarkdown, questionBody, answerText, preTaskHtml, socialLabel, modeLabel,
     variantsOf, forVariant, glossaryHTML, scriptAppendixHTML, levelMeterHTML };
 });
