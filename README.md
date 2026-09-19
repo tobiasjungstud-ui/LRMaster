@@ -122,7 +122,15 @@ Ganz oben auf jeder Karte stehen die wichtigsten Angaben als **kurze Tags** – 
 
 Für Reading-Texte standardmässig an (Schalter *Text im echten Layout zeigen*). Nach dem Schreiben des Textes gestaltet Claude die **Oberfläche des Mediums**, in dem der Text wirklich erscheinen würde – Adressleiste, Seitenname, Navigation, Buttons mit Zahlen, „Meistgelesen“-Kasten, Mail-Ordner, Forum-Angaben, Chat-Kopfzeile. Die App zeichnet daraus ein **echtes Bild**: eigener Tab *Layout*, Download als PNG.
 
-Vier Medien decken die 14 Texttypen ab: **Browserfenster** (Blog, Artikel, News, Review, Story, Bericht, Tagebuch, Interview, Meinung, Infotext, Custom), **Mailprogramm** (E-Mail), **Forum-Thread** (Forumsdiskussion) und **Messenger** (Dialog) – je mit eigener Typografie, Akzentfarbe und Interface.
+**Bildschirm oder Papier.** Presseerzeugnisse erscheinen als **abfotografierte Seite**, Online-Formate als **Screenshot** – einstellbar über *Medium des Bildes* (Automatisch · Bildschirm · Papier), auch direkt im Layout-Tab umschaltbar:
+
+| Papier (abfotografiert) | Bildschirm (Screenshot) |
+|---|---|
+| **Zeitungsseite** (News Article: Zeitungskopf, Doppellinien, Schlagzeile, Vorspann, Halbton-Pressefoto mit Bildlegende, dreispaltiger Satz mit Spaltenlinien, Seitenfuss) · **Magazinseite** (Article, zweispaltig) · **Kommentarseite** (Opinion Text) · **Kritik im Blatt** (Review) · **Interview im Blatt** · **Buchseite** (Story: Kolumnentitel, eingezogene Absätze, Seitenzahl) · **Tagebuchseite** (Diary: liniertes Papier, roter Rand, Handschrift) · **Bericht/Infoblatt** (Report, Informational Text) | **Browserfenster** (Blog Post, Custom) · **Mailprogramm** (E-Mail) · **Forum-Thread** · **Messenger** (Dialog) |
+
+Jede Papierseite liegt leicht gedreht auf einer Unterlage, mit Papierkorn, Schlagschatten und Vignette – wie mit dem Handy abfotografiert. Jeder Bildschirmtyp hat eigene Typografie, Akzentfarbe und Interface. Jedes Format lässt sich zusätzlich auf Papier zwingen (dann als ausgedruckte Seite).
+
+**Das Bild hängt an keinem Claude-Aufruf.** Gezeichnet wird es immer aus dem Material selbst: Publikation, Autorenzeile, Datum, Lesezeit, Sprecher und Zeitstempel stammen aus den bereits generierten Dokument-Angaben (`mock.fallbackChrome`). Claude **reichert** diese Oberfläche nur an (Adresse, Navigation, Buttons mit Zahlen, „Meistgelesen“, Bildlegende, Ausgabenzeile); fällt der Aufruf aus, entsteht das Bild trotzdem – nur schlichter, und der Qualitätsbericht vermerkt, was fehlt.
 
 Das Bild entsteht nicht aus einer Bildgenerierung, sondern wird aus dem Text und Claudes Layoutdaten in der App komponiert (`mock.js` baut ein Zeichenmodell, das auf ein Canvas gezeichnet und als PNG ausgegeben wird). Genau deshalb lässt sich prüfen, **dass Bild und Text übereinstimmen**:
 
@@ -199,7 +207,7 @@ Das Arbeitsblatt ist ein echtes Arbeitsblatt: Name-/Klasse-/Datum-Zeile, Aufgabe
 
 ## Kontrollmechanismen
 
-- **Konzept-Manifest** (`app/manifest.js`): 302 Anforderungen aus dem Konzeptdokument und den Auftragserweiterungen (§33 Word-Export, §34 Schwierigkeitsmesser & Niveau der Fragen, §35 Pre-Task, §36 Post-Task, §37 Authentisches Layout, §38 Vorlagen), jede mit Prüfart:
+- **Konzept-Manifest** (`app/manifest.js`): 304 Anforderungen aus dem Konzeptdokument und den Auftragserweiterungen (§33 Word-Export, §34 Schwierigkeitsmesser & Niveau der Fragen, §35 Pre-Task, §36 Post-Task, §37 Authentisches Layout, §38 Vorlagen), jede mit Prüfart:
   - `setting` – Steuerelement existiert **und** die Änderung des Werts verändert nachweislich mindestens einen Prompt (Prompt-Sensitivitätstest; tote Einstellungen fallen durch).
   - `function` – Verhalten wird mit echten Eingaben ausgeführt (z. B. Preset *Interview* ⇒ Anteile 25/75, Skill-Mix verschiebt sich mit der Schwierigkeit, Beispielkonfiguration §32 reproduziert alle Werte).
   - `rule` – Qualitätsregel existiert als Messfunktion oder als Review-Kriterium und wird im Review-Prompt an Claude übergeben.

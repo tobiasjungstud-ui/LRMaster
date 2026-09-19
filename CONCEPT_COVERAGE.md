@@ -2,7 +2,7 @@
 
 Erzeugt von `npm run coverage`. Jede Zeile ist eine Anforderung aus `docs/Konzept_Listening_Reading_Creator.md`, gebunden an die Stelle im Code, die sie umsetzt, und das Ergebnis der automatischen Prüfung (`npm test`).
 
-**Ergebnis: 302 von 302 Anforderungen bestanden.**
+**Ergebnis: 304 von 304 Anforderungen bestanden.**
 
 Prüfarten: **setting** – Steuerelement vorhanden und Änderung des Werts verändert nachweislich den Prompt an Claude · **function** – Verhalten wird mit echten Eingaben ausgeführt und verglichen · **rule** – Qualitätsregel existiert als Messung oder Claude-Review-Kriterium · **render** – Ausgabe wird auf einer Fixture gerendert und inhaltlich geprüft · **ui** – Navigations-/Strukturelement existiert.
 
@@ -470,11 +470,13 @@ Prüfarten: **setting** – Steuerelement vorhanden und Änderung des Werts ver�
 | ✅ | `S36.repair` | Beanstandete Post-Task wird gezielt neu erstellt, Fragen und Pre-Task bleiben unverändert | function | Funktion (siehe Check im Manifest) |
 | ✅ | `S36.output` | Post-Task steht nach den Fragen auf dem Arbeitsblatt (Bildschirm, Word, Markdown) mit Sozialform, Arbeitsweise, Zeit, Produkt und Kriterien; Lehrerversion mit Übersicht | render | render.js (renderStudentHTML / renderTeacherHTML) |
 
-## §37 Authentisches Layout (Screenshot des Mediums) (11/11)
+## §37 Authentisches Layout (Screenshot des Mediums) (13/13)
 
 | Status | ID | Anforderung | Art | Umsetzung |
 |---|---|---|---|---|
 | ✅ | `S37.toggle` | Schalter „Text im echten Layout zeigen“ – standardmässig an, nur für Reading | setting | Setting `authenticLayout` (core.SCHEMA → Control `[data-setting="authenticLayout"]` → prompts.js) |
+| ✅ | `S37.medium` | Medium wählbar: Screenshot oder abfotografierte Seite (automatisch passend zur Textsorte) | setting | Setting `layoutMedium` (core.SCHEMA → Control `[data-setting="layoutMedium"]` → prompts.js) |
+| ✅ | `S37.always` | Es entsteht immer ein Bild: die Angaben des Materials tragen es, Claude reichert nur an | function | Funktion (siehe Check im Manifest) |
 | ✅ | `S37.media` | Jeder Texttyp hat ein echtes Medium (Browserfenster, Mailprogramm, Forum, Messenger) mit eigener Oberfläche | function | Funktion (siehe Check im Manifest) |
 | ✅ | `S37.prompt` | Claude gestaltet die Oberfläche (Adresse, Seitenname, Navigation, Buttons, Zahlen) – ohne den Text zu verändern | function | Funktion (siehe Check im Manifest) |
 | ✅ | `S37.image` | Die App zeichnet daraus ein echtes Bild – für jeden Texttyp gültig und mit dem Text Wort für Wort | function | Funktion (siehe Check im Manifest) |
@@ -554,6 +556,7 @@ Prüfarten: **setting** – Steuerelement vorhanden und Änderung des Werts ver�
 | `glossary` | toggle | 6 | both | ja | `false` |
 | `appendScript` | toggle | 6 | listening | ja | `false` |
 | `authenticLayout` | toggle | 6 | reading | ja | `true` |
+| `layoutMedium` | select | 6 | reading | nein | `"auto"` |
 | `higherOrder` | toggle | 6 | both | nein | `false` |
 | `higherOrderCount` | number | 6 | both | nein | `2` |
 | `higherOrderTypes` | multiselect | 6 | both | nein | `["interpretation","transfer","evaluation"]` |

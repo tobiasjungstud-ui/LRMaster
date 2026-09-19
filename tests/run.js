@@ -130,6 +130,32 @@ test('pre-task findings get their own repair bucket', () => {
   assert.equal(rp.content.length, 1);
   assert.equal(rp.worksheet.length, 0);
 });
+test('a picture exists for every text type, on screen and on paper, without Claude', () => {
+  const mock = require(path.join(APP, 'mock.js'));
+  for (const type of core.TEXT_TYPES) {
+    for (const medium of ['auto', 'screen', 'paper']) {
+      const m = fixture.material({ textType: type, authenticLayout: true, layoutMedium: medium }, 'reading');
+      // only what the material itself knows — no interface data from Claude
+      const chrome = mock.fallbackChrome(m);
+      const model = mock.buildModel(m, chrome);
+      assert.deepEqual(mock.validate(model), [], type + '/' + medium);
+      assert.equal(quality.normalizeForSearch(mock.bodyText(model)), quality.normalizeForSearch(m.content.paragraphs.join(' ')), type + '/' + medium);
+      if (medium === 'paper') assert.equal(model.medium, 'paper', type);
+      if (medium === 'screen') assert.equal(model.medium, 'screen', type);
+      if (medium === 'paper') assert.ok(model.finish && model.finish.page, type + ': no photographed page');
+    }
+  }
+  // print media are on paper by default, online formats on screen
+  const paper = ['News Article', 'Article', 'Story', 'Diary Entry', 'Report', 'Opinion Text', 'Review'];
+  for (const t of paper) assert.equal(mock.layoutFor(fixture.material({ textType: t }, 'reading')).medium, 'paper', t);
+  for (const t of ['Blog Post', 'Email', 'Forum Discussion', 'Dialogue']) {
+    assert.equal(mock.layoutFor(fixture.material({ textType: t }, 'reading')).medium, 'screen', t);
+  }
+  // Claude's data enriches, it never deletes what the material knows
+  const merged = quality.mergeChrome({ siteName: 'from meta', url: 'u', actions: [] }, { siteName: '', actions: [{ label: 'Like', count: '3' }] });
+  assert.equal(merged.siteName, 'from meta');
+  assert.equal(merged.actions.length, 1);
+});
 test('the screenshot shows exactly the generated text, for every text type', () => {
   const mock = require(path.join(APP, 'mock.js'));
   for (const type of core.TEXT_TYPES) {

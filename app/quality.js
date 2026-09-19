@@ -758,6 +758,16 @@
     return out;
   }
 
+  /** Claude's interface data over what the material itself already tells us. */
+  function mergeChrome(fallback, fromClaude) {
+    const out = Object.assign({}, fallback || {});
+    for (const [k, v] of Object.entries(fromClaude || {})) {
+      const empty = v === undefined || v === null || v === '' || (Array.isArray(v) && !v.length);
+      if (!empty) out[k] = v;
+    }
+    return out;
+  }
+
   /** The picture as it will be drawn, from the stored interface data. */
   function layoutModel(material, opts) {
     const chrome = (material.layout && material.layout.chrome) || {};
@@ -918,7 +928,7 @@
     speakerStats, tagStats, normalizeContent, normalizeMeta, normalizeWorksheet, normalizeQuestion,
     repairable, repairPlan, problemScore, applyQuestionPatch, applyTaskPatch, applyPreTaskPatch, applyPostTaskPatch,
     changedQuestions, changedTasks, changedPreTasks, changedPostTasks, STRUCTURAL, applicableRules, runDeterministic,
-    normalizePreTask, preTaskText, socialLabel, taskRules, normalizeChrome, layoutModel, sharedRun,
+    normalizePreTask, preTaskText, socialLabel, taskRules, normalizeChrome, mergeChrome, layoutModel, sharedRun,
     runContentChecks, llmRules, mergeReview, blockingFailures, summarize,
     chronologyReport, enforceChronology, normalizeGlossary, slimMeasurement,
   };

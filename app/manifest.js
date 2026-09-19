@@ -1289,6 +1289,39 @@
       const listening = env.core.buildPlan(env.state({ kind: 'listening' }), env.ctx).authenticLayout;
       return ok(env.core.SCHEMA_BY_KEY.authenticLayout.default === true && on === true && listening === false, 'the switch is not on by default or applies to listening');
     } });
+  add({ id: 'S37.medium', section: 37, title: 'Medium wählbar: Screenshot oder abfotografierte Seite (automatisch passend zur Textsorte)', kind: 'setting', key: 'layoutMedium', alt: 'paper', mode: 'reading', promptSensitive: false,
+    extra(env) {
+      const paperTypes = ['News Article', 'Article', 'Story', 'Diary Entry', 'Report'];
+      for (const type of paperTypes) {
+        const d = env.mock.layoutFor(env.fixture.material({ textType: type, authenticLayout: true }, 'reading'));
+        if (d.medium !== 'paper') return type + ' is not shown on paper by default';
+      }
+      const screen = env.mock.layoutFor(env.fixture.material({ textType: 'Blog Post', authenticLayout: true }, 'reading'));
+      const forcedPaper = env.mock.layoutFor(env.fixture.material({ textType: 'Blog Post', layoutMedium: 'paper' }, 'reading'));
+      const forcedScreen = env.mock.layoutFor(env.fixture.material({ textType: 'News Article', layoutMedium: 'screen' }, 'reading'));
+      const kinds = new Set(env.core.TEXT_TYPES.map(t => env.mock.layoutFor(env.fixture.material({ textType: t, layoutMedium: 'paper' }, 'reading')).print.kind));
+      const src = env.uiSource || '';
+      const switchable = !src || /data-layout-medium/.test(src);
+      return ok(screen.medium === 'screen' && forcedPaper.medium === 'paper' && forcedScreen.medium === 'screen'
+        && kinds.has('press') && kinds.has('book') && kinds.has('notebook') && kinds.has('sheet') && switchable,
+        'the medium cannot be chosen or printed media are missing');
+    } });
+  add({ id: 'S37.always', section: 37, title: 'Es entsteht immer ein Bild: die Angaben des Materials tragen es, Claude reichert nur an', kind: 'function',
+    check(env) {
+      for (const type of env.core.TEXT_TYPES) {
+        const m = env.fixture.material({ textType: type, authenticLayout: true }, 'reading');
+        const bare = { chrome: env.mock.fallbackChrome(m) };
+        const model = env.mock.buildModel(m, bare.chrome);
+        const problems = env.mock.validate(model);
+        if (problems.length) return type + ' without interface data: ' + problems[0];
+        if (env.quality.normalizeForSearch(env.mock.bodyText(model)) !== env.quality.normalizeForSearch(m.content.paragraphs.join(' '))) return type + ': text not shown unchanged';
+      }
+      const merged = env.quality.mergeChrome({ siteName: 'from the material', url: 'u' }, { siteName: '', navItems: ['a'] });
+      const src = env.pipelineSource || '';
+      const wired = !src || (/mock\.fallbackChrome/.test(src) && /quality\.mergeChrome/.test(src) && /layout = \{ chrome: fallback/.test(src));
+      return ok(merged.siteName === 'from the material' && merged.navItems.length === 1 && wired,
+        'the picture depends on the Claude call or the merge drops what the material knows');
+    } });
   add({ id: 'S37.media', section: 37, title: 'Jeder Texttyp hat ein echtes Medium (Browserfenster, Mailprogramm, Forum, Messenger) mit eigener Oberfläche', kind: 'function',
     check(env) {
       const kinds = new Set();
@@ -1344,8 +1377,10 @@
   add({ id: 'S37.rule_fields', section: 37, title: 'Kontrolle: die Oberfläche des Mediums ist vollständig', kind: 'rule', ruleId: 'layout.fields',
     extra(env) {
       const good = layoutFind(env, 'layout.fields');
-      const bad = layoutFind(env, 'layout.fields', {}, (c) => { c.url = ''; c.actions = []; });
-      return ok(good.status === 'pass' && bad.status === 'fail' && /url/.test(bad.detail), `${good.status}/${bad.status}`);
+      const screen = layoutFind(env, 'layout.fields', { textType: 'Blog Post' }, (c) => { c.url = ''; c.actions = []; });
+      const paper = layoutFind(env, 'layout.fields', { textType: 'News Article' }, (c) => { c.publication = ''; c.photoCaption = ''; });
+      return ok(good.status === 'pass' && screen.status === 'fail' && /url/.test(screen.detail)
+        && paper.status === 'fail' && /publication/.test(paper.detail), `${good.status}/${screen.status}/${paper.status}`);
     } });
   add({ id: 'S37.rule_text', section: 37, title: 'Kontrolle: das Bild zeigt genau den generierten Text (Wort für Wort, nichts fehlt, nichts dazu)', kind: 'rule', ruleId: 'layout.text_identical',
     extra(env) {

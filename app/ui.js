@@ -677,10 +677,15 @@
       let layout = null, layoutFindings = [];
       if (plan.authenticLayout) {
         const spec = mock.chromeSpec({ settings: state, content });
+        // The app draws the picture itself, so it exists from here on: what the
+        // material already tells us is the starting point, Claude enriches it.
+        const fallback = mock.fallbackChrome({ settings: state, content });
+        layout = { chrome: fallback, kind: spec.kind, label: spec.label, medium: spec.medium };
+        layoutFindings = quality.runContentChecks(state, plan, content, { layout }).filter(f => f.group === 'layout');
         progress('layout', 'running', `Claude gestaltet ${spec.label} …`);
         try {
           usedPrompts.layout = prompts.buildLayoutPrompt(state, plan, content, spec);
-          let chrome = quality.normalizeChrome(await askJSON(usedPrompts.layout, { signal: ctl.signal }), spec);
+          let chrome = quality.mergeChrome(fallback, quality.normalizeChrome(await askJSON(usedPrompts.layout, { signal: ctl.signal }), spec));
           const check = (c) => quality.runContentChecks(state, plan, content, { layout: { chrome: c } }).filter(f => f.group === 'layout');
           layoutFindings = check(chrome);
           for (let round = 1; round <= maxRounds; round++) {
@@ -688,18 +693,19 @@
             if (!items.length) break;
             progress('layout', 'running', `Runde ${round}: ${findingsLabel(items)}`);
             usedPrompts['layoutRepair' + round] = prompts.buildLayoutRepairPrompt(state, plan, content, chrome, items, spec);
-            const cand = quality.normalizeChrome(await askJSON(usedPrompts['layoutRepair' + round], { signal: ctl.signal }), spec);
+            const cand = quality.mergeChrome(fallback, quality.normalizeChrome(await askJSON(usedPrompts['layoutRepair' + round], { signal: ctl.signal }), spec));
             const candFindings = check(cand);
             const better = quality.problemScore(candFindings) < quality.problemScore(layoutFindings);
             repairs.push({ round, target: 'layout', fixed: items.map(f => f.title), accepted: better });
             if (!better) break;
             chrome = cand; layoutFindings = candFindings;
           }
-          layout = { chrome, kind: spec.kind, label: spec.label };
+          layout = { chrome, kind: spec.kind, label: spec.label, medium: spec.medium };
           progress('layout', quality.repairable(layoutFindings, state.autoFix).length ? 'warn' : 'done', `${spec.label} · ${summaryText(layoutFindings)}`);
         } catch (e) {
           if (e.code === 'cancelled') throw e;
-          progress('layout', 'warn', errorCopy(e));
+          // the picture stays: it is drawn from the material's own details
+          progress('layout', 'warn', `${spec.label} ohne Claude-Oberfläche · ${errorCopy(e)}`);
         }
       } else progress('layout', 'skip', state.kind === 'reading' ? 'nicht gewählt' : 'nur für Reading');
 
@@ -981,17 +987,33 @@
     const tab = $('#tab-layout');
     if (!m.layout || !m.layout.chrome) { pane.innerHTML = ''; tab.hidden = true; return null; }
     tab.hidden = false;
+    const medium = (m.settings && m.settings.layoutMedium) || 'auto';
     pane.innerHTML = `<p class="layout-note">So sähe der Text aus, wenn er aus diesem Medium käme (${esc(m.layout.label || '')}). Das Bild enthält den generierten Text unverändert – das wird vor der Ausgabe geprüft.</p>`
-      + '<div class="layout-actions"><button type="button" class="btn tiny primary" data-download="png">Bild (PNG) herunterladen</button></div>'
+      + '<div class="layout-actions"><button type="button" class="btn tiny primary" data-download="png">Bild (PNG) herunterladen</button>'
+      + '<span class="chips layout-media">' + [['auto', 'Automatisch'], ['screen', 'Bildschirm'], ['paper', 'Papier']].map(([k, l]) =>
+        `<button type="button" class="chip-btn${medium === k ? ' active' : ''}" data-layout-medium="${k}">${l}</button>`).join('') + '</span></div>'
       + '<div class="layout-shot"><canvas id="layout-canvas"></canvas></div>';
+    $$('#out-layout [data-layout-medium]').forEach(b => b.addEventListener('click', () => {
+      m.settings = Object.assign({}, m.settings, { layoutMedium: b.dataset.layoutMedium });
+      renderLayout(m);
+    }));
     const canvas = $('#layout-canvas');
     const model = mock.buildModel(m, m.layout.chrome, { measure: mock.canvasMeasure(canvas) });
     const dpr = Math.min(2, window.devicePixelRatio || 1);
     canvas.width = model.width * dpr; canvas.height = model.height * dpr;
     canvas.style.width = model.width + 'px'; canvas.style.height = model.height + 'px';
-    const ctx2 = canvas.getContext('2d');
-    ctx2.scale(dpr, dpr);
-    mock.draw(ctx2, model);
+    const paint = () => {
+      const model2 = mock.buildModel(m, m.layout.chrome, { measure: mock.canvasMeasure(canvas) });
+      canvas.width = model2.width * dpr; canvas.height = model2.height * dpr;
+      canvas.style.width = model2.width + 'px'; canvas.style.height = model2.height + 'px';
+      const c2 = canvas.getContext('2d');
+      c2.setTransform(1, 0, 0, 1, 0, 0);
+      c2.scale(dpr, dpr);
+      mock.draw(c2, model2);
+    };
+    paint();
+    // web fonts arrive asynchronously; draw again once they are there
+    if (document.fonts && document.fonts.ready) document.fonts.ready.then(paint).catch(() => {});
     $$('#out-layout [data-download]').forEach(b => b.addEventListener('click', () => download('png')));
     return canvas;
   }
@@ -1637,5 +1659,5 @@
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init); else init();
 
-  window.LR.ui = { app, generate, produceWorksheet, store, caps, showView, openCreator, importState, detectUnits, fetchTopics, confirmImport, newTextbook, askText, askConfirm, clone, parsePasted, initLevelPage, download, renderOutput, renderQualityPanel, renderTaskPreview, refreshDerived, renderLayout, renderSetupBar, openCustomSetup, backToTemplates, redrawTemplate, templateState };
+  window.LR.ui = { app, generate, produceWorksheet, store, caps, showView, openCreator, importState, detectUnits, fetchTopics, confirmImport, newTextbook, askText, askConfirm, clone, parsePasted, initLevelPage, download, renderOutput, renderQualityPanel, renderTaskPreview, refreshDerived, renderLayout, renderSetupBar, openCustomSetup, backToTemplates, redrawTemplate, templateState, buildForm };
 })();
