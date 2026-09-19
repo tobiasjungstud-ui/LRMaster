@@ -427,5 +427,25 @@ mark.vocab { background: var(--mark); color: inherit; border-radius: 3px; paddin
 .setup-bar .chip-btn.active { background: var(--ink); color: var(--surface); border-color: var(--ink); }
 .setup-bar .chip-btn.custom { border-style: dashed; }
 .setup-bar .help { margin: 0; }
-body[data-setup="preset"] #sec-level, body[data-setup="preset"] #sec-structure,
-body[data-setup="preset"] #sec-vocab, body[data-setup="preset"] #sec-advanced { display: none; }
+/* With a template chosen, only source/unit and Generate are shown; the single
+   settings appear when the teacher adapts the template or starts from scratch. */
+body[data-setup="preset"] #sec-content, body[data-setup="preset"] #sec-level,
+body[data-setup="preset"] #sec-structure, body[data-setup="preset"] #sec-vocab,
+body[data-setup="preset"] #sec-worksheet, body[data-setup="preset"] #sec-pretask,
+body[data-setup="preset"] #sec-posttask, body[data-setup="preset"] #sec-advanced { display: none; }
+body[data-setup="preset"] .ctl[data-key="setupMode"] { display: none; }
+.setup-actions { display: flex; flex-wrap: wrap; gap: .4rem; }
+.setup-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: .7rem; margin: .2rem 0 .9rem; }
+.setup-card { text-align: left; font: inherit; cursor: pointer; background: var(--ground); border: 1px solid var(--line); border-radius: 10px; padding: .7rem .85rem; display: flex; flex-direction: column; gap: .3rem; transition: border-color .15s, box-shadow .15s; }
+.setup-card:hover { border-color: var(--accent, #0f766e); box-shadow: var(--shadow); }
+.setup-card.active { border-color: var(--ink); border-width: 2px; padding: calc(.7rem - 1px) calc(.85rem - 1px); background: var(--surface); }
+.sc-title { font-weight: 700; }
+.sc-blurb { color: var(--muted); font-size: .85rem; }
+.sc-list { list-style: none; margin: .3rem 0 0; padding: 0; font-size: .8rem; color: var(--ink); }
+.sc-list li { padding: .12rem 0 .12rem .8rem; position: relative; line-height: 1.35; }
+.sc-list li::before { content: "·"; position: absolute; left: .15rem; color: var(--muted); }
+.setup-summary { border-top: 1px solid var(--line); padding-top: .6rem; font-size: .86rem; }
+.setup-summary .ss-head { font-weight: 700; margin-bottom: .25rem; }
+.setup-summary ul { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: .1rem .9rem; }
+.setup-summary li { padding-left: .8rem; position: relative; color: var(--ink); }
+.setup-summary li::before { content: "·"; position: absolute; left: .15rem; color: var(--muted); }

@@ -815,33 +815,129 @@
    * changed, and "custom" opens all of them.
    */
   const SETUP_PRESETS = [
-    { key: 'podcast', kind: 'listening', label: 'Podcast-Interview', hint: 'B1.2 · 3 min · Host und Gast 30/70 · 10 Fragen Niveau A · Konfrontation vorher, Diskussion danach',
-      settings: { cefr: 'B1.2', format: 'dialogue', preset: 'podcast', audioLength: '180', speakingSpeed: 55, emotionTags: 'medium', naturalness: 65, languageComplexity: 55, explicitness: 45,
-        createWorksheet: true, questionCount: '10', questionLevel: 'A', skillMixMode: 'auto', glossary: true, appendScript: false }, tasks: { pre: 'confrontation', post: 'discussion' } },
-    { key: 'everyday', kind: 'listening', label: 'Alltagsgespräch', hint: 'A2.2 · 2 min · zwei Sprechende · 8 einfache Fragen · Wortschatz vorher, kurze Sicherung danach',
-      settings: { cefr: 'A2.2', format: 'dialogue', preset: 'casual', audioLength: '120', speakingSpeed: 40, emotionTags: 'low', naturalness: 55, languageComplexity: 25, explicitness: 25,
-        createWorksheet: true, questionCount: '8', questionLevel: 'B', skillMixMode: 'auto', glossary: true, appendScript: true }, tasks: { pre: 'vocab', post: 'quick' } },
-    { key: 'radionews', kind: 'listening', label: 'Radio-Nachricht', hint: 'B2.1 · 2 min · Monolog · 8 anspruchsvolle Fragen · kurzer Einstieg, Schreibprodukt danach',
-      settings: { cefr: 'B2.1', format: 'monologue', preset: 'news', audioLength: '120', speakingSpeed: 65, emotionTags: 'off', naturalness: 35, languageComplexity: 75, explicitness: 60,
-        createWorksheet: true, questionCount: '8', questionLevel: 'A', skillMixMode: 'auto', glossary: true, appendScript: false }, tasks: { pre: 'quick', post: 'writing' } },
-    { key: 'classtalk', kind: 'listening', label: 'Gespräch in der Klasse', hint: 'B1.1 · 4 min · drei Sprechende · 10 Fragen Niveau B · Sprechen aktivieren, Debatte danach',
-      settings: { cefr: 'B1.1', format: 'conversation', speakerCount: 3, preset: 'discussion', audioLength: '240', speakingSpeed: 50, emotionTags: 'medium', naturalness: 60, languageComplexity: 45, explicitness: 40,
-        createWorksheet: true, questionCount: '10', questionLevel: 'B', skillMixMode: 'auto', glossary: true, appendScript: true }, tasks: { pre: 'speaking', post: 'discussion' } },
-    { key: 'blog', kind: 'reading', label: 'Blogpost', hint: 'B1.2 · 350 Wörter · echtes Blog-Layout · 10 Fragen Niveau A · Konfrontation vorher, Diskussion danach',
-      settings: { cefr: 'B1.2', textType: 'Blog Post', lengthMode: 'words', wordCount: 350, languageComplexity: 50, explicitness: 45, paragraphLength: 'medium', styleBalance: 45,
-        createWorksheet: true, questionCount: '10', questionLevel: 'A', skillMixMode: 'auto', glossary: true, authenticLayout: true }, tasks: { pre: 'confrontation', post: 'discussion' } },
-    { key: 'newsarticle', kind: 'reading', label: 'Zeitungsartikel', hint: 'B2.1 · 400 Wörter · Nachrichtenseite · 10 anspruchsvolle Fragen · kurzer Einstieg, Stellungnahme danach',
-      settings: { cefr: 'B2.1', textType: 'News Article', lengthMode: 'words', wordCount: 400, languageComplexity: 70, explicitness: 60, paragraphLength: 'short', styleBalance: 85,
-        createWorksheet: true, questionCount: '10', questionLevel: 'A', skillMixMode: 'auto', glossary: true, authenticLayout: true }, tasks: { pre: 'quick', post: 'discussion' } },
-    { key: 'email', kind: 'reading', label: 'E-Mail', hint: 'A2.2 · 180 Wörter · Mailprogramm · 8 einfache Fragen · Wortschatz vorher, Antwort schreiben danach',
-      settings: { cefr: 'A2.2', textType: 'Email', lengthMode: 'words', wordCount: 180, languageComplexity: 25, explicitness: 20, paragraphLength: 'short', styleBalance: 40,
-        createWorksheet: true, questionCount: '8', questionLevel: 'B', skillMixMode: 'auto', glossary: true, authenticLayout: true }, tasks: { pre: 'vocab', post: 'writing' } },
-    { key: 'forum', kind: 'reading', label: 'Forumsdiskussion', hint: 'B1.1 · 300 Wörter · Forum-Thread · 10 Fragen Niveau B · Sprechen aktivieren, Debatte danach',
-      settings: { cefr: 'B1.1', textType: 'Forum Discussion', lengthMode: 'words', wordCount: 300, languageComplexity: 40, explicitness: 35, paragraphLength: 'short', styleBalance: 30, dialogueProportion: 70,
-        createWorksheet: true, questionCount: '10', questionLevel: 'B', skillMixMode: 'auto', glossary: true, authenticLayout: true }, tasks: { pre: 'speaking', post: 'discussion' } },
-    { key: 'story', kind: 'reading', label: 'Geschichte', hint: 'B1.1 · 400 Wörter · erzählend · 10 Fragen Niveau B · kurzer Einstieg, kreatives Schreiben danach',
-      settings: { cefr: 'B1.1', textType: 'Story', lengthMode: 'words', wordCount: 400, languageComplexity: 45, explicitness: 30, paragraphLength: 'medium', styleBalance: 10, dialogueProportion: 40,
-        createWorksheet: true, questionCount: '10', questionLevel: 'B', skillMixMode: 'auto', glossary: false, authenticLayout: true }, tasks: { pre: 'quick', post: 'writing' } },
+    /* ---------------- Listening ---------------- */
+    { key: 'podcast', kind: 'listening', label: 'Podcast-Interview', blurb: 'Host und Gast über Serien, locker und meinungsstark.',
+      settings: {
+        useUnitTopic: false, topicMode: 'custom', customTopic: 'a podcast interview about series people are watching right now and why they like them',
+        cefr: 'B1.2', levelMeter: true, languageComplexity: 55, grammarComplexity: 50, vocabularyDifficulty: 50, idiomaticLanguage: 55, explicitness: 45,
+        format: 'dialogue', preset: 'podcast', speakerBalance: 'main', audioLength: '180', speakingSpeed: 55, turnLength: 55, turnVariability: 70, naturalness: 70, emotionTags: 'medium',
+        vocabUsage: 60, targetVocabMin: 8, targetVocabMax: 12,
+        createWorksheet: true, questionCount: '10', questionLevel: 'A', inferenceLevel: 60, distractorDifficulty: 60,
+        questionFormats: ['multiple_choice', 'short_answer', 'wh_question', 'sentence_completion'], autoFormatMix: true,
+        higherOrder: true, higherOrderCount: 2, higherOrderTypes: ['interpretation', 'evaluation'], glossary: true, appendScript: false,
+      }, tasks: { pre: 'confrontation', post: 'discussion' } },
+    { key: 'cafechat', kind: 'listening', label: 'Alltagsgespräch im Café', blurb: 'Zwei Jugendliche verabreden sich – einfache, klare Sprache.',
+      settings: {
+        useUnitTopic: true, topicMode: 'unit', customTopic: '',
+        cefr: 'A2.2', levelMeter: true, languageComplexity: 20, grammarComplexity: 15, vocabularyDifficulty: 20, idiomaticLanguage: 25, explicitness: 15,
+        format: 'dialogue', preset: 'casual', speakerBalance: 'balanced', audioLength: '120', speakingSpeed: 40, turnLength: 20, turnVariability: 55, naturalness: 55, emotionTags: 'low',
+        vocabUsage: 70, targetVocabMin: 6, targetVocabMax: 8,
+        createWorksheet: true, questionCount: '8', questionLevel: 'B', inferenceLevel: 20, distractorDifficulty: 30,
+        questionFormats: ['multiple_choice', 'true_false', 'matching', 'gap_fill'], autoFormatMix: true,
+        higherOrder: false, glossary: true, appendScript: true,
+      }, tasks: { pre: 'vocab', post: 'quick' } },
+    { key: 'radionews', kind: 'listening', label: 'Radio-Nachricht', blurb: 'Kurze, dichte Meldung im Nachrichtenton – zum Mitschreiben.',
+      settings: {
+        useUnitTopic: true, topicMode: 'unit', customTopic: '',
+        cefr: 'B2.1', levelMeter: true, languageComplexity: 75, grammarComplexity: 75, vocabularyDifficulty: 75, idiomaticLanguage: 15, explicitness: 30,
+        format: 'monologue', preset: 'news', speakerBalance: 'balanced', audioLength: '120', speakingSpeed: 70, turnLength: 80, turnVariability: 30, naturalness: 25, emotionTags: 'off',
+        vocabUsage: 50, targetVocabMin: 8, targetVocabMax: 10,
+        createWorksheet: true, questionCount: '8', questionLevel: 'A', inferenceLevel: 45, distractorDifficulty: 70,
+        questionFormats: ['multiple_choice', 'note_taking', 'table_completion', 'short_answer'], autoFormatMix: true,
+        higherOrder: false, glossary: true, appendScript: false,
+      }, tasks: { pre: 'quick', post: 'writing' } },
+    { key: 'debate', kind: 'listening', label: 'Streitgespräch', blurb: 'Drei Stimmen, die sich widersprechen und ins Wort fallen.',
+      settings: {
+        useUnitTopic: false, topicMode: 'custom', customTopic: 'a heated discussion in which three people disagree about a rule at school',
+        cefr: 'B2.1', levelMeter: true, languageComplexity: 70, grammarComplexity: 65, vocabularyDifficulty: 65, idiomaticLanguage: 75, explicitness: 65,
+        format: 'conversation', speakerCount: 3, preset: 'debate', speakerBalance: 'natural', audioLength: '240', speakingSpeed: 60, turnLength: 45, turnVariability: 85, naturalness: 80, emotionTags: 'high',
+        vocabUsage: 55, targetVocabMin: 8, targetVocabMax: 12,
+        createWorksheet: true, questionCount: '10', questionLevel: 'A', inferenceLevel: 75, distractorDifficulty: 75,
+        questionFormats: ['multiple_choice', 'who_said_it', 'short_answer', 'select_all'], autoFormatMix: true,
+        higherOrder: true, higherOrderCount: 2, higherOrderTypes: ['evaluation', 'transfer'], glossary: true, appendScript: true,
+      }, tasks: { pre: 'speaking', post: 'discussion' } },
+    { key: 'servicecall', kind: 'listening', label: 'Telefonat mit dem Kundendienst', blurb: 'Funktionale Sprache, Zahlen und Details zum Heraushören.',
+      settings: {
+        useUnitTopic: false, topicMode: 'custom', customTopic: 'a phone call about an order that has not arrived: dates, numbers and what happens next',
+        cefr: 'B1.1', levelMeter: true, languageComplexity: 35, grammarComplexity: 30, vocabularyDifficulty: 35, idiomaticLanguage: 30, explicitness: 20,
+        format: 'dialogue', preset: 'phone', speakerBalance: 'balanced', audioLength: '150', speakingSpeed: 50, turnLength: 30, turnVariability: 60, naturalness: 55, emotionTags: 'low',
+        vocabUsage: 65, targetVocabMin: 6, targetVocabMax: 10,
+        createWorksheet: true, questionCount: '10', questionLevel: 'B', inferenceLevel: 25, distractorDifficulty: 45,
+        questionFormats: ['table_completion', 'short_answer', 'gap_fill', 'multiple_choice'], autoFormatMix: true,
+        higherOrder: false, glossary: true, appendScript: true,
+      }, tasks: { pre: 'vocab', post: 'quick' } },
+    { key: 'anecdote', kind: 'listening', label: 'Erzählung / Anekdote', blurb: 'Eine Person erzählt, was ihr passiert ist – mit Pointe.',
+      settings: {
+        useUnitTopic: false, topicMode: 'custom', customTopic: 'someone tells the story of a day when a small misunderstanding turned into something bigger',
+        cefr: 'B1.1', levelMeter: true, languageComplexity: 40, grammarComplexity: 45, vocabularyDifficulty: 40, idiomaticLanguage: 50, explicitness: 50,
+        format: 'monologue', preset: 'storytelling', speakerBalance: 'balanced', audioLength: '180', speakingSpeed: 45, turnLength: 70, turnVariability: 40, naturalness: 60, emotionTags: 'medium',
+        vocabUsage: 60, targetVocabMin: 8, targetVocabMax: 10,
+        createWorksheet: true, questionCount: '10', questionLevel: 'B', inferenceLevel: 45, distractorDifficulty: 50,
+        questionFormats: ['ordering', 'multiple_choice', 'short_answer', 'sentence_completion'], autoFormatMix: true,
+        higherOrder: false, glossary: true, appendScript: true,
+      }, tasks: { pre: 'quick', post: 'writing' } },
+
+    /* ---------------- Reading ---------------- */
+    { key: 'horrorblog', kind: 'reading', label: 'Horror-Blogpost', blurb: 'Warum wir uns gern fürchten – Bloggerstimme, anspruchsvoll.',
+      settings: {
+        useUnitTopic: false, topicMode: 'custom', customTopic: 'the horror genre: why people enjoy being scared, from a blogger who watches everything',
+        cefr: 'B2.2', levelMeter: true, languageComplexity: 85, grammarComplexity: 80, vocabularyDifficulty: 85, idiomaticLanguage: 70, explicitness: 70,
+        textType: 'Blog Post', lengthMode: 'words', wordCount: 380, paragraphLength: 'medium', styleBalance: 35, dialogueProportion: 15,
+        vocabUsage: 55, targetVocabMin: 8, targetVocabMax: 12,
+        createWorksheet: true, questionCount: '10', questionLevel: 'A', inferenceLevel: 80, distractorDifficulty: 75,
+        questionFormats: ['multiple_choice', 'short_answer', 'best_summary', 'sentence_completion'], autoFormatMix: true,
+        higherOrder: true, higherOrderCount: 2, higherOrderTypes: ['interpretation', 'evaluation'], glossary: true, authenticLayout: true,
+      }, tasks: { pre: 'confrontation', post: 'writing' } },
+    { key: 'newsreport', kind: 'reading', label: 'Zeitungsmeldung', blurb: 'Sachlich, dicht, mit Zahlen und Zitaten – wie auf einer Newsseite.',
+      settings: {
+        useUnitTopic: true, topicMode: 'unit', customTopic: '',
+        cefr: 'B2.1', levelMeter: true, languageComplexity: 70, grammarComplexity: 65, vocabularyDifficulty: 70, idiomaticLanguage: 20, explicitness: 25,
+        textType: 'News Article', lengthMode: 'words', wordCount: 400, paragraphLength: 'short', styleBalance: 90, dialogueProportion: 20,
+        vocabUsage: 50, targetVocabMin: 8, targetVocabMax: 12,
+        createWorksheet: true, questionCount: '10', questionLevel: 'A', inferenceLevel: 45, distractorDifficulty: 70,
+        questionFormats: ['multiple_choice', 'true_false_correction', 'table_completion', 'short_answer'], autoFormatMix: true,
+        higherOrder: false, glossary: true, authenticLayout: true,
+      }, tasks: { pre: 'quick', post: 'discussion' } },
+    { key: 'hostemail', kind: 'reading', label: 'E-Mail an die Gastfamilie', blurb: 'Kurz, freundlich, alles direkt gesagt – für A2.',
+      settings: {
+        useUnitTopic: false, topicMode: 'custom', customTopic: 'an exchange student writes to the host family before arriving: plans, questions and small worries',
+        cefr: 'A2.2', levelMeter: true, languageComplexity: 15, grammarComplexity: 15, vocabularyDifficulty: 15, idiomaticLanguage: 10, explicitness: 10,
+        textType: 'Email', lengthMode: 'words', wordCount: 180, paragraphLength: 'short', styleBalance: 40, dialogueProportion: 10,
+        vocabUsage: 70, targetVocabMin: 6, targetVocabMax: 8,
+        createWorksheet: true, questionCount: '8', questionLevel: 'B', inferenceLevel: 20, distractorDifficulty: 30,
+        questionFormats: ['multiple_choice', 'true_false', 'gap_fill', 'matching'], autoFormatMix: true,
+        higherOrder: false, glossary: true, authenticLayout: true,
+      }, tasks: { pre: 'vocab', post: 'writing' } },
+    { key: 'socialforum', kind: 'reading', label: 'Forumsthread', blurb: 'Mehrere Stimmen, umgangssprachlich, widersprüchlich.',
+      settings: {
+        useUnitTopic: false, topicMode: 'custom', customTopic: 'an online thread in which students argue about phones at school',
+        cefr: 'B1.1', levelMeter: true, languageComplexity: 40, grammarComplexity: 35, vocabularyDifficulty: 35, idiomaticLanguage: 55, explicitness: 35,
+        textType: 'Forum Discussion', lengthMode: 'words', wordCount: 300, paragraphLength: 'short', styleBalance: 25, dialogueProportion: 85,
+        vocabUsage: 60, targetVocabMin: 6, targetVocabMax: 10,
+        createWorksheet: true, questionCount: '10', questionLevel: 'B', inferenceLevel: 40, distractorDifficulty: 45,
+        questionFormats: ['multiple_choice', 'matching', 'short_answer', 'true_false'], autoFormatMix: true,
+        higherOrder: false, glossary: true, authenticLayout: true,
+      }, tasks: { pre: 'speaking', post: 'discussion' } },
+    { key: 'openstory', kind: 'reading', label: 'Kurzgeschichte, offenes Ende', blurb: 'Erzählend, vieles nur angedeutet – lädt zum Deuten ein.',
+      settings: {
+        useUnitTopic: false, topicMode: 'custom', customTopic: 'a short story with an open ending about two friends and a decision one of them keeps quiet',
+        cefr: 'B1.2', levelMeter: true, languageComplexity: 50, grammarComplexity: 50, vocabularyDifficulty: 45, idiomaticLanguage: 45, explicitness: 75,
+        textType: 'Story', lengthMode: 'words', wordCount: 400, paragraphLength: 'medium', styleBalance: 5, dialogueProportion: 45,
+        vocabUsage: 55, targetVocabMin: 8, targetVocabMax: 12,
+        createWorksheet: true, questionCount: '10', questionLevel: 'A', inferenceLevel: 75, distractorDifficulty: 65,
+        questionFormats: ['multiple_choice', 'short_answer', 'ordering', 'sentence_completion'], autoFormatMix: true,
+        higherOrder: true, higherOrderCount: 2, higherOrderTypes: ['interpretation', 'transfer'], glossary: false, authenticLayout: true,
+      }, tasks: { pre: 'quick', post: 'writing' } },
+    { key: 'filmreview', kind: 'reading', label: 'Serien-Kritik', blurb: 'Meinungsstark, mit Vergleichen und Wertungen.',
+      settings: {
+        useUnitTopic: false, topicMode: 'custom', customTopic: 'a review of a series everybody is talking about, with what works and what does not',
+        cefr: 'B1.2', levelMeter: true, languageComplexity: 55, grammarComplexity: 50, vocabularyDifficulty: 60, idiomaticLanguage: 60, explicitness: 55,
+        textType: 'Review', lengthMode: 'words', wordCount: 320, paragraphLength: 'medium', styleBalance: 55, dialogueProportion: 15,
+        vocabUsage: 60, targetVocabMin: 8, targetVocabMax: 12,
+        createWorksheet: true, questionCount: '10', questionLevel: 'A', inferenceLevel: 60, distractorDifficulty: 60,
+        questionFormats: ['multiple_choice', 'short_answer', 'best_summary', 'true_false'], autoFormatMix: true,
+        higherOrder: true, higherOrderCount: 1, higherOrderTypes: ['evaluation'], glossary: true, authenticLayout: true,
+      }, tasks: { pre: 'confrontation', post: 'discussion' } },
   ];
 
   function setupPresets(kind) { return SETUP_PRESETS.filter(p => p.kind === (kind === 'reading' ? 'reading' : 'listening')); }
@@ -858,6 +954,54 @@
       next.setupMode = 'preset';
     }
     return normalizeState(next);
+  }
+
+  /**
+   * The configuration in words: one bullet per area, built from the settings
+   * themselves, so the summary can never say something the material will not
+   * do. Used on the template cards and above the Generate button.
+   */
+  function describeSetup(state, ctx) {
+    const s = normalizeState(clone(state));
+    const unit = (ctx && ctx.unit) || { words: [] };
+    const step = (v, labels) => labels[Math.min(labels.length - 1, Math.floor((clamp(Number(v) || 0, 0, 100) / 100) * labels.length))];
+    const plan = buildPlan(s, { textbook: (ctx && ctx.textbook) || { name: '' }, unit });
+    const out = [];
+    const topic = s.useUnitTopic && s.topicMode === 'unit' ? `Thema aus der Unit (${unit.topic || unit.name || '–'})` : `Thema: ${String(s.customTopic || '').trim() || '–'}`;
+    if (s.kind === 'listening') {
+      const fmt = { monologue: 'Monolog', dialogue: 'Dialog (2 Sprechende)', conversation: `Gespräch (${effectiveSpeakerCount(s)} Sprechende)` }[s.format];
+      out.push(`${fmt} · ${plan.preset.label} · ${topic}`);
+      out.push(`${Math.round(audioSeconds(s) / 60 * 10) / 10} min ≈ ${plan.targetWords} Wörter · ${step(s.speakingSpeed, ['langsames', 'ruhiges', 'normales', 'zügiges', 'schnelles'])} Sprechtempo · Beiträge ${step(s.turnLength, ['sehr kurz', 'kurz', 'mittel', 'länger', 'lang'])}`);
+      out.push(`${step(s.naturalness, ['sehr saubere', 'klare', 'natürliche', 'sehr natürliche', 'ungefilterte'])} Sprechweise · Emotion-Tags ${{ off: 'aus', low: 'wenige', medium: 'mittel', high: 'viele' }[s.emotionTags]}`);
+    } else {
+      out.push(`${s.textType === 'Custom' ? s.customTextType : s.textType} · ${topic}`);
+      out.push(`${plan.targetWords} Wörter · ${{ short: 'kurze', medium: 'mittlere', long: 'lange' }[s.paragraphLength]} Absätze · ${step(s.styleBalance, ['stark erzählend', 'eher erzählend', 'gemischt', 'eher sachlich', 'stark sachlich'])}${Number(s.dialogueProportion) >= 40 ? ' · viel wörtliche Rede' : ''}`);
+    }
+    out.push(`Sprachniveau ${s.cefr} · ${step(s.grammarComplexity, ['einfachste Strukturen', 'einfache Sätze', 'niveautypische Sätze', 'komplexe Sätze', 'volles Strukturrepertoire'])} · ${step(s.vocabularyDifficulty, ['nur häufigster', 'häufiger', 'niveautypischer', 'anspruchsvoller', 'sehr anspruchsvoller'])} Wortschatz`);
+    out.push(`Idiomatik ${step(s.idiomaticLanguage, ['keine', 'selten', 'gelegentlich', 'häufig', 'sehr häufig'])} · Informationen ${step(s.explicitness, ['sehr direkt gesagt', 'direkt gesagt', 'teils implizit', 'oft implizit', 'stark implizit'])}`);
+    out.push(`Zielvokabular: ${s.vocabSelectionMode === 'manual' ? `${(s.selectedVocab || []).length} selbst gewählte Wörter` : `${s.targetVocabMin}–${s.targetVocabMax} Wörter aus der Unit`} · ${step(s.vocabUsage, ['unauffällig', 'zurückhaltend', 'deutlich', 'prominent', 'sehr prominent'])} eingesetzt`);
+    if (!s.createWorksheet) out.push('Kein Arbeitsblatt – nur Skript bzw. Text');
+    else {
+      const lvl = QUESTION_LEVELS[s.questionLevel];
+      out.push(`${plan.questionCount} Fragen · ${lvl ? lvl.label + ' (' + lvl.bands.join('–') + ')' : 'Niveau ' + plan.questionBand} · Inferenz ${step(s.inferenceLevel, ['textnah', 'leicht', 'mittel', 'anspruchsvoll', 'sehr anspruchsvoll'])} · ${plan.formats.length} Formate`);
+      if (s.higherOrder) out.push(`${plan.higherOrderCount} Higher-Order-Aufgabe(n): ${plan.higherOrderTypes.join(', ')}`);
+    }
+    for (const phase of ['pre', 'post']) {
+      const ph = TASK_PHASES[phase];
+      const p = phase === 'pre' ? plan.preTask : plan.postTask;
+      if (!p) { out.push(`${ph.label}: aus`); continue; }
+      const types = p.types.map(k => (ph.types.find(t => t.key === k) || {}).short || k).join(' + ');
+      out.push(`${ph.label}: ${types} · ${p.count} Aufgabe(n), ${p.minutes} min, ${p.oralCount} mündlich`);
+    }
+    const extras = [
+      s.glossary ? 'Fremdwörter erklärt' : '',
+      s.kind === 'listening' && s.appendScript ? 'Skript auf der letzten Seite' : '',
+      s.kind === 'reading' && s.authenticLayout ? 'Text im echten Layout (Bild)' : '',
+      s.levelMeter ? 'Schwierigkeit wird gemessen' : '',
+      s.autoFix !== 'off' ? 'Befunde werden automatisch behoben' : '',
+    ].filter(Boolean);
+    if (extras.length) out.push('Extras: ' + extras.join(' · '));
+    return out;
   }
 
   /** Which template the settings still match, or null once something was changed. */
@@ -1170,7 +1314,7 @@
     QUESTION_LEVELS, QUESTION_LEVEL_KEYS, questionVariants, variantState, effectiveQuestionDifficulty, questionBands,
     skillSequence, availableFormats, assignFormats, targetVocabulary, validateState, buildPlan,
     taskCount, taskTypes, taskTypeMix, autoTaskSocial, effectiveTaskSocial, taskSequence, buildTaskPlan, taskBand, splitMinutes,
-    applyTaskPreset, activeTaskPreset, setupPresets, applySetupPreset, activeSetupPreset,
+    applyTaskPreset, activeTaskPreset, setupPresets, applySetupPreset, activeSetupPreset, describeSetup,
     preTaskCount, preTaskTypes, preTaskTypeMix, autoPreTaskSocial, effectivePreTaskSocial, preTaskSequence, buildPreTaskPlan, preTaskBand,
     postTaskCount, postTaskTypes, effectivePostTaskSocial, postTaskSequence, buildPostTaskPlan, postTaskBand,
     applyExampleConfig,

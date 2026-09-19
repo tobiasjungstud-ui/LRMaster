@@ -151,6 +151,15 @@ test('the screenshot shows exactly the generated text, for every text type', () 
   // no layout data, no layout findings
   assert.equal(quality.runContentChecks(m.settings, m.plan, m.content).filter(f => f.group === 'layout').length, 0);
 });
+test('with a template the single settings stay folded away', () => {
+  const css = fs.readFileSync(path.join(APP, 'styles.css'), 'utf8');
+  const folded = css.split('\n').filter(l => l.includes('body[data-setup="preset"]')).join(' ');
+  for (const id of ['sec-content', 'sec-level', 'sec-structure', 'sec-vocab', 'sec-worksheet', 'sec-pretask', 'sec-posttask', 'sec-advanced']) {
+    assert.ok(folded.includes('#' + id), 'not folded away with a template: ' + id);
+  }
+  for (const id of ['sec-source', 'sec-generate']) assert.ok(!folded.includes('#' + id), id + ' must stay visible');
+  assert.ok(!folded.includes('setup-bar'), 'the gallery must stay visible');
+});
 test('whole-setup templates configure a complete, valid material', () => {
   for (const kind of ['listening', 'reading']) {
     for (const preset of core.setupPresets(kind)) {
@@ -159,6 +168,9 @@ test('whole-setup templates configure a complete, valid material', () => {
       const s = core.applySetupPreset(base, preset.key);
       assert.equal(s.kind, kind);
       assert.equal(core.activeSetupPreset(s), preset.key, preset.key);
+      const bullets = core.describeSetup(s, { textbook: tb, unit: tb.units[0] });
+      assert.ok(bullets.length >= 7, preset.key + ': summary too short');
+      assert.ok(bullets.join(' ').includes(s.cefr), preset.key + ': summary without level');
       assert.deepEqual(core.validateState(s, { textbook: tb, unit: tb.units[0] }), [], preset.key);
       const plan = core.buildPlan(s, { textbook: tb, unit: tb.units[0] });
       assert.ok(plan.preTask && plan.postTask, preset.key + ': task phases missing');

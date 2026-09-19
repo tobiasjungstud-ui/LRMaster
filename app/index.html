@@ -65,9 +65,16 @@
     </div>
     <p class="help">Simple Mode zeigt nur Unit, Topic, Level, Length, Format, Question Difficulty und Number of Questions; alle anderen Werte werden sinnvoll automatisch gewählt. Advanced Mode öffnet sämtliche Einstellungen.</p>
     <section class="setup-bar" id="setup-bar">
-      <div class="setup-head"><span class="setup-label">Vorlage</span><span class="muted small" id="setup-hint"></span></div>
-      <div class="chips" id="setup-presets"></div>
-      <p class="help" id="setup-summary"></p>
+      <div class="setup-head">
+        <div><span class="setup-label" id="setup-title">Vorlage wählen</span> <span class="muted small" id="setup-hint"></span></div>
+        <div class="setup-actions">
+          <button type="button" class="btn secondary" id="btn-setup-adapt" hidden>Vorlage anpassen</button>
+          <button type="button" class="btn ghost" id="btn-setup-custom">Alles selbst einstellen</button>
+          <button type="button" class="btn ghost" id="btn-setup-back" hidden>Zurück zu den Vorlagen</button>
+        </div>
+      </div>
+      <div class="setup-grid" id="setup-presets"></div>
+      <div class="setup-summary" id="setup-summary"></div>
     </section>
     <form id="creator-form" class="creator-form" autocomplete="off" onsubmit="return false"></form>
 

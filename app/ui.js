@@ -145,36 +145,70 @@
   }
 
   /**
-   * The template bar: whole ready-made configurations plus "custom", which
-   * opens every single setting. Changing something afterwards keeps the
-   * template working but marks it as adjusted.
+   * The template gallery. A card is a complete configuration of every area,
+   * written out in words underneath it. As long as a template is chosen, the
+   * single settings stay folded away; "Vorlage anpassen" opens them with the
+   * template's values, "Alles selbst einstellen" opens them from scratch.
    */
   function renderSetupBar() {
     const s = app.state;
     const box = $('#setup-presets');
     if (!box) return;
-    const presets = core.setupPresets(s.kind);
-    const active = s.setupMode === 'custom' ? 'custom' : core.activeSetupPreset(s);
-    box.innerHTML = presets.map(p => `<button type="button" class="chip-btn" data-setup-preset="${esc(p.key)}" title="${esc(p.hint)}">${esc(p.label)}</button>`).join('')
-      + '<button type="button" class="chip-btn custom" data-setup-preset="__custom__" title="Alle Einstellungen einzeln öffnen">Custom …</button>';
-    $$('#setup-presets [data-setup-preset]').forEach(b => {
-      b.classList.toggle('active', b.dataset.setupPreset === active || (active === 'custom' && b.dataset.setupPreset === '__custom__'));
-      b.addEventListener('click', () => {
-        if (b.dataset.setupPreset === '__custom__') { app.state.setupMode = 'custom'; setMode('advanced'); }
-        else { app.state = core.applySetupPreset(app.state, b.dataset.setupPreset); }
-        fillForm();
-        onStateChange('setupMode');
-        $('#creator-form').scrollIntoView({ behavior: 'smooth', block: 'start' });
-      });
-    });
-    const chosen = presets.find(p => p.key === active);
-    $('#setup-hint').textContent = s.setupMode === 'custom' ? 'Alle Einstellungen offen'
-      : chosen ? chosen.hint : 'Eigene Einstellungen – Vorlage wählen oder „Custom …“ öffnen';
-    document.body.dataset.setup = s.setupMode === 'custom' ? 'custom' : 'preset';
-    const plan = core.buildPlan(s, ctx());
-    $('#setup-summary').textContent = s.setupMode === 'custom'
-      ? 'Custom: Sprache, Aufbau, Vokabular und alle Feineinstellungen sind unten geöffnet.'
-      : `${plan.cefr} · ${plan.targetWords} Wörter${s.kind === 'listening' ? ' (' + Math.round(plan.seconds / 60 * 10) / 10 + ' min)' : ' · ' + (s.textType === 'Custom' ? s.customTextType : s.textType)} · ${plan.questionCount} Fragen · Pre-Task ${plan.preTask ? plan.preTask.count + ' (' + plan.preTask.minutes + ' min)' : 'aus'} · Post-Task ${plan.postTask ? plan.postTask.count + ' (' + plan.postTask.minutes + ' min)' : 'aus'}. Unten lässt sich alles anpassen; „Custom …“ öffnet auch Sprache, Aufbau und Vokabular.`;
+    const custom = s.setupMode === 'custom';
+    const active = custom ? null : core.activeSetupPreset(s);
+    document.body.dataset.setup = custom ? 'custom' : 'preset';
+
+    box.hidden = custom;
+    box.innerHTML = custom ? '' : core.setupPresets(s.kind).map(p => {
+      const preview = core.describeSetup(core.applySetupPreset(s, p.key), ctx());
+      return `<button type="button" class="setup-card${p.key === active ? ' active' : ''}" data-setup-preset="${esc(p.key)}">
+        <span class="sc-title">${esc(p.label)}</span>
+        <span class="sc-blurb">${esc(p.blurb)}</span>
+        <ul class="sc-list">${preview.map(b => `<li>${esc(b)}</li>`).join('')}</ul>
+      </button>`;
+    }).join('');
+    $$('#setup-presets [data-setup-preset]').forEach(b => b.addEventListener('click', () => {
+      app.state = core.applySetupPreset(app.state, b.dataset.setupPreset);
+      fillForm();
+      onStateChange('setupMode');
+    }));
+
+    $('#setup-title').textContent = custom ? 'Eigene Einstellungen' : 'Vorlage wählen';
+    $('#setup-hint').textContent = custom
+      ? 'Alle Bereiche sind unten geöffnet.'
+      : active ? (core.setupPresets(s.kind).find(p => p.key === active) || {}).blurb
+        : 'Noch keine Vorlage gewählt – wähle eine Karte oder stelle alles selbst ein.';
+    $('#btn-setup-adapt').hidden = custom || !active;
+    $('#btn-setup-custom').hidden = custom;
+    $('#btn-setup-back').hidden = !custom;
+
+    const bullets = core.describeSetup(s, ctx());
+    $('#setup-summary').innerHTML = `<div class="ss-head">Das wird erzeugt</div><ul>${bullets.map(b => `<li>${esc(b)}</li>`).join('')}</ul>`;
+  }
+
+  /** Fold the single settings away again; the chosen values stay. */
+  function backToTemplates() {
+    app.state.setupMode = 'preset';
+    fillForm();
+    onStateChange('setupMode');
+    const bar = $('#setup-bar');
+    if (bar) bar.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  /** Open every setting; `fresh` starts from the defaults instead of the template. */
+  function openCustomSetup(fresh) {
+    if (fresh) {
+      const kind = app.state.kind;
+      const keep = { textbookId: app.state.textbookId, unitId: app.state.unitId };
+      app.state = core.normalizeState(Object.assign(core.defaults(kind), keep, { setupMode: 'custom' }));
+    } else {
+      app.state.setupMode = 'custom';
+    }
+    setMode('advanced');
+    fillForm();
+    onStateChange('setupMode');
+    const first = $('#sec-content');
+    if (first) first.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
   function openCreator(kind) {
@@ -224,6 +258,9 @@
       const open = body.hidden; body.hidden = !open; b.setAttribute('aria-expanded', String(open));
     }));
     $$('[data-turn-preset]').forEach(b => b.addEventListener('click', () => { app.state = core.applyTurnPreset(app.state, b.dataset.turnPreset); fillForm(); onStateChange('turnLength'); }));
+    $('#btn-setup-adapt').addEventListener('click', () => openCustomSetup(false));
+    $('#btn-setup-custom').addEventListener('click', () => openCustomSetup(true));
+    $('#btn-setup-back').addEventListener('click', backToTemplates);
     $$('[data-task-preset]').forEach(b => b.addEventListener('click', () => {
       const phase = b.dataset.taskPhase;
       app.state = core.applyTaskPreset(app.state, phase, b.dataset.taskPreset);
@@ -450,7 +487,7 @@
       app.state.kind === 'listening' ? ['Audio', `${Math.round(plan.seconds / 60 * 10) / 10} min → ≈ ${plan.targetWords} Wörter`, plan.preset.label] : ['Text', `≈ ${plan.targetWords} Wörter`, app.state.textType],
       app.state.kind === 'listening' ? ['Sprecher', plan.speakers.map(sp => `${sp.label} ${sp.share} %`).join(' · '), ''] : null,
       ['Vokabular', app.state.vocabSelectionMode === 'manual' ? `${plan.vocabulary.length} manuell gewählt` : `${plan.vocabRange[0]}–${plan.vocabRange[1]} aus ${plan.vocabulary.length} Unit-Einträgen`, ''],
-      plan.questionCount ? ['Fragen', `${plan.questionCount} · Niveau ${plan.questionBand} · ` + core.SKILLS.filter(sk => plan.skillMix[sk.key]).map(sk => `${plan.skillMix[sk.key]} × ${sk.short}`).join(', '), ''] : ['Worksheet', 'aus – nur Skript/Text', ''],
+      plan.questionCount ? ['Fragen', `${plan.questionCount} · ${plan.questionLevelLabel ? plan.questionLevelLabel + ' (' + plan.questionBands.join('–') + ')' : 'Niveau ' + plan.questionBand} · ` + core.SKILLS.filter(sk => plan.skillMix[sk.key]).map(sk => `${plan.skillMix[sk.key]} × ${sk.short}`).join(', '), ''] : ['Worksheet', 'aus – nur Skript/Text', ''],
       plan.questionCount ? ['Formate', (plan.formatSequence ? 'Balanced mix: ' : 'frei aus: ') + plan.formats.map(f => core.QUESTION_FORMATS.find(x => x.key === f).label).join(', '), ''] : null,
       plan.higherOrderCount ? ['Higher-Order', `${plan.higherOrderCount} × ${plan.higherOrderTypes.join('/')}`, ''] : null,
       plan.preTask ? ['Pre-Task', `${plan.preTask.count} Aufgabe(n) · ${plan.preTask.minutes} min · ${plan.preTask.oralCount} mündlich`, plan.preTask.types.join(', ')] : null,
@@ -1511,7 +1548,7 @@
     $$('#output .tab').forEach(b => b.addEventListener('click', () => showTab(b.dataset.tab)));
     $$('[data-download]:not([data-variant])').forEach(b => b.addEventListener('click', () => download(b.dataset.download)));
     $('#btn-print').addEventListener('click', () => window.print());
-    $('#btn-load-example').addEventListener('click', () => { app.state = core.applyExampleConfig(app.state, app.textbooks); if (app.kind !== 'listening') { app.kind = 'listening'; document.body.dataset.kind = 'listening'; $('#creator-kind').textContent = 'Listening erstellen'; } fillForm(); onStateChange('preset'); setMode('advanced'); toast('Beispielkonfiguration aus dem Konzept (§32) geladen.'); });
+    $('#btn-load-example').addEventListener('click', () => { app.state = core.applyExampleConfig(app.state, app.textbooks); app.state.setupMode = 'custom'; if (app.kind !== 'listening') { app.kind = 'listening'; document.body.dataset.kind = 'listening'; $('#creator-kind').textContent = 'Listening erstellen'; } fillForm(); onStateChange('preset'); setMode('advanced'); toast('Beispielkonfiguration aus dem Konzept (§32) geladen.'); });
     $('#btn-reset').addEventListener('click', async () => {
       if (!await askConfirm({ title: 'Zurücksetzen', text: 'Alle Einstellungen dieses Creators auf die Standardwerte zurücksetzen?', okLabel: 'Zurücksetzen', danger: true })) return;
       app.state = core.defaults(app.kind);
@@ -1539,5 +1576,5 @@
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init); else init();
 
-  window.LR.ui = { app, generate, produceWorksheet, store, caps, showView, openCreator, importState, detectUnits, fetchTopics, confirmImport, newTextbook, askText, askConfirm, clone, parsePasted, initLevelPage, download, renderOutput, renderQualityPanel, renderTaskPreview, refreshDerived, renderLayout, renderSetupBar };
+  window.LR.ui = { app, generate, produceWorksheet, store, caps, showView, openCreator, importState, detectUnits, fetchTopics, confirmImport, newTextbook, askText, askConfirm, clone, parsePasted, initLevelPage, download, renderOutput, renderQualityPanel, renderTaskPreview, refreshDerived, renderLayout, renderSetupBar, openCustomSetup, backToTemplates };
 })();

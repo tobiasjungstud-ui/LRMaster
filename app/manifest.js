@@ -1375,46 +1375,73 @@
   add({ id: 'S37.rule_authentic', section: 37, title: 'Kontrolle (Claude): das Medium wirkt echt und passt zum Text', kind: 'rule', ruleId: 'layout.authentic' });
 
 
-  /* §38 Vorlagen: ganze Konfigurationen auf Klick, Custom öffnet alles (Auftragserweiterung) */
-  add({ id: 'S38.bar', section: 38, title: 'Vorlagen-Leiste über dem Formular, in beiden Modi sichtbar', kind: 'ui', selector: '#setup-bar',
+  /* §38 Vorlagen: ganze Konfigurationen auf Klick, in Worten zusammengefasst (Auftragserweiterung) */
+  add({ id: 'S38.gallery', section: 38, title: 'Vorlagen-Galerie über dem Formular: Karten mit Titel, Kurzbeschreibung und der Konfiguration in Worten', kind: 'ui', selector: '#setup-bar',
     extra(env) {
       const src = env.uiSource || '';
-      const wired = !src || (/function renderSetupBar/.test(src) && /data-setup-preset/.test(src) && /applySetupPreset/.test(src) && /activeSetupPreset/.test(src));
-      return ok(wired && env.hasControl('#setup-presets') && env.hasControl('#setup-summary'), 'the template bar is missing or not wired');
+      const wired = !src || (/function renderSetupBar/.test(src) && /setup-card/.test(src) && /describeSetup/.test(src) && /applySetupPreset/.test(src));
+      return ok(wired && env.hasControl('#setup-presets') && env.hasControl('#setup-summary'), 'the template gallery is missing or not wired');
     } });
-  add({ id: 'S38.mode', section: 38, title: 'Vorlage oder Custom: die Feineinstellungen klappen erst mit „Custom“ auf', kind: 'setting', key: 'setupMode', alt: 'custom', promptSensitive: false,
-    extra(env) {
-      const src = env.uiSource || '';
-      const folds = !src || /document\.body\.dataset\.setup = /.test(src);
-      return ok(env.core.SCHEMA_BY_KEY.setupMode.default === 'preset' && folds, 'custom does not open the detail settings');
-    } });
-  add({ id: 'S38.presets', section: 38, title: 'Vorlagen für Listening und Reading setzen Sprache, Aufbau, Fragen und beide Aufgabenphasen', kind: 'function',
+  add({ id: 'S38.presets', section: 38, title: 'Je sechs Vorlagen für Listening und Reading, die alle Bereiche individuell setzen (Thema, Sprache, Aufbau, Vokabular, Fragen, Aufgabenphasen)', kind: 'function',
     check(env) {
+      const areas = {
+        language: ['cefr', 'languageComplexity', 'grammarComplexity', 'vocabularyDifficulty', 'idiomaticLanguage', 'explicitness'],
+        shape: ['format', 'preset', 'audioLength', 'speakingSpeed', 'naturalness', 'emotionTags', 'textType', 'wordCount', 'paragraphLength', 'styleBalance'],
+        vocab: ['vocabUsage', 'targetVocabMin', 'targetVocabMax'],
+        questions: ['questionCount', 'questionLevel', 'inferenceLevel', 'distractorDifficulty', 'questionFormats'],
+      };
       for (const kind of ['listening', 'reading']) {
         const list = env.core.setupPresets(kind);
-        if (list.length < 4) return kind + ': too few templates';
+        if (list.length < 6) return kind + ': fewer than six templates';
+        const seen = new Set();
         for (const preset of list) {
-          if (!preset.label || !preset.hint) return preset.key + ' has no label or hint';
+          if (!preset.label || !preset.blurb) return preset.key + ' has no label or short description';
+          for (const [area, keys] of Object.entries(areas)) {
+            if (!keys.some(k => k in preset.settings)) return `${preset.key} sets nothing in the area "${area}"`;
+          }
+          if (!preset.tasks || !preset.tasks.pre || !preset.tasks.post) return preset.key + ' does not set both task phases';
           const base = env.state({ kind });
           const s = env.core.applySetupPreset(base, preset.key);
           const errs = env.core.validateState(s, env.ctx);
           if (errs.length) return preset.key + ' is invalid: ' + errs[0].message;
           if (env.core.activeSetupPreset(s) !== preset.key) return preset.key + ' is not recognised as active';
           const plan = env.core.buildPlan(s, env.ctx);
-          if (!plan.questionCount || !plan.targetWords) return preset.key + ' does not produce a complete plan';
-          if (!plan.preTask || !plan.postTask) return preset.key + ' does not set both task phases';
+          if (!plan.questionCount || !plan.targetWords || !plan.preTask || !plan.postTask) return preset.key + ' does not produce a complete plan';
           if (kind === 'reading' && !plan.authenticLayout) return preset.key + ' does not show the text in its real layout';
-          if (s.kind !== kind) return preset.key + ' changes the kind';
+          const sig = [s.cefr, s.languageComplexity, s.textType || s.preset, s.questionLevel].join('|');
+          if (seen.has(sig)) return 'two templates of ' + kind + ' are configured alike: ' + sig;
+          seen.add(sig);
         }
       }
       return ok(true);
     } });
-  add({ id: 'S38.adjustable', section: 38, title: 'Eine Vorlage lässt sich weiter anpassen; danach gilt sie als „angepasst“', kind: 'function',
+  add({ id: 'S38.summary', section: 38, title: 'Jede Vorlage wird in Worten zusammengefasst – aus den Einstellungen selbst, also immer zutreffend', kind: 'function',
     check(env) {
-      const s = env.core.applySetupPreset(env.state({ kind: 'reading' }), 'blog');
+      const s = env.core.applySetupPreset(env.state({ kind: 'reading' }), 'horrorblog');
+      const bullets = env.core.describeSetup(s, env.ctx);
+      if (bullets.length < 7) return 'the summary has only ' + bullets.length + ' lines';
+      const text = bullets.join(' | ');
+      const must = [s.cefr, String(s.wordCount), s.textType, 'Pre-Task', 'Post-Task', 'Fragen'];
+      for (const m of must) if (!text.includes(m)) return 'the summary does not mention ' + m;
+      // it follows the settings, it is not a stored sentence
+      const changed = env.core.normalizeState(Object.assign(env.core.clone(s), { cefr: 'A2.1', wordCount: 150, glossary: false }));
+      const after = env.core.describeSetup(changed, env.ctx).join(' | ');
+      return ok(after.includes('A2.1') && after.includes('150') && !after.includes('Fremdwörter erklärt') && after !== text, 'the summary does not follow the settings');
+    } });
+  add({ id: 'S38.folding', section: 38, title: 'Mit Vorlage bleiben die Einzeleinstellungen zugeklappt; „Vorlage anpassen“ und „Alles selbst einstellen“ öffnen sie', kind: 'ui', selector: '#btn-setup-adapt',
+    extra(env) {
+      const src = env.uiSource || '';
+      const wired = !src || (/document\.body\.dataset\.setup = custom \? 'custom' : 'preset'/.test(src)
+        && /function openCustomSetup/.test(src) && /setMode\('advanced'\)/.test(src) && /setupMode = 'preset'/.test(src));
+      return ok(wired && env.hasControl('#btn-setup-custom') && env.hasControl('#btn-setup-back') && env.core.SCHEMA_BY_KEY.setupMode.default === 'preset',
+        'the settings do not fold away with a template, or there is no way back');
+    } });
+  add({ id: 'S38.adjustable', section: 38, title: 'Eine Vorlage lässt sich weiter anpassen; danach gilt sie als „angepasst“', kind: 'setting', key: 'setupMode', alt: 'custom', promptSensitive: false,
+    extra(env) {
+      const s = env.core.applySetupPreset(env.state({ kind: 'reading' }), 'horrorblog');
       const changed = env.core.normalizeState(Object.assign(env.core.clone(s), { wordCount: 500 }));
-      const taskChanged = env.core.applyTaskPreset(s, 'post', 'writing');
-      return ok(env.core.activeSetupPreset(s) === 'blog' && env.core.activeSetupPreset(changed) === null && env.core.activeSetupPreset(taskChanged) === null,
+      const taskChanged = env.core.applyTaskPreset(s, 'post', 'mediation');
+      return ok(env.core.activeSetupPreset(s) === 'horrorblog' && env.core.activeSetupPreset(changed) === null && env.core.activeSetupPreset(taskChanged) === null,
         'changing a setting does not mark the template as adjusted');
     } });
 

@@ -91,11 +91,30 @@ Jede Post-Task-Aufgabe nennt zusätzlich ihren **Ansatzpunkt im Material** (`ref
 
 **Gezielte Korrektur:** Pre-Task- und Post-Task-Befunde haben je einen eigenen Reparaturweg. Claude bekommt Material, die fertigen Fragen (bei der Pre-Task »nimm davon nichts vorweg«, bei der Post-Task »wiederhole sie nicht«), die aktuellen Aufgaben und die Befunde im Wortlaut und schreibt nur diese Phase neu; Fragen und die jeweils andere Phase bleiben unangetastet. Übernommen wird auch hier nur, was die Prüfung verbessert.
 
-## Vorlagen und Custom-Modus
+## Vorlagen: fertige Konfigurationen, in Worten beschrieben
 
-Über dem Formular steht die **Vorlagen-Leiste**: ganze Konfigurationen, wie eine Lehrperson sie in einem Satz beschreibt – für Listening *Podcast-Interview*, *Alltagsgespräch*, *Radio-Nachricht*, *Gespräch in der Klasse*, für Reading *Blogpost*, *Zeitungsartikel*, *E-Mail*, *Forumsdiskussion*, *Geschichte*. Ein Klick setzt Niveau, Textsorte/Format, Länge, Sprechweise, Fragen **und** beide Aufgabenphasen. Danach lässt sich alles weiter anpassen (die Vorlage gilt dann als „angepasst“).
+Über dem Formular steht die **Vorlagen-Galerie**: je sechs vollständige Konfigurationen pro Materialart, die sich in *allen* Bereichen unterscheiden – Thema und Inhalt, Sprachniveau und Satzbau, Wortschatz und Idiomatik, Explizitheit, Aufbau, Zielvokabular, Fragen und Formate, Higher-Order, beide Aufgabenphasen und die Extras.
 
-Im Vorlagen-Modus bleiben nur Unit, Thema, Fragen und die beiden Aufgabenphasen sichtbar; **„Custom …“** klappt zusätzlich Sprache, Aufbau, Vokabular und die Advanced Settings auf. Eine Zeile unter den Vorlagen fasst zusammen, was herauskommt (Niveau, Wortzahl, Fragen, Minuten der Aufgabenphasen).
+| Listening | Reading |
+|---|---|
+| Podcast-Interview (B1.2) · Alltagsgespräch im Café (A2.2) · Radio-Nachricht (B2.1) · Streitgespräch, 3 Stimmen (B2.1) · Telefonat mit dem Kundendienst (B1.1) · Erzählung/Anekdote (B1.1) | Horror-Blogpost (B2.2) · Zeitungsmeldung (B2.1) · E-Mail an die Gastfamilie (A2.2) · Forumsthread (B1.1) · Kurzgeschichte mit offenem Ende (B1.2) · Serien-Kritik (B1.2) |
+
+Jede Karte zeigt, was die Vorlage tut – **in Worten, aus den Einstellungen selbst erzeugt** (`core.describeSetup`), also nie abweichend von dem, was wirklich generiert wird:
+
+```
+· Blog Post · Thema: the horror genre: why people enjoy being scared …
+· 380 Wörter · mittlere Absätze · eher erzählend
+· Sprachniveau B2.2 · volles Strukturrepertoire · sehr anspruchsvoller Wortschatz
+· Idiomatik häufig · Informationen oft implizit
+· Zielvokabular: 8–12 Wörter aus der Unit · deutlich eingesetzt
+· 10 Fragen · Niveau A (B1.2–B2.1) · Inferenz sehr anspruchsvoll · 4 Formate
+· 2 Higher-Order-Aufgaben: interpretation, evaluation
+· Pre-Task: Konfrontation + Prediction · 2 Aufgaben, 8 min, 1 mündlich
+· Post-Task: Kreativ + Wortschatz · 2 Aufgaben, 25 min, 0 mündlich
+· Extras: Fremdwörter erklärt · Text im echten Layout (Bild) · Schwierigkeit wird gemessen
+```
+
+**Solange eine Vorlage gewählt ist, bleiben die Einzeleinstellungen vollständig zugeklappt** – sichtbar sind nur Lehrmittel/Unit, die Zusammenfassung „Das wird erzeugt“ und der Generate-Bereich. Zwei Schaltflächen öffnen sie: **„Vorlage anpassen“** (alle Felder mit den Werten der Vorlage als Ausgangspunkt) und **„Alles selbst einstellen“** (alle Felder ab Standardwerten). **„Zurück zu den Vorlagen“** klappt wieder zu; die Werte bleiben erhalten. Sobald etwas verändert wird, gilt die Vorlage als angepasst.
 
 ## Authentisches Layout: der Text als Screenshot seines Mediums
 
@@ -178,7 +197,7 @@ Das Arbeitsblatt ist ein echtes Arbeitsblatt: Name-/Klasse-/Datum-Zeile, Aufgabe
 
 ## Kontrollmechanismen
 
-- **Konzept-Manifest** (`app/manifest.js`): 299 Anforderungen aus dem Konzeptdokument und den Auftragserweiterungen (§33 Word-Export, §34 Schwierigkeitsmesser & Niveau der Fragen, §35 Pre-Task, §36 Post-Task, §37 Authentisches Layout, §38 Vorlagen), jede mit Prüfart:
+- **Konzept-Manifest** (`app/manifest.js`): 300 Anforderungen aus dem Konzeptdokument und den Auftragserweiterungen (§33 Word-Export, §34 Schwierigkeitsmesser & Niveau der Fragen, §35 Pre-Task, §36 Post-Task, §37 Authentisches Layout, §38 Vorlagen), jede mit Prüfart:
   - `setting` – Steuerelement existiert **und** die Änderung des Werts verändert nachweislich mindestens einen Prompt (Prompt-Sensitivitätstest; tote Einstellungen fallen durch).
   - `function` – Verhalten wird mit echten Eingaben ausgeführt (z. B. Preset *Interview* ⇒ Anteile 25/75, Skill-Mix verschiebt sich mit der Schwierigkeit, Beispielkonfiguration §32 reproduziert alle Werte).
   - `rule` – Qualitätsregel existiert als Messfunktion oder als Review-Kriterium und wird im Review-Prompt an Claude übergeben.
