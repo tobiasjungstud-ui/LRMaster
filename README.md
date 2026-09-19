@@ -46,6 +46,14 @@ scripts/coverage-report.js  schreibt CONCEPT_COVERAGE.md (npm run coverage)
 
 Beide Phasen laufen über **dieselbe geprüfte Mechanik** (`core.buildTaskPlan`, `quality.taskRules`, gemeinsamer Reparaturweg) und haben je einen eigenen Creator-Bereich.
 
+**Bedienung:** Jeder Bereich beginnt mit einer **Schnellwahl** – typischen Aufgabenfolgen, wie eine Lehrperson eine Lektion plant. Ein Klick setzt Aufgabentypen, Sozialformen, mündlich/schriftlich, Zeit und Anforderungsniveau:
+
+| Pre-Task | Post-Task |
+|---|---|
+| Keine Pre-Task · Kurzer Einstieg (1 Aufgabe, Partnerarbeit, mündlich, 5 min) · Konfrontation (These beziehen, dann Vermutungen, 8 min) · Wortschatz vorentlasten (Wortfeld und Zielwörter, schriftlich, 8 min) · Sprechen aktivieren (Umfrage und Sprechimpuls, 10 min) | Keine Post-Task · Kurze Sicherung (8 min) · Diskussion & Position (Debatte, dann Stellungnahme, 20 min) · Schreibprodukt (25 min) · Sprachmittlung & Feedback (20 min) · Transfer & Recherche (30 min) |
+
+Darunter steht die **Vorschau der geplanten Abfolge** – Aufgabe für Aufgabe mit Sozialform, Arbeitsweise und Minuten, dazu die Gesamtzeit, das Sprachniveau und sofort sichtbare Probleme („3 mündlich, aber nur 1 interaktive Sozialform“). Schnellwahl und Vorschau sind **auch im Simple Mode** bedienbar; der Advanced Mode öffnet zusätzlich jede Einzeleinstellung, und sobald man dort etwas ändert, gilt die Folge als eigener Mix. Zu viele mündliche Aufgaben werden automatisch auf die Anzahl Aufgaben begrenzt.
+
 ### Pre-Task
 
 Eigener Creator-Bereich mit denselben kriterienorientierten Einstellungen wie die Fragen:
@@ -148,7 +156,7 @@ Das Arbeitsblatt ist ein echtes Arbeitsblatt: Name-/Klasse-/Datum-Zeile, Aufgabe
 
 ## Kontrollmechanismen
 
-- **Konzept-Manifest** (`app/manifest.js`): 278 Anforderungen aus dem Konzeptdokument und den Auftragserweiterungen (§33 Word-Export, §34 Schwierigkeitsmesser & Niveau der Fragen, §35 Pre-Task, §36 Post-Task), jede mit Prüfart:
+- **Konzept-Manifest** (`app/manifest.js`): 284 Anforderungen aus dem Konzeptdokument und den Auftragserweiterungen (§33 Word-Export, §34 Schwierigkeitsmesser & Niveau der Fragen, §35 Pre-Task, §36 Post-Task), jede mit Prüfart:
   - `setting` – Steuerelement existiert **und** die Änderung des Werts verändert nachweislich mindestens einen Prompt (Prompt-Sensitivitätstest; tote Einstellungen fallen durch).
   - `function` – Verhalten wird mit echten Eingaben ausgeführt (z. B. Preset *Interview* ⇒ Anteile 25/75, Skill-Mix verschiebt sich mit der Schwierigkeit, Beispielkonfiguration §32 reproduziert alle Werte).
   - `rule` – Qualitätsregel existiert als Messfunktion oder als Review-Kriterium und wird im Review-Prompt an Claude übergeben.

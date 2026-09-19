@@ -397,3 +397,18 @@ mark.vocab { background: var(--mark); color: inherit; border-radius: 3px; paddin
 .pretask .criteria ul { margin: 0 0 0 1.1rem; font-size: .9rem; }
 .pretask.posttask { border-left-color: #6b7280; }
 .pretask .product { margin: .35rem 0 0; font-size: .92rem; }
+
+/* Task sections: ready-made sequences and the live preview */
+.task-head { grid-column: 1 / -1; margin-bottom: .2rem; }
+.task-head .chips { margin-bottom: .6rem; }
+.task-head .chip-btn.active { background: var(--ink); color: var(--surface); border-color: var(--ink); }
+.task-preview { background: var(--ground); border: 1px solid var(--line); border-radius: 8px; padding: .6rem .75rem; font-size: .88rem; }
+.tp-head { font-weight: 600; margin-bottom: .35rem; }
+.tp-list { list-style: none; margin: 0; padding: 0; }
+.tp-list li { display: flex; flex-wrap: wrap; align-items: baseline; gap: .5rem; padding: .2rem 0; border-top: 1px solid var(--line); }
+.tp-list li:first-child { border-top: 0; }
+.tp-n { font-family: var(--font-mono); font-size: .78rem; color: var(--muted); min-width: 1.2rem; }
+.tp-type { font-weight: 600; }
+.tp-social, .tp-mode, .tp-min { font-size: .8rem; color: var(--muted); }
+.tp-mode.oral { color: #8a5a00; }
+.task-preview .bad { color: var(--bad); }

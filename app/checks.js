@@ -4,12 +4,12 @@
  */
 (function (root, factory) {
   if (typeof module === 'object' && module.exports) {
-    module.exports = factory(require('./core.js'), require('./prompts.js'), require('./quality.js'), require('./render.js'), require('./vocab.js'), require('./manifest.js'), require('./fixture.js'), require('./word.js'), require('./ooxml.js'), require('./level.js'));
+    module.exports = factory(require('./core.js'), require('./prompts.js'), require('./quality.js'), require('./render.js'), require('./vocab.js'), require('./manifest.js'), require('./fixture.js'), require('./word.js'), require('./ooxml.js'), require('./level.js'), require('./controls.js'));
   } else {
     root.LR = root.LR || {};
-    root.LR.checks = factory(root.LR.core, root.LR.prompts, root.LR.quality, root.LR.render, root.LR.vocab, root.LR.manifest, root.LR.fixture, root.LR.word, root.LR.ooxml, root.LR.level);
+    root.LR.checks = factory(root.LR.core, root.LR.prompts, root.LR.quality, root.LR.render, root.LR.vocab, root.LR.manifest, root.LR.fixture, root.LR.word, root.LR.ooxml, root.LR.level, root.LR.controls);
   }
-})(typeof self !== 'undefined' ? self : this, function (core, prompts, quality, render, vocab, manifest, fixture, word, ooxml, level) {
+})(typeof self !== 'undefined' ? self : this, function (core, prompts, quality, render, vocab, manifest, fixture, word, ooxml, level, controls) {
   'use strict';
 
   function makeEnv(opts) {
@@ -19,7 +19,7 @@
     const unit = tb.units[0];
     const ctx = { textbook: tb, unit };
     const env = {
-      core, prompts, quality, render, vocab, word, ooxml, level, textbooks, ctx,
+      core, prompts, quality, render, vocab, word, ooxml, level, controls, textbooks, ctx,
       hasControl: opts.hasControl || (() => false),
       pipelineSource: opts.pipelineSource || '',
       uiSource: opts.uiSource || '',

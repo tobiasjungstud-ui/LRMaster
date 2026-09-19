@@ -2,7 +2,7 @@
 
 Erzeugt von `npm run coverage`. Jede Zeile ist eine Anforderung aus `docs/Konzept_Listening_Reading_Creator.md`, gebunden an die Stelle im Code, die sie umsetzt, und das Ergebnis der automatischen Prüfung (`npm test`).
 
-**Ergebnis: 278 von 278 Anforderungen bestanden.**
+**Ergebnis: 284 von 284 Anforderungen bestanden.**
 
 Prüfarten: **setting** – Steuerelement vorhanden und Änderung des Werts verändert nachweislich den Prompt an Claude · **function** – Verhalten wird mit echten Eingaben ausgeführt und verglichen · **rule** – Qualitätsregel existiert als Messung oder Claude-Review-Kriterium · **render** – Ausgabe wird auf einer Fixture gerendert und inhaltlich geprüft · **ui** – Navigations-/Strukturelement existiert.
 
@@ -399,7 +399,7 @@ Prüfarten: **setting** – Steuerelement vorhanden und Änderung des Werts ver�
 | ✅ | `S34.glossary` | Option „Fremdwörter auf der 1. Seite erklärt“: Messer wählt die Wörter über dem Niveau (ohne Zielvokabular), Claude erklärt sie; Ausgabe auf Seite 1 (HTML, Word) | setting | Setting `glossary` (core.SCHEMA → Control `[data-setting="glossary"]` → prompts.js) |
 | ✅ | `S34.append_script` | Option „Skript auf der letzten Seite abgebildet“ (Listening): Schülerversion endet mit dem Skript (HTML, Word, Markdown) | setting | Setting `appendScript` (core.SCHEMA → Control `[data-setting="appendScript"]` → prompts.js) |
 
-## §35 Pre-Task: Typen, Sozialformen, Anforderungsniveau (27/27)
+## §35 Pre-Task: Typen, Sozialformen, Anforderungsniveau (30/30)
 
 | Status | ID | Anforderung | Art | Umsetzung |
 |---|---|---|---|---|
@@ -428,10 +428,13 @@ Prüfarten: **setting** – Steuerelement vorhanden und Änderung des Werts ver�
 | ✅ | `S35.rule_solvable` | Kontrolle (Claude): Pre-Task ist ohne das Material lösbar | rule | Quality rule `pretask.solvable_before` (Claude-Review über buildReviewPrompt) |
 | ✅ | `S35.rule_social_fits` | Kontrolle (Claude): Sozialform und Arbeitsweise passen zur Aufgabe | rule | Quality rule `pretask.social_fits` (Claude-Review über buildReviewPrompt) |
 | ✅ | `S35.rule_confrontation` | Kontrolle (Claude): Konfrontationsaufgabe konfrontiert wirklich | rule | Quality rule `pretask.confrontation` (Claude-Review über buildReviewPrompt) |
+| ✅ | `S35.presets` | Schnellwahl: typische Pre-Task-Folgen mit einem Klick (Aufgabentypen, Sozialformen, Zeit, Anforderungsniveau) | ui | Element `#pre-task-presets` |
+| ✅ | `S35.preview` | Vorschau im Creator: geplante Abfolge mit Sozialform, Arbeitsweise und Minuten, Probleme schon vor dem Generieren | ui | Element `#pre-task-preview` |
+| ✅ | `S35.simple_access` | Auch im Simple Mode bedienbar: Schnellwahl und Vorschau stehen ausserhalb der Advanced-Steuerelemente | function | Funktion (siehe Check im Manifest) |
 | ✅ | `S35.repair` | Beanstandete Pre-Task wird gezielt neu erstellt, die Fragen bleiben unverändert | function | Funktion (siehe Check im Manifest) |
 | ✅ | `S35.output` | Sozialform, Arbeitsweise, Zeit und Kriterien stehen auf dem Arbeitsblatt (Bildschirm, Word, Markdown); Lehrerversion mit Pre-Task-Übersicht | render | render.js (renderStudentHTML / renderTeacherHTML) |
 
-## §36 Post-Task: Typen, Sozialformen, Anforderungsniveau (28/28)
+## §36 Post-Task: Typen, Sozialformen, Anforderungsniveau (31/31)
 
 | Status | ID | Anforderung | Art | Umsetzung |
 |---|---|---|---|---|
@@ -461,6 +464,9 @@ Prüfarten: **setting** – Steuerelement vorhanden und Änderung des Werts ver�
 | ✅ | `S36.rule_beyond` | Kontrolle (Claude): Post-Task geht über die Verständnisfragen hinaus | rule | Quality rule `posttask.beyond_questions` (Claude-Review über buildReviewPrompt) |
 | ✅ | `S36.rule_social_fits` | Kontrolle (Claude): Sozialform und Arbeitsweise passen zur Aufgabe | rule | Quality rule `posttask.social_fits` (Claude-Review über buildReviewPrompt) |
 | ✅ | `S36.rule_mediation` | Kontrolle (Claude): Sprachmittlung nennt Adressat und Zweck | rule | Quality rule `posttask.mediation` (Claude-Review über buildReviewPrompt) |
+| ✅ | `S36.presets` | Schnellwahl: typische Post-Task-Folgen mit einem Klick (Aufgabentypen, Sozialformen, Zeit, Anforderungsniveau) | ui | Element `#post-task-presets` |
+| ✅ | `S36.preview` | Vorschau im Creator: geplante Abfolge mit Sozialform, Arbeitsweise und Minuten, Probleme schon vor dem Generieren | ui | Element `#post-task-preview` |
+| ✅ | `S36.simple_access` | Auch im Simple Mode bedienbar: Schnellwahl und Vorschau stehen ausserhalb der Advanced-Steuerelemente | function | Funktion (siehe Check im Manifest) |
 | ✅ | `S36.repair` | Beanstandete Post-Task wird gezielt neu erstellt, Fragen und Pre-Task bleiben unverändert | function | Funktion (siehe Check im Manifest) |
 | ✅ | `S36.output` | Post-Task steht nach den Fragen auf dem Arbeitsblatt (Bildschirm, Word, Markdown) mit Sozialform, Arbeitsweise, Zeit, Produkt und Kriterien; Lehrerversion mit Übersicht | render | render.js (renderStudentHTML / renderTeacherHTML) |
 

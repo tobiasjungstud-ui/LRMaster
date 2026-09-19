@@ -130,6 +130,39 @@ test('pre-task findings get their own repair bucket', () => {
   assert.equal(rp.content.length, 1);
   assert.equal(rp.worksheet.length, 0);
 });
+test('ready-made task sequences produce complete, valid plans', () => {
+  const ctx = { textbook: { id: 't' }, unit: { id: 'u', topic: 'Friends', words: [{ word: 'argue' }, { word: 'trust' }] } };
+  const base = core.normalizeState({ kind: 'listening', textbookId: 't', unitId: 'u', createWorksheet: true, targetVocabMin: 1, targetVocabMax: 2 });
+  for (const phase of ['pre', 'post']) {
+    for (const preset of core.TASK_PRESETS[phase]) {
+      const s = core.applyTaskPreset(base, phase, preset.key);
+      assert.equal(core.activeTaskPreset(s, phase), preset.key, phase + '/' + preset.key);
+      const errs = core.validateState(s, ctx).filter(e => e.key.toLowerCase().includes(phase + 'task'));
+      assert.deepEqual(errs, [], phase + '/' + preset.key + ': ' + errs.map(e => e.message));
+      const plan = core.buildTaskPlan(s, phase);
+      if (preset.key === 'off') { assert.equal(plan, null); continue; }
+      assert.ok(plan.count >= 1 && plan.minutes >= plan.count, phase + '/' + preset.key);
+      assert.ok(plan.tasks.every(t => t.type && t.socialForm && t.mode && t.minutes >= 1));
+      assert.ok(plan.tasks.filter(t => t.mode === 'oral').every(t => t.socialForm !== 'single'), phase + '/' + preset.key + ': oral task alone');
+    }
+  }
+  // a hand-made mix is not reported as one of the ready-made sequences
+  const own = core.normalizeState(Object.assign(core.applyTaskPreset(base, 'pre', 'confrontation'), { preTaskCount: 5 }));
+  assert.equal(core.activeTaskPreset(own, 'pre'), null);
+});
+test('the task sections stay usable in Simple Mode', () => {
+  const css = fs.readFileSync(path.join(APP, 'styles.css'), 'utf8');
+  const simpleRule = css.split('\n').find(l => l.includes('body[data-uimode="simple"]') && l.includes('display: none'));
+  assert.ok(simpleRule, 'simple-mode rule not found');
+  for (const hidden of ['task-head', 'TaskPresets', 'task-preview', 'sec-pretask', 'sec-posttask']) {
+    assert.ok(!simpleRule.includes(hidden), 'Simple Mode hides ' + hidden);
+  }
+  for (const phase of ['pre', 'post']) {
+    const head = controls.taskExtras(phase);
+    assert.ok(!head.includes('class="ctl"'), phase + ': quick choice sits inside an advanced control');
+    assert.ok(head.includes('data-task-preset="off"'), phase + ': no way to switch the phase off');
+  }
+});
 test('post-task: same planner, own types, product and reference', () => {
   const s = core.normalizeState({ kind: 'reading', createWorksheet: true, postTask: true, postTaskCount: 4,
     postTaskTypes: ['debate', 'mediation', 'creative', 'peerfeedback'], postTaskOralCount: 2, postTaskMinutes: 24 });

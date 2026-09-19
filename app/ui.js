@@ -191,6 +191,12 @@
       const open = body.hidden; body.hidden = !open; b.setAttribute('aria-expanded', String(open));
     }));
     $$('[data-turn-preset]').forEach(b => b.addEventListener('click', () => { app.state = core.applyTurnPreset(app.state, b.dataset.turnPreset); fillForm(); onStateChange('turnLength'); }));
+    $$('[data-task-preset]').forEach(b => b.addEventListener('click', () => {
+      const phase = b.dataset.taskPhase;
+      app.state = core.applyTaskPreset(app.state, phase, b.dataset.taskPreset);
+      fillForm();
+      onStateChange(phase + 'Task');
+    }));
     $$('[data-jump]').forEach(a => a.addEventListener('click', (e) => { e.preventDefault(); jumpTo(a.dataset.jump); }));
     $('#btn-generate').addEventListener('click', () => generate());
     $('#btn-stop').addEventListener('click', () => { if (app.running) app.running.abort(); });
@@ -342,17 +348,56 @@
       for (const k of POST_KEYS) show(k, s.postTask);
       show('customPreTaskSocial', s.preTask && s.preTaskSocialMode === 'custom');
       show('customPostTaskSocial', s.postTask && s.postTaskSocialMode === 'custom');
-      const oral = $('#set-preTaskOralCount'); if (oral) oral.max = core.preTaskCount(s);
-      const oralPost = $('#set-postTaskOralCount'); if (oralPost) oralPost.max = core.postTaskCount(s);
+      for (const phase of ['pre', 'post']) {
+        const ph = core.TASK_PHASES[phase];
+        if (!s[ph.prefix]) continue;
+        const n = core.taskCount(s, phase);
+        const oralEl = $('#set-' + ph.prefix + 'OralCount');
+        if (oralEl) oralEl.max = n;
+        // more oral tasks than tasks cannot be meant: cap it silently
+        if ((Number(s[ph.prefix + 'OralCount']) || 0) > n) {
+          s[ph.prefix + 'OralCount'] = n;
+          if (oralEl) oralEl.value = n;
+        }
+      }
     }
     // topicMode select is only meaningful when the unit topic is ON
     const tm = $('#set-topicMode'); if (tm) { tm.disabled = !s.useUnitTopic; if (!s.useUnitTopic) { s.topicMode = 'custom'; tm.value = 'custom'; } }
     // who_said_it only for multi-speaker listening
     const who = $('input[data-multi="questionFormats"][value="who_said_it"]'); if (who) who.closest('.chip').classList.toggle('disabled', !(s.kind === 'listening' && core.effectiveSpeakerCount(s) >= 2));
     // labels
+    for (const phase of ['pre', 'post']) renderTaskPreview(phase);
     const est = $('#audio-estimate');
     if (est && s.kind === 'listening') est.textContent = `≈ ${core.targetWordCount(s)} Wörter bei ${core.wordsPerMinute(s.speakingSpeed)} Wörtern/Minute für ${Math.round(core.audioSeconds(s) / 60 * 10) / 10} min`;
     renderPlanPreview();
+  }
+
+  /**
+   * What the chosen settings will produce in one task phase: the sequence
+   * with social form, working mode and minutes, plus the problems a teacher
+   * should see before generating rather than after.
+   */
+  function renderTaskPreview(phase) {
+    const box = $('#' + phase + '-task-preview');
+    if (!box) return;
+    const s = app.state;
+    const ph = core.TASK_PHASES[phase];
+    const label = phase === 'post' ? 'Post-Task' : 'Pre-Task';
+    $$(`[data-task-preset][data-task-phase="${phase}"]`).forEach(b => b.classList.toggle('active', b.dataset.taskPreset === core.activeTaskPreset(s, phase)));
+    if (!s.createWorksheet) { box.innerHTML = `<p class="muted">Kein Arbeitsblatt gewählt – ${label} entfällt.</p>`; return; }
+    if (!s[ph.prefix]) { box.innerHTML = `<p class="muted">${label} ist aus. Wähle oben eine Schnellwahl – oder schalte sie im Advanced Mode ein und stelle alles einzeln ein.</p>`; return; }
+    const plan = core.buildTaskPlan(s, phase);
+    if (!plan || !plan.count) { box.innerHTML = '<p class="bad">Bitte mindestens einen Aufgabentyp wählen.</p>'; return; }
+    const types = phase === 'post' ? core.POST_TASK_TYPES : core.PRE_TASK_TYPES;
+    const typeLabel = (k) => { const t = types.find(x => x.key === k); return t ? t.label : k; };
+    const rows = plan.tasks.map(t => `<li><span class="tp-n">${t.n}</span><span class="tp-type">${esc(typeLabel(t.type))}</span>`
+      + `<span class="tp-social">${esc(core.SOCIAL_FORMS.find(f => f.key === t.socialForm).label)}</span>`
+      + `<span class="tp-mode ${t.mode}">${t.mode === 'oral' ? 'mündlich' : 'schriftlich'}</span>`
+      + `<span class="tp-min">${t.minutes} min</span></li>`).join('');
+    const problems = core.validateState(s, ctx()).filter(e => e.key.toLowerCase().includes(phase + 'task'));
+    box.innerHTML = `<div class="tp-head">So wird die ${label} geplant <span class="muted">· ${plan.count} Aufgabe(n) · ${plan.minutes} min · Sprache ${esc(plan.band)} · Anforderung ${plan.difficulty}/100${plan.criteria ? ' · mit Gelingenskriterien' : ''}</span></div>`
+      + `<ol class="tp-list">${rows}</ol>`
+      + problems.map(e => `<p class="bad small">${esc(e.message)}</p>`).join('');
   }
 
   function renderPlanPreview() {
@@ -374,7 +419,8 @@
       plan.questionCount ? ['Fragen', `${plan.questionCount} · Niveau ${plan.questionBand} · ` + core.SKILLS.filter(sk => plan.skillMix[sk.key]).map(sk => `${plan.skillMix[sk.key]} × ${sk.short}`).join(', '), ''] : ['Worksheet', 'aus – nur Skript/Text', ''],
       plan.questionCount ? ['Formate', (plan.formatSequence ? 'Balanced mix: ' : 'frei aus: ') + plan.formats.map(f => core.QUESTION_FORMATS.find(x => x.key === f).label).join(', '), ''] : null,
       plan.higherOrderCount ? ['Higher-Order', `${plan.higherOrderCount} × ${plan.higherOrderTypes.join('/')}`, ''] : null,
-      plan.preTaskTypes.length ? ['Pre-Task', plan.preTaskTypes.join(', '), ''] : null,
+      plan.preTask ? ['Pre-Task', `${plan.preTask.count} Aufgabe(n) · ${plan.preTask.minutes} min · ${plan.preTask.oralCount} mündlich`, plan.preTask.types.join(', ')] : null,
+      plan.postTask ? ['Post-Task', `${plan.postTask.count} Aufgabe(n) · ${plan.postTask.minutes} min · ${plan.postTask.oralCount} mündlich`, plan.postTask.types.join(', ')] : null,
     ].filter(Boolean);
     p.innerHTML = '<h3>Plan</h3><dl>' + rows.map(r => `<div><dt>${esc(r[0])}</dt><dd>${esc(r[1])} <span class="muted">${esc(r[2])}</span></dd></div>`).join('') + '</dl>';
   }
@@ -1396,5 +1442,5 @@
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init); else init();
 
-  window.LR.ui = { app, generate, produceWorksheet, store, caps, showView, openCreator, importState, detectUnits, fetchTopics, confirmImport, newTextbook, askText, askConfirm, clone, parsePasted, initLevelPage, download, renderOutput, renderQualityPanel };
+  window.LR.ui = { app, generate, produceWorksheet, store, caps, showView, openCreator, importState, detectUnits, fetchTopics, confirmImport, newTextbook, askText, askConfirm, clone, parsePasted, initLevelPage, download, renderOutput, renderQualityPanel, renderTaskPreview, refreshDerived };
 })();

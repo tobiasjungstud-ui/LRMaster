@@ -805,7 +805,63 @@
     };
   }
 
-  /* Named entry points for the pre-task (kept for the checks and the UI). */
+  /*
+   * Ready-made task sequences, in the way a teacher plans a lesson: pick the
+   * step ("short lead-in", "pre-teach the words", "discussion afterwards"),
+   * fine-tune only if needed. Every preset sets the whole phase, so a single
+   * click produces a complete, checkable plan.
+   */
+  const TASK_PRESETS = {
+    pre: [
+      { key: 'off', label: 'Keine Pre-Task', hint: 'Direkt mit dem Material beginnen.', settings: { preTask: false } },
+      { key: 'quick', label: 'Kurzer Einstieg', hint: '1 Aufgabe · Partnerarbeit · mündlich · 5 min — Vorwissen zum Thema wecken.',
+        settings: { preTask: true, preTaskCount: 1, preTaskTypes: ['activation'], preTaskOralCount: 1, preTaskMinutes: 5, preTaskFocus: 'topic', preTaskDifficulty: 30, preTaskScaffolding: 40, preTaskSocialMode: 'auto', preTaskCriteria: true } },
+      { key: 'confrontation', label: 'Konfrontation', hint: '2 Aufgaben · 8 min — zugespitzte These beziehen, dann Vermutungen zum Material.',
+        settings: { preTask: true, preTaskCount: 2, preTaskTypes: ['confrontation', 'prediction'], preTaskOralCount: 1, preTaskMinutes: 8, preTaskFocus: 'topic', preTaskDifficulty: 65, preTaskScaffolding: 50, preTaskSocialMode: 'auto', preTaskCriteria: true } },
+      { key: 'vocab', label: 'Wortschatz vorentlasten', hint: '2 Aufgaben · 8 min · schriftlich — Wortfeld sammeln und Zielwörter klären.',
+        settings: { preTask: true, preTaskCount: 2, preTaskTypes: ['brainstorm', 'vocabulary'], preTaskOralCount: 0, preTaskMinutes: 8, preTaskFocus: 'vocabulary', preTaskDifficulty: 30, preTaskScaffolding: 70, preTaskSocialMode: 'auto', preTaskCriteria: true } },
+      { key: 'speaking', label: 'Sprechen aktivieren', hint: '2 Aufgaben · 10 min · beide mündlich — Klassenumfrage und Sprechimpuls.',
+        settings: { preTask: true, preTaskCount: 2, preTaskTypes: ['survey', 'speaking'], preTaskOralCount: 2, preTaskMinutes: 10, preTaskFocus: 'topic', preTaskDifficulty: 45, preTaskScaffolding: 50, preTaskSocialMode: 'auto', preTaskCriteria: true } },
+    ],
+    post: [
+      { key: 'off', label: 'Keine Post-Task', hint: 'Nach den Fragen ist Schluss.', settings: { postTask: false } },
+      { key: 'quick', label: 'Kurze Sicherung', hint: '1 Aufgabe · Partnerarbeit · mündlich · 8 min — über das Gehörte/Gelesene sprechen.',
+        settings: { postTask: true, postTaskCount: 1, postTaskTypes: ['discussion'], postTaskOralCount: 1, postTaskMinutes: 8, postTaskFocus: 'content', postTaskDifficulty: 45, postTaskScaffolding: 50, postTaskSocialMode: 'auto', postTaskCriteria: true } },
+      { key: 'discussion', label: 'Diskussion & Position', hint: '2 Aufgaben · 20 min — Debatte in der Gruppe, danach schriftliche Stellungnahme.',
+        settings: { postTask: true, postTaskCount: 2, postTaskTypes: ['debate', 'opinion'], postTaskOralCount: 1, postTaskMinutes: 20, postTaskFocus: 'content', postTaskDifficulty: 75, postTaskScaffolding: 40, postTaskSocialMode: 'auto', postTaskCriteria: true } },
+      { key: 'writing', label: 'Schreibprodukt', hint: '2 Aufgaben · 25 min · schriftlich — eigenes Produkt und Zielwortschatz anwenden.',
+        settings: { postTask: true, postTaskCount: 2, postTaskTypes: ['creative', 'vocabulary'], postTaskOralCount: 0, postTaskMinutes: 25, postTaskFocus: 'both', postTaskDifficulty: 60, postTaskScaffolding: 60, postTaskSocialMode: 'auto', postTaskCriteria: true } },
+      { key: 'mediation', label: 'Sprachmittlung & Feedback', hint: '2 Aufgaben · 20 min — Inhalt für jemanden weitergeben, dann Partnerfeedback.',
+        settings: { postTask: true, postTaskCount: 2, postTaskTypes: ['mediation', 'peerfeedback'], postTaskOralCount: 1, postTaskMinutes: 20, postTaskFocus: 'content', postTaskDifficulty: 60, postTaskScaffolding: 55, postTaskSocialMode: 'auto', postTaskCriteria: true } },
+      { key: 'transfer', label: 'Transfer & Recherche', hint: '2 Aufgaben · 30 min — auf die eigene Schule übertragen und kurz nachrecherchieren.',
+        settings: { postTask: true, postTaskCount: 2, postTaskTypes: ['transfer', 'research'], postTaskOralCount: 0, postTaskMinutes: 30, postTaskFocus: 'content', postTaskDifficulty: 70, postTaskScaffolding: 45, postTaskSocialMode: 'auto', postTaskCriteria: true } },
+    ],
+  };
+
+  /** Apply a ready-made sequence; everything the preset does not mention stays. */
+  function applyTaskPreset(state, phase, key) {
+    const list = TASK_PRESETS[phase === 'post' ? 'post' : 'pre'] || [];
+    const preset = list.find(p => p.key === key);
+    if (!preset) return state;
+    const next = Object.assign(clone(state), clone(preset.settings));
+    if (preset.settings[phaseOf(phase).prefix]) next.createWorksheet = true;
+    return normalizeState(next);
+  }
+
+  /** Which ready-made sequence the current settings match, or null for an own mix. */
+  function activeTaskPreset(state, phase) {
+    const ph = phaseOf(phase);
+    const list = TASK_PRESETS[ph.key] || [];
+    if (!state[ph.prefix]) return 'off';
+    for (const preset of list) {
+      if (preset.key === 'off') continue;
+      const same = Object.keys(preset.settings).every(k => JSON.stringify(state[k]) === JSON.stringify(preset.settings[k]));
+      if (same) return preset.key;
+    }
+    return null;
+  }
+
+  /** Named entry points for the pre-task (kept for the checks and the UI). */
   function preTaskCount(state) { return taskCount(state, 'pre'); }
   function preTaskBand(state) { return taskBand(state, 'pre'); }
   function preTaskTypes(state) { return taskTypes(state, 'pre'); }
@@ -1038,7 +1094,7 @@
     CEFR_BANDS, SKILLS, SKILL_KEYS, HIGHER_ORDER_TYPES, QUESTION_FORMATS, FORMAT_KEYS, TEXT_TYPES,
     EMOTION_TAGS, PRE_TASK_TYPES, PRE_TASK_TYPE_KEYS, POST_TASK_TYPES, POST_TASK_TYPE_KEYS, TASK_PHASES,
     SOCIAL_FORMS, SOCIAL_FORM_KEYS, PRE_TASK_MODES,
-    AUDIO_LENGTHS, QUESTION_COUNTS, PRESETS, TURN_PRESETS,
+    AUDIO_LENGTHS, QUESTION_COUNTS, PRESETS, TURN_PRESETS, TASK_PRESETS,
     META_SPECS, TEXT_TYPE_DESIGN, designIdFor,
     SCHEMA, SCHEMA_BY_KEY, SIMPLE_MODE_KEYS, EXAMPLE_CONFIG, WORDS_PER_A4,
     defaults, normalizeState, clone,
@@ -1048,6 +1104,7 @@
     QUESTION_LEVELS, QUESTION_LEVEL_KEYS, questionVariants, variantState, effectiveQuestionDifficulty, questionBands,
     skillSequence, availableFormats, assignFormats, targetVocabulary, validateState, buildPlan,
     taskCount, taskTypes, taskTypeMix, autoTaskSocial, effectiveTaskSocial, taskSequence, buildTaskPlan, taskBand, splitMinutes,
+    applyTaskPreset, activeTaskPreset,
     preTaskCount, preTaskTypes, preTaskTypeMix, autoPreTaskSocial, effectivePreTaskSocial, preTaskSequence, buildPreTaskPlan, preTaskBand,
     postTaskCount, postTaskTypes, effectivePostTaskSocial, postTaskSequence, buildPostTaskPlan, postTaskBand,
     applyExampleConfig,

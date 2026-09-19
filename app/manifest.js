@@ -985,6 +985,47 @@
   add({ id: 'S35.rule_solvable', section: 35, title: 'Kontrolle (Claude): Pre-Task ist ohne das Material lösbar', kind: 'rule', ruleId: 'pretask.solvable_before' });
   add({ id: 'S35.rule_social_fits', section: 35, title: 'Kontrolle (Claude): Sozialform und Arbeitsweise passen zur Aufgabe', kind: 'rule', ruleId: 'pretask.social_fits' });
   add({ id: 'S35.rule_confrontation', section: 35, title: 'Kontrolle (Claude): Konfrontationsaufgabe konfrontiert wirklich', kind: 'rule', ruleId: 'pretask.confrontation' });
+
+  add({ id: 'S35.presets', section: 35, title: 'Schnellwahl: typische Pre-Task-Folgen mit einem Klick (Aufgabentypen, Sozialformen, Zeit, Anforderungsniveau)', kind: 'ui', selector: '#pre-task-presets',
+    extra(env) {
+      const list = env.core.TASK_PRESETS['pre'] || [];
+      if (list.length < 4) return 'too few ready-made sequences';
+      for (const preset of list) {
+        if (!env.hasControl(`[data-task-preset="${preset.key}"]`)) return 'no chip for ' + preset.key;
+        if (!preset.label || !preset.hint) return preset.key + ' has no label or hint';
+        const s = env.core.applyTaskPreset(preState(env, {}), 'pre', preset.key);
+        if (preset.key === 'off') {
+          if (s.preTask || env.core.activeTaskPreset(s, 'pre') !== 'off') return 'the off chip does not switch the phase off';
+          continue;
+        }
+        const plan = env.core.buildPlan(s, env.ctx).preTask;
+        const errs = env.core.validateState(s, env.ctx).filter(e => e.key.toLowerCase().includes('pretask'));
+        if (!plan || !plan.count || !plan.minutes) return preset.key + ' does not produce a complete plan';
+        if (errs.length) return preset.key + ' produces an invalid state: ' + errs[0].message;
+        if (plan.tasks.some(t => t.mode === 'oral' && t.socialForm === 'single')) return preset.key + ' puts an oral task into individual work';
+        if (env.core.activeTaskPreset(s, 'pre') !== preset.key) return preset.key + ' is not recognised as the active sequence';
+      }
+      return ok(true);
+    } });
+  add({ id: 'S35.preview', section: 35, title: 'Vorschau im Creator: geplante Abfolge mit Sozialform, Arbeitsweise und Minuten, Probleme schon vor dem Generieren', kind: 'ui', selector: '#pre-task-preview',
+    extra(env) {
+      const src = env.uiSource || '';
+      const wired = !src || (/function renderTaskPreview/.test(src) && /core\.buildTaskPlan\(s, phase\)/.test(src)
+        && /for \(const phase of \['pre', 'post'\]\) renderTaskPreview\(phase\)/.test(src) && /activeTaskPreset/.test(src));
+      const s = env.core.applyTaskPreset(preState(env, {}), 'pre', (env.core.TASK_PRESETS['pre'].find(x => x.key !== 'off') || {}).key);
+      const plan = env.core.buildTaskPlan(s, 'pre');
+      return ok(wired && plan && plan.tasks.every(t => t.socialForm && t.mode && t.minutes), 'the section does not show what will be produced');
+    } });
+  add({ id: 'S35.simple_access', section: 35, title: 'Auch im Simple Mode bedienbar: Schnellwahl und Vorschau stehen ausserhalb der Advanced-Steuerelemente', kind: 'function',
+    check(env) {
+      const head = env.controls.taskExtras('pre');
+      const fromSection = env.controls.headExtras(7);
+      const form = env.controls.renderForm();
+      const section = form.slice(form.indexOf('id="sec-pretask"'), form.indexOf('id="sec-pretask"') + 4000);
+      const beforeControls = section.indexOf('task-head') < section.indexOf('class="ctl"');
+      return ok(head === fromSection && !/class="ctl"/.test(head) && /data-task-preset/.test(head) && /task-preview/.test(head) && beforeControls,
+        'the quick choice is inside the advanced controls or does not open the section');
+    } });
   add({ id: 'S35.repair', section: 35, title: 'Beanstandete Pre-Task wird gezielt neu erstellt, die Fragen bleiben unverändert', kind: 'function',
     check(env) {
       const m = env.fixture.material({ preTask: true }, 'listening');
@@ -1162,6 +1203,47 @@
       const on = env.quality.applicableRules(postState(env, { postTaskTypes: ['mediation'] }), withMed, ws).some(r => r.id === 'posttask.mediation');
       const off = env.quality.applicableRules(postState(env, { postTaskTypes: ['discussion'] }), without, ws).some(r => r.id === 'posttask.mediation');
       return ok(on && !off, 'the mediation check does not follow the chosen types');
+    } });
+
+  add({ id: 'S36.presets', section: 36, title: 'Schnellwahl: typische Post-Task-Folgen mit einem Klick (Aufgabentypen, Sozialformen, Zeit, Anforderungsniveau)', kind: 'ui', selector: '#post-task-presets',
+    extra(env) {
+      const list = env.core.TASK_PRESETS['post'] || [];
+      if (list.length < 4) return 'too few ready-made sequences';
+      for (const preset of list) {
+        if (!env.hasControl(`[data-task-preset="${preset.key}"]`)) return 'no chip for ' + preset.key;
+        if (!preset.label || !preset.hint) return preset.key + ' has no label or hint';
+        const s = env.core.applyTaskPreset(postState(env, {}), 'post', preset.key);
+        if (preset.key === 'off') {
+          if (s.postTask || env.core.activeTaskPreset(s, 'post') !== 'off') return 'the off chip does not switch the phase off';
+          continue;
+        }
+        const plan = env.core.buildPlan(s, env.ctx).postTask;
+        const errs = env.core.validateState(s, env.ctx).filter(e => e.key.toLowerCase().includes('posttask'));
+        if (!plan || !plan.count || !plan.minutes) return preset.key + ' does not produce a complete plan';
+        if (errs.length) return preset.key + ' produces an invalid state: ' + errs[0].message;
+        if (plan.tasks.some(t => t.mode === 'oral' && t.socialForm === 'single')) return preset.key + ' puts an oral task into individual work';
+        if (env.core.activeTaskPreset(s, 'post') !== preset.key) return preset.key + ' is not recognised as the active sequence';
+      }
+      return ok(true);
+    } });
+  add({ id: 'S36.preview', section: 36, title: 'Vorschau im Creator: geplante Abfolge mit Sozialform, Arbeitsweise und Minuten, Probleme schon vor dem Generieren', kind: 'ui', selector: '#post-task-preview',
+    extra(env) {
+      const src = env.uiSource || '';
+      const wired = !src || (/function renderTaskPreview/.test(src) && /core\.buildTaskPlan\(s, phase\)/.test(src)
+        && /for \(const phase of \['pre', 'post'\]\) renderTaskPreview\(phase\)/.test(src) && /activeTaskPreset/.test(src));
+      const s = env.core.applyTaskPreset(postState(env, {}), 'post', (env.core.TASK_PRESETS['post'].find(x => x.key !== 'off') || {}).key);
+      const plan = env.core.buildTaskPlan(s, 'post');
+      return ok(wired && plan && plan.tasks.every(t => t.socialForm && t.mode && t.minutes), 'the section does not show what will be produced');
+    } });
+  add({ id: 'S36.simple_access', section: 36, title: 'Auch im Simple Mode bedienbar: Schnellwahl und Vorschau stehen ausserhalb der Advanced-Steuerelemente', kind: 'function',
+    check(env) {
+      const head = env.controls.taskExtras('post');
+      const fromSection = env.controls.headExtras(8);
+      const form = env.controls.renderForm();
+      const section = form.slice(form.indexOf('id="sec-posttask"'), form.indexOf('id="sec-posttask"') + 4000);
+      const beforeControls = section.indexOf('task-head') < section.indexOf('class="ctl"');
+      return ok(head === fromSection && !/class="ctl"/.test(head) && /data-task-preset/.test(head) && /task-preview/.test(head) && beforeControls,
+        'the quick choice is inside the advanced controls or does not open the section');
     } });
   add({ id: 'S36.repair', section: 36, title: 'Beanstandete Post-Task wird gezielt neu erstellt, Fragen und Pre-Task bleiben unverändert', kind: 'function',
     check(env) {

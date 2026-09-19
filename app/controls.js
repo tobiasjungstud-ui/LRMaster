@@ -178,6 +178,32 @@
     { title: 'Qualität', keys: ['autoFix', 'autoFixRounds'] },
   ];
 
+  /*
+   * Head of a task section: the ready-made sequences a teacher picks from,
+   * and the live preview of what will be produced. Both stay visible in
+   * Simple Mode, so the phase is usable without opening every single control.
+   */
+  function taskExtras(phase) {
+    const list = core.TASK_PRESETS[phase] || [];
+    const label = phase === 'post' ? 'Post-Task' : 'Pre-Task';
+    const when = phase === 'post' ? 'nach dem Hören/Lesen' : 'vor dem Hören/Lesen';
+    return `<div class="field field-actions task-head" data-field="${phase}TaskPresets">`
+      + `<div class="field-label">${label} — Schnellwahl</div>`
+      + `<p class="help">Typische Aufgabenfolgen ${when}. Ein Klick setzt Aufgabentypen, Sozialformen, Zeit und Anforderungsniveau; im Advanced Mode lässt sich danach jede Einstellung einzeln nachjustieren.</p>`
+      + `<div class="chips" id="${phase}-task-presets">`
+      + list.map(p => `<button type="button" class="chip-btn" data-task-preset="${p.key}" data-task-phase="${phase}" title="${esc(p.hint)}">${esc(p.label)}</button>`).join('')
+      + '</div>'
+      + `<div class="task-preview" id="${phase}-task-preview"></div>`
+      + '</div>';
+  }
+
+  /** Section content that comes before the single controls. */
+  function headExtras(sectionN) {
+    if (sectionN === 7) return taskExtras('pre');
+    if (sectionN === 8) return taskExtras('post');
+    return '';
+  }
+
   function extras(sectionN) {
     switch (sectionN) {
       case 2: return '<div class="field field-actions" data-field="topicSuggest"><button type="button" class="btn secondary" id="btn-suggest-topics">Generate topic for me</button><div id="topic-suggestions" class="suggestions" hidden></div></div>';
@@ -193,6 +219,7 @@
     for (const sec of SECTIONS) {
       const keys = ORDER[sec.n] || [];
       html += `<section class="step" id="sec-${sec.id}" data-step="${sec.n}"><h2 class="step-title"><button type="button" class="step-toggle" aria-expanded="true" data-toggle-step="${sec.n}"><span class="step-no">${sec.n}</span>${esc(sec.title)}</button></h2><div class="step-body">`;
+      html += headExtras(sec.n);
       for (const k of keys) {
         const def = core.SCHEMA_BY_KEY[k];
         if (!def) continue;
@@ -204,5 +231,5 @@
     return html;
   }
 
-  return { control, renderForm, SECTIONS, ORDER, ADVANCED_GROUPS, optionLabel, OPTION_LABELS, RANGE_ENDS, HELP };
+  return { control, renderForm, SECTIONS, ORDER, ADVANCED_GROUPS, optionLabel, OPTION_LABELS, RANGE_ENDS, HELP, taskExtras, headExtras };
 });
