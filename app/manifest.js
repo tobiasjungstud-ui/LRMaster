@@ -1380,7 +1380,9 @@
     extra(env) {
       const src = env.uiSource || '';
       const wired = !src || (/function renderSetupBar/.test(src) && /setup-card/.test(src) && /describeSetup/.test(src) && /applySetupPreset/.test(src));
-      return ok(wired && env.hasControl('#setup-presets') && env.hasControl('#setup-summary'), 'the template gallery is missing or not wired');
+      // Lehrmittel/Unit first, the gallery directly below it
+      const placed = !src || /form\.insertBefore\(bar, afterSource\)/.test(src);
+      return ok(wired && placed && env.hasControl('#setup-presets') && env.hasControl('#setup-summary'), 'the template gallery is missing, not wired or not placed under Source & Unit');
     } });
   add({ id: 'S38.presets', section: 38, title: 'Je sechs Vorlagen für Listening und Reading, die alle Bereiche individuell setzen (Thema, Sprache, Aufbau, Vokabular, Fragen, Aufgabenphasen)', kind: 'function',
     check(env) {

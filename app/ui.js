@@ -286,6 +286,9 @@
 
   function buildForm() {
     $('#creator-form').innerHTML = controls.renderForm();
+    // Lehrmittel and unit come first — the template gallery sits right below them.
+    const form = $('#creator-form'), bar = $('#setup-bar'), afterSource = $('#sec-content');
+    if (form && bar && afterSource) form.insertBefore(bar, afterSource);
     // Generic bindings
     $$('#creator-form [data-setting]').forEach(el => {
       const key = el.dataset.setting;
