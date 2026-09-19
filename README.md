@@ -130,6 +130,19 @@ Für Reading-Texte standardmässig an (Schalter *Text im echten Layout zeigen*).
 
 Jede Papierseite liegt leicht gedreht auf einer Unterlage, mit Papierkorn, Schlagschatten und Vignette – wie mit dem Handy abfotografiert. Jeder Bildschirmtyp hat eigene Typografie, Akzentfarbe und Interface. Jedes Format lässt sich zusätzlich auf Papier zwingen (dann als ausgedruckte Seite).
 
+**Jedes Medium ist im Detail gebaut wie das echte** – nicht als neutraler Kasten mit Text darin:
+
+| Medium | Woran man es erkennt |
+|---|---|
+| Blog / Nachrichtenseite / Kritik | Browserfenster mit Tableiste, Favicon, Zurück-Pfeilen, Schloss und Adresse · Logomarke, Zeile unter dem Namen, Navigation mit aktiver Rubrik · Rubrikenpille, Schlagzeile, Vorspann, Autorenzeile mit Avatar und Merken/Teilen · Aufmacherbild mit Legende und Bildnachweis · Initial im ersten Absatz, Zitatblock, #Tags · Aktionsleiste mit Herz-, Kommentar-, Teilen- und Merken-Symbol samt Zahlen · Spalte „Meistgelesen“ mit Vorschaubildern, Anzeigenplatz, dunkler Fuss mit Links |
+| Mailprogramm | Fensterleiste mit Suchfeld · runder Verfassen-Knopf, Ordner mit Symbolen · Werkzeugleiste (zurück, archivieren, löschen, antworten, weiterleiten) · Betreff mit Stern und Etiketten · Absender mit Avatar, Anhangskarte, zusammengeklapptes Zitat, Antwort-Knöpfe |
+| Forum-Thread | Board-Kopf mit Logo und Suche · Sortier-Reiter · Stimmpfeile mit Zahl, farbige Avatare, Abzeichen (OP, Mod) · eingerückte Antworten mit Linie · Antwortzeile, Info-Kasten zum Board |
+| Messenger | Statusleiste mit Uhr, Empfang und Akku · grüner Kopf mit Zurück-Pfeil, Avatar, Status, Video-/Telefon-/Menü-Symbol · gemustertes Hintergrundbild · Datumspille · Sprechblasen mit Spitze, Uhrzeit und blauen Doppelhäkchen · Eingabeleiste mit Klammer, Kamera und Mikrofon |
+| Zeitung / Magazin | Kolumnentitel, Stehsatz zwischen Linien, farbige Schlagzeile, Vorspann · Pressefoto mit Legende und Nachweis · **Blocksatz** in zwei bis drei Spalten mit Spaltenlinien und nummerierten Absätzen · Zitatkasten oder Hausanzeige im Spaltenfuss |
+| Buchseite | schmaler, **blockgesetzter** Satzspiegel, Kapitelzeile mit Ornament, Initial, eingezogene Absätze, Bundschatten am Innenrand, Seitenzahl |
+| Heft- / Tagebuchseite | Lineatur, auf der die Schrift wirklich sitzt, roter Rand, Lochung, Handschrift mit leichter Unruhe |
+| Blatt / Bericht | Briefkopf mit Logomarke und Akzentlinie, Datumszeile, Fusszeile mit Seitenpille, Heftklammer in der Ecke |
+
 **Das Bild hängt an keinem Claude-Aufruf.** Gezeichnet wird es immer aus dem Material selbst: Publikation, Autorenzeile, Datum, Lesezeit, Sprecher und Zeitstempel stammen aus den bereits generierten Dokument-Angaben (`mock.fallbackChrome`). Claude **reichert** diese Oberfläche nur an (Adresse, Navigation, Buttons mit Zahlen, „Meistgelesen“, Bildlegende, Ausgabenzeile); fällt der Aufruf aus, entsteht das Bild trotzdem – nur schlichter, und der Qualitätsbericht vermerkt, was fehlt.
 
 Das Bild entsteht nicht aus einer Bildgenerierung, sondern wird aus dem Text und Claudes Layoutdaten in der App komponiert (`mock.js` baut ein Zeichenmodell, das auf ein Canvas gezeichnet und als PNG ausgegeben wird). Genau deshalb lässt sich prüfen, **dass Bild und Text übereinstimmen**:
@@ -207,7 +220,7 @@ Das Arbeitsblatt ist ein echtes Arbeitsblatt: Name-/Klasse-/Datum-Zeile, Aufgabe
 
 ## Kontrollmechanismen
 
-- **Konzept-Manifest** (`app/manifest.js`): 304 Anforderungen aus dem Konzeptdokument und den Auftragserweiterungen (§33 Word-Export, §34 Schwierigkeitsmesser & Niveau der Fragen, §35 Pre-Task, §36 Post-Task, §37 Authentisches Layout, §38 Vorlagen), jede mit Prüfart:
+- **Konzept-Manifest** (`app/manifest.js`): 306 Anforderungen aus dem Konzeptdokument und den Auftragserweiterungen (§33 Word-Export, §34 Schwierigkeitsmesser & Niveau der Fragen, §35 Pre-Task, §36 Post-Task, §37 Authentisches Layout, §38 Vorlagen), jede mit Prüfart:
   - `setting` – Steuerelement existiert **und** die Änderung des Werts verändert nachweislich mindestens einen Prompt (Prompt-Sensitivitätstest; tote Einstellungen fallen durch).
   - `function` – Verhalten wird mit echten Eingaben ausgeführt (z. B. Preset *Interview* ⇒ Anteile 25/75, Skill-Mix verschiebt sich mit der Schwierigkeit, Beispielkonfiguration §32 reproduziert alle Werte).
   - `rule` – Qualitätsregel existiert als Messfunktion oder als Review-Kriterium und wird im Review-Prompt an Claude übergeben.

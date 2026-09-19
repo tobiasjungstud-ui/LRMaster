@@ -156,6 +156,36 @@ test('a picture exists for every text type, on screen and on paper, without Clau
   assert.equal(merged.siteName, 'from meta');
   assert.equal(merged.actions.length, 1);
 });
+test('every medium is built like the real thing, on screen and on paper', () => {
+  const mock = require(path.join(APP, 'mock.js'));
+  const model = (type, medium) => quality.layoutModel(fixture.material({ textType: type, authenticLayout: true, layoutMedium: medium || 'screen' }, 'reading'));
+  const icons = (m) => new Set(m.blocks.filter(b => b.type === 'icon').map(b => b.name));
+  const blog = model('Blog Post');
+  for (const n of ['lock', 'plus', 'search', 'heart', 'comment', 'share', 'bookmark']) assert.ok(icons(blog).has(n), 'blog icon ' + n);
+  assert.ok(blog.blocks.some(b => b.type === 'photo'), 'the blog post has no picture');
+  for (const n of ['inbox', 'trash', 'reply', 'star']) assert.ok(icons(model('Email')).has(n), 'mail icon ' + n);
+  const forum = model('Forum Discussion');
+  assert.ok(icons(forum).has('up') && icons(forum).has('down'), 'the forum has no vote arrows');
+  const chat = model('Dialogue');
+  assert.ok(chat.blocks.some(b => b.type === 'wallpaper'), 'the messenger has no wallpaper');
+  assert.ok(chat.blocks.some(b => b.type === 'poly'), 'the bubbles have no tails');
+  for (const n of ['phone', 'video', 'mic', 'camera', 'clip', 'ticks']) assert.ok(icons(chat).has(n), 'chat icon ' + n);
+  // printed media: justified columns, a binding shadow, ruling and holes, a staple
+  const press = model('News Article', 'paper'), book = model('Story', 'paper'), note = model('Diary Entry', 'paper');
+  const words = (m) => m.blocks.filter(b => b.type === 'text' && b.role === 'body' && !/\s/.test(b.text)).length;
+  assert.ok(words(press) >= 20 && words(book) >= 20, 'the columns are not justified');
+  assert.ok(book.finish.gutter, 'the book page has no binding shadow');
+  assert.ok(note.blocks.filter(b => b.type === 'line').length >= 10, 'the notebook has no ruling');
+  assert.ok(note.blocks.filter(b => b.type === 'circle').length >= 3, 'the notebook has no punched holes');
+  assert.ok(model('Report', 'paper').blocks.some(b => b.type === 'line' && b.width === 3), 'the printed sheet has no staple');
+  // the drop cap is part of the text, so the initial is glued to the line it opens
+  const cap = book.blocks.filter(b => b.role === 'body').find(b => b.glue);
+  assert.ok(cap && cap.text.length === 1, 'the book page has no initial');
+  // every icon the models ask for really exists, and nothing is drawn without a size
+  for (const type of core.TEXT_TYPES) for (const medium of ['screen', 'paper']) {
+    assert.deepEqual(mock.validate(model(type, medium)), [], type + '/' + medium);
+  }
+});
 test('the screenshot shows exactly the generated text, for every text type', () => {
   const mock = require(path.join(APP, 'mock.js'));
   for (const type of core.TEXT_TYPES) {

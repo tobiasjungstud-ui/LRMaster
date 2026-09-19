@@ -27,19 +27,19 @@
     blog: { kind: 'page', label: 'Blog post', accent: '#7C3AED', title: DISPLAY, body: SERIF, ui: SANS, sidebar: true, actions: true, kicker: true,
       print: { kind: 'sheet', label: 'Ausgedruckte Seite', paper: '#FFFFFF', auto: false } },
     article: { kind: 'page', label: 'Magazine article', accent: '#B45309', title: SERIF, body: SERIF, ui: SANS, sidebar: false, actions: true, kicker: true,
-      print: { kind: 'press', label: 'Magazine page', columns: 2, paper: '#FBF8F1', dropCap: true, photo: true } },
+      print: { kind: 'press', label: 'Magazinseite', columns: 2, paper: '#FBF8F1', dropCap: true, photo: true, pressAccent: '#7C2D12', pressWarm: '#B45309' } },
     news: { kind: 'page', label: 'News site', accent: '#B91C1C', title: DISPLAY, body: SERIF, ui: SANS, sidebar: true, actions: true, kicker: true, breaking: true,
-      print: { kind: 'press', label: 'Zeitungsseite', columns: 3, paper: '#F7F4EC', masthead: true, photo: true, rules: true } },
+      print: { kind: 'press', label: 'Zeitungsseite', columns: 3, paper: '#F7F4EC', masthead: true, photo: true, rules: true, pressAccent: '#1B4E8F', pressWarm: '#C2410C' } },
     opinion: { kind: 'page', label: 'Opinion piece', accent: '#0F766E', title: SERIF, body: SERIF, ui: SANS, sidebar: false, actions: true, kicker: true,
-      print: { kind: 'press', label: 'Kommentarseite', columns: 2, paper: '#F7F4EC', rules: true } },
+      print: { kind: 'press', label: 'Kommentarseite', columns: 2, paper: '#F7F4EC', rules: true, photo: false, pressAccent: '#0F766E', pressWarm: '#B45309' } },
     informational: { kind: 'page', label: 'Information page', accent: '#1D4ED8', title: SANS, body: SANS, ui: SANS, sidebar: true, actions: false,
       print: { kind: 'sheet', label: 'Infoblatt', paper: '#FFFDF8' } },
     report: { kind: 'page', label: 'Report', accent: '#334155', title: SANS, body: SANS, ui: SANS, sidebar: false, actions: false,
       print: { kind: 'sheet', label: 'Ausgedruckter Bericht', paper: '#FFFFFF', header: true } },
     review: { kind: 'page', label: 'Review', accent: '#C2410C', title: DISPLAY, body: SERIF, ui: SANS, sidebar: false, actions: true, stars: true, kicker: true,
-      print: { kind: 'press', label: 'Kritik im Blatt', columns: 2, paper: '#FBF8F1', stars: true } },
+      print: { kind: 'press', label: 'Kritik im Blatt', columns: 2, paper: '#FBF8F1', stars: true, pressAccent: '#9A3412', pressWarm: '#C2410C' } },
     interview: { kind: 'page', label: 'Interview', accent: '#7E22CE', title: SERIF, body: SERIF, ui: SANS, sidebar: false, actions: true, kicker: true, qa: true,
-      print: { kind: 'press', label: 'Interview im Blatt', columns: 2, paper: '#FBF8F1', photo: true } },
+      print: { kind: 'press', label: 'Interview im Blatt', columns: 2, paper: '#FBF8F1', photo: true, pressAccent: '#5B21B6', pressWarm: '#B45309' } },
     story: { kind: 'page', label: 'Story', accent: '#475569', title: SERIF, body: SERIF, ui: SANS, sidebar: false, actions: false, reader: true,
       print: { kind: 'book', label: 'Buchseite', paper: '#FAF6EC' } },
     diary: { kind: 'page', label: 'Diary', accent: '#9D174D', title: SERIF, body: SERIF, ui: SANS, sidebar: false, actions: false,
@@ -67,6 +67,11 @@
         ['sidebarTitle', 'heading of the box beside the text, e.g. "Most read"'],
         ['sidebarItems', 'an array of 3–4 short headlines in that box — invented, about the same world, never sentences from the text'],
         ['footerNote', 'one short line at the bottom of the page, e.g. a copyright line'],
+        ['tagline', 'the motto under the name of the site, three or four words'],
+        ['categoryLabel', 'the section label in the coloured pill above the headline, one word'],
+        ['photoCaption', 'the caption under the picture at the top — describe what the photo shows, one sentence, nothing from the text'],
+        ['captionCredit', 'the small credit beside the caption, e.g. a photographer or agency name'],
+        ['footerLinks', 'an array of 3–5 very short link labels in the footer'],
       ],
       required: ['url', 'siteName', 'navItems', 'actions'],
     },
@@ -77,6 +82,9 @@
         ['authorInitials', 'one or two letters for the round avatar of the sender'],
         ['metaLine', 'the small line under the sender, e.g. "to me · 14 March, 09:12"'],
         ['actions', 'an array of 2–4 buttons as {"label": "…", "count": ""}'],
+        ['labelChips', 'an array of 1–3 very short labels this mail is filed under'],
+        ['attachmentName', 'the file name of the attachment if the mail mentions one, otherwise an empty string'],
+        ['attachmentMeta', 'the small line under it, e.g. "PDF · 240 KB"'],
       ],
       required: ['appName', 'mailboxItems', 'actions'],
     },
@@ -88,12 +96,17 @@
         ['actions', 'an array of 2–4 buttons as {"label": "…", "count": "…"}'],
         ['postMeta', 'an array with one short line per paragraph, e.g. "12 upvotes · 3 replies"'],
         ['footerNote', 'one short line at the bottom'],
+        ['boardInfo', 'two short lines about the board for the box on the right, separated by " · "'],
+        ['boardStats', 'an array of 2–3 very short figures for that box, e.g. "14.2k members"'],
+        ['voteCounts', 'an array with one vote number per paragraph, e.g. "128"'],
+        ['userBadges', 'an array with one very short badge per paragraph, e.g. "OP" — an empty string where there is none'],
       ],
       required: ['url', 'siteName', 'postMeta'],
     },
     print: {
       fields: [
         ['publication', 'name of the paper, magazine, book or notebook as it is printed at the top'],
+        ['standingHead', 'the standing head above the headline, as papers print it, e.g. "The Guardian editorial" or "Culture · Film"'],
         ['publicationLine', 'the small line beside it: place, weekday and date, edition or price'],
         ['sectionLabel', 'the section this page belongs to, e.g. "Culture" or "Chapter 4"'],
         ['photoCaption', 'the caption under the picture on the page — describe what the photo shows, one sentence, nothing from the text'],
@@ -111,6 +124,7 @@
         ['authorInitials', 'one or two letters for the contact avatar'],
         ['bubbleTimes', 'an array with one short time per message, e.g. "14:28"'],
         ['statusLine', 'the small line under the contact name, e.g. "online"'],
+        ['dateLabel', 'the grey date pill above the first message, e.g. "Today" or "Friday"'],
       ],
       required: ['appName', 'contactName', 'bubbleTimes'],
     },
@@ -156,7 +170,10 @@
       metaLine: [meta.dateline, meta.readingTime].filter(Boolean).join(' · '),
       actions: [],
       sidebarTitle: '', sidebarItems: [], footerNote: '',
-      appName: site, mailboxItems: [], postMeta: (meta.authors || []).map(() => ''),
+      tagline: '', categoryLabel: meta.section || '', footerLinks: [],
+      appName: site, mailboxItems: [], labelChips: [], attachmentName: '', attachmentMeta: '', postMeta: (meta.authors || []).map(() => ''),
+      voteCounts: (meta.authors || []).map(() => ''), userBadges: (meta.authors || []).map(() => ''),
+      boardInfo: '', boardStats: [], dateLabel: '',
       deviceTime: '', contactName: meta.byline || '', bubbleTimes: (material.content.paragraphs || []).map(() => ''), statusLine: '',
       publication: site, publicationLine: [meta.dateline, meta.location].filter(Boolean).join(' · '),
       sectionLabel: meta.section || '', photoCaption: '', captionCredit: '', pageLabel: meta.dateline || '',
@@ -188,6 +205,33 @@
     return lines.length ? lines : [''];
   }
 
+  /** Like `wrap`, but the first line is shortened by an indent. */
+  function wrapIndent(text, font, width, measure, indent) {
+    const words = String(text || '').split(/\s+/).filter(Boolean);
+    const lines = [];
+    let line = '', max = width - (indent || 0);
+    for (const w of words) {
+      const next = line ? line + ' ' + w : w;
+      if (line && measure(next, font) > max) { lines.push(line); line = w; max = width; } else line = next;
+    }
+    if (line) lines.push(line);
+    return lines.length ? lines : [''];
+  }
+
+  /**
+   * One line set to the full measure, the way print sets it: the words keep
+   * their order, only the spaces between them grow.
+   */
+  function justifyLine(b, x, y, text, font, width, measure, o) {
+    const words = String(text || '').split(/\s+/).filter(Boolean);
+    if (words.length < 2) { b.text(x, y, text, font, o); return; }
+    const total = words.reduce((sum, w) => sum + measure(w, font), 0);
+    const gap = (width - total) / (words.length - 1);
+    if (!(gap > 0) || gap > font.size * 1.1) { b.text(x, y, text, font, o); return; }
+    let cx = x;
+    for (const w of words) { b.text(cx, y, w, font, o); cx += measure(w, font) + gap; }
+  }
+
   /* ------------------------------------------------------------------ */
   /* Model builder                                                        */
   /* ------------------------------------------------------------------ */
@@ -211,6 +255,12 @@
         wrap(str, font, maxWidth, measure).forEach((l, i) => api.text(x, y + i * lh, l, font, o));
         return y + wrap(str, font, maxWidth, measure).length * lh;
       },
+      icon(name, x, y, size, o) { blocks.push(Object.assign({ type: 'icon', name, x, y, size }, o || {})); return api; },
+      wall(x, y, w, h, o) { blocks.push(Object.assign({ type: 'wallpaper', x, y, w, h }, o || {})); return api; },
+      grad(x, y, w, h, stops, o) { blocks.push(Object.assign({ type: 'gradient', x, y, w, h, stops }, o || {})); return api; },
+      photo(x, y, w, h, o) { blocks.push(Object.assign({ type: 'photo', x, y, w, h, seed: 7 }, o || {})); return api; },
+      /** A filled polygon, e.g. the tail of a chat bubble or a vote arrow. */
+      poly(points, o) { blocks.push(Object.assign({ type: 'poly', points, fill: '#FFFFFF' }, o || {})); return api; },
       pill(x, y, w, h, str, font, o) {
         api.rect(x, y, w, h, { fill: (o && o.fill) || '#F1F5F9', radius: h / 2, stroke: (o && o.stroke) || null });
         api.text(x + 12, y + h / 2 + font.size * 0.36, str, font, { color: (o && o.color) || '#475569' });
@@ -222,16 +272,44 @@
 
   const INK = '#0F172A', MUTED = '#64748B', LINE = '#E2E8F0', SOFT = '#F8FAFC';
 
-  /** Browser window frame; returns the y where the page content starts. */
-  function browserFrame(b, W, url, accent) {
-    b.rect(0, 0, W, 2000, { fill: '#E2E8F0' });
-    b.rect(0, 0, W, 52, { fill: '#F1F5F9' });
-    ['#F87171', '#FBBF24', '#34D399'].forEach((c, i) => b.circle(26 + i * 20, 26, 6, { fill: c }));
-    b.rect(96, 13, W - 140, 26, { fill: '#FFFFFF', radius: 13, stroke: '#CBD5E1' });
-    b.circle(112, 26, 5, { fill: accent });
-    b.text(126, 31, url, { family: MONO, size: 12 }, { color: MUTED });
-    b.line(0, 52, W, 52, { color: '#CBD5E1' });
-    return 52;
+  /* ------------------------------------------------------------------ */
+  /* Interface furniture                                                  */
+  /* ------------------------------------------------------------------ */
+
+  /** Shorten where an interface would truncate itself, e.g. in a browser tab. */
+  function clipText(s, n) { s = String(s == null ? '' : s); return s.length > n ? s.slice(0, n - 1) + '…' : s; }
+  function upper(s) { return String(s == null ? '' : s).toUpperCase(); }
+  function initial(s) { return String(s || '').trim().charAt(0).toUpperCase(); }
+
+  /**
+   * A browser window: tab strip with a favicon, toolbar with arrows, a padlock
+   * and the address, and the page area underneath. Returns the y where the
+   * page itself starts.
+   */
+  function browserFrame(b, W, url, accent, opts) {
+    const o = opts || {};
+    b.rect(0, 0, W, 4000, { fill: '#FFFFFF' });
+    b.rect(0, 0, W, 42, { fill: '#DCE2E9' });
+    ['#F87171', '#FBBF24', '#34D399'].forEach((c, i) => b.circle(24 + i * 18, 21, 5.5, { fill: c }));
+    const tabX = 84, tabW = 250;
+    b.rect(tabX, 7, tabW, 30, { fill: '#F7F9FB', radius: 9 });
+    avatar(b, tabX + 20, 22, 7, initial(o.tabTitle), accent);
+    b.text(tabX + 36, 26, clipText(o.tabTitle, 30), { family: SANS, size: 11.5 }, { color: '#334155' });
+    b.text(tabX + tabW - 18, 26, '×', { family: SANS, size: 14 }, { color: '#94A3B8' });
+    b.rect(tabX + tabW + 8, 9, 150, 28, { fill: '#E3E8EE', radius: 9 });
+    b.circle(tabX + tabW + 28, 23, 6, { fill: '#B8C2CD' });
+    b.rect(tabX + tabW + 42, 19, 82, 8, { fill: '#C8D1DB', radius: 4 });
+    b.icon('plus', tabX + tabW + 174, 14, 17, { color: '#64748B', weight: 1.7 });
+    b.rect(0, 42, W, 46, { fill: '#F1F4F8' });
+    b.icon('back', 20, 55, 20, { color: '#475569', weight: 2 });
+    b.icon('chevron', 50, 55, 20, { color: '#A3AFBC', weight: 2 });
+    b.rect(88, 52, W - 196, 26, { fill: '#FFFFFF', radius: 13, stroke: '#CBD5E1' });
+    b.icon('lock', 96, 58, 15, { color: '#15803D', weight: 1.6 });
+    b.text(118, 69, url, { family: MONO, size: 12 }, { color: '#475569' });
+    b.icon('bookmark', W - 126, 57, 16, { color: '#A3AFBC', weight: 1.7 });
+    b.icon('dots', W - 42, 55, 19, { color: '#475569', weight: 1.7 });
+    b.line(0, 88, W, 88, { color: '#C7D0DA' });
+    return 88;
   }
 
   function avatar(b, x, y, r, initials, accent) {
@@ -250,212 +328,498 @@
     return y + 30;
   }
 
-  /* --- page: blog, article, news, review, story … --------------------- */
+  /** The button bar every social page has: an icon, a word, a count. */
+  const ACTION_ICONS = ['heart', 'comment', 'share', 'bookmark'];
+  function iconActions(b, x, y, actions, font, accent) {
+    let cx = x;
+    actions.slice(0, 4).forEach((a, i) => {
+      const label = (a.label || '') + (a.count ? '  ' + a.count : '');
+      const w = approxMeasure(label, font) + 52;
+      b.rect(cx, y, w, 34, { fill: '#FFFFFF', radius: 17, stroke: '#CBD5E1' });
+      b.icon(ACTION_ICONS[i % 4], cx + 13, y + 8, 18, { color: i === 0 ? accent : '#64748B', weight: 1.7 });
+      b.text(cx + 38, y + 22, label, font, { color: '#475569' });
+      cx += w + 10;
+    });
+    return y + 34;
+  }
+
+  /**
+   * The opening paragraph with an initial, as printed pages and magazine sites
+   * set it. The capital is part of the text, so it is marked as body and glued
+   * to the line that continues it.
+   */
+  function dropCapPara(b, x, y, str, font, colW, titleFamily, measure, capColor, opts) {
+    const o = opts || {};
+    const text = String(str || '');
+    const cap = text.charAt(0);
+    const rest = text.slice(1).replace(/^\s+/, '');
+    const lh = o.lineHeight || Math.round(font.size * 1.6);
+    const capFont = { family: titleFamily, size: Math.round(font.size * 2.7), weight: 700 };
+    const capW = measure(cap, capFont) + 9;
+    const words = rest.split(/\s+/).filter(Boolean);
+    const all = wrap(rest, font, colW - capW, measure);
+    const beside = all.slice(0, 2);
+    const used = beside.join(' ').split(' ').filter(Boolean).length;
+    b.text(x, y + font.size + lh, cap, capFont, { color: capColor, role: 'body', glue: true });
+    const put = (lx, ly, line, width, last) => {
+      if (o.justify && !last) justifyLine(b, lx, ly, line, font, width, measure, { color: INK, role: 'body' });
+      else b.text(lx, ly, line, font, { color: INK, role: 'body' });
+    };
+    beside.forEach((l, i) => put(x + capW, y + font.size + i * lh, l, colW - capW, false));
+    let yy = y + font.size + beside.length * lh;
+    const remainder = words.slice(used).join(' ');
+    if (remainder) {
+      const rl = wrap(remainder, font, colW, measure);
+      rl.forEach((l, i) => put(x, yy + i * lh, l, colW, i === rl.length - 1));
+      yy += rl.length * lh;
+    }
+    return yy - font.size + 6;
+  }
+
+  /* --- page: blog, news site, magazine, review, story … ---------------- */
   function pageModel(m, chrome, d, measure) {
-    const W = 1000;
+    const W = 1040;
     const b = builder(W, measure);
     const meta = m.content.meta || {};
     const hasSide = d.sidebar && (chrome.sidebarItems || []).length;
     const PAD = 56;
-    const colW = hasSide ? 600 : W - 2 * PAD;
-    let y = browserFrame(b, W, chrome.url, d.accent);
+    const colW = hasSide ? 604 : Math.min(720, W - 2 * PAD);
+    const site = chrome.siteName || meta.publication || meta.blogName || '';
+    const ui = (size, weight) => ({ family: d.ui, size, weight: weight || 400 });
+    let y = browserFrame(b, W, chrome.url, d.accent, { tabTitle: site || m.content.title });
 
-    // site header
-    b.rect(0, y, W, 64, { fill: '#FFFFFF' });
-    b.text(PAD, y + 40, chrome.siteName, { family: d.title, size: 22, weight: 700 }, { color: d.accent });
-    let nx = PAD + approxMeasure(chrome.siteName, { family: d.title, size: 22, weight: 700 }) + 40;
-    for (const item of (chrome.navItems || []).slice(0, 5)) {
-      b.text(nx, y + 40, item, { family: d.ui, size: 13 }, { color: MUTED });
-      nx += approxMeasure(item, { family: d.ui, size: 13 }) + 26;
+    // a news site wears a dark utility strip above its masthead
+    if (d.breaking) {
+      b.rect(0, y, W, 30, { fill: '#111827' });
+      b.text(PAD, y + 20, upper(chrome.metaLine || meta.dateline || ''), ui(10.5, 600), { color: '#CBD5E1', letterSpacing: 0.8 });
+      b.icon('search', W - PAD - 54, y + 7, 16, { color: '#94A3B8', weight: 1.7 });
+      b.icon('menu', W - PAD - 24, y + 7, 16, { color: '#94A3B8', weight: 1.7 });
+      y += 30;
     }
-    y += 64;
+
+    // masthead: a logo mark, the name of the site, the search glass
+    b.rect(0, y, W, 78, { fill: '#FFFFFF' });
+    b.rect(PAD, y + 20, 38, 38, { fill: d.accent, radius: d.title === SERIF ? 4 : 11 });
+    b.text(PAD + 19, y + 46, initial(site), { family: d.title, size: 21, weight: 800 }, { color: '#FFFFFF', align: 'center' });
+    b.text(PAD + 52, y + 47, site, { family: d.title, size: 27, weight: 800 }, { color: INK, letterSpacing: d.title === SERIF ? 0.4 : -0.5 });
+    if (chrome.tagline) b.text(PAD + 52, y + 64, chrome.tagline, ui(11.5), { color: MUTED });
+    b.icon('search', W - PAD - 28, y + 28, 20, { color: MUTED, weight: 1.8 });
+    y += 78;
+
+    // the navigation strip, first item marked as the open section
+    b.rect(0, y, W, 40, { fill: '#FFFFFF' });
     b.line(0, y, W, y, { color: LINE });
-    b.rect(0, y, W, 1400, { fill: d.paper ? '#FFFBF5' : '#FFFFFF' });
-    y += 36;
+    let nx = PAD;
+    (chrome.navItems || []).slice(0, 6).forEach((item, i) => {
+      const f = ui(12.5, i === 0 ? 700 : 500);
+      const label = upper(item);
+      b.text(nx, y + 26, label, f, { color: i === 0 ? d.accent : '#475569', letterSpacing: 0.6 });
+      const w = approxMeasure(label, f) + 6;
+      if (i === 0) b.rect(nx, y + 34, w, 3, { fill: d.accent });
+      nx += w + 26;
+    });
+    y += 40;
+    b.line(0, y, W, y, { color: '#CBD5E1' });
+    const articleTop = y;
+    y += 34;
 
-    // kicker, headline, stand-first
-    if (d.kicker) {
-      const kicker = meta.section || meta.publication || meta.blogName || d.label;
-      b.text(PAD, y, String(kicker).toUpperCase(), { family: d.ui, size: 11, weight: 700 }, { color: d.accent });
-      y += 22;
+    // section pill, headline, stand-first
+    const cat = chrome.categoryLabel || meta.section || '';
+    if (cat) {
+      const f = ui(11, 700);
+      b.pill(PAD, y, approxMeasure(upper(cat), f) + 26, 24, upper(cat), f, { fill: d.accent, color: '#FFFFFF' });
+      if (d.breaking) b.text(PAD + approxMeasure(upper(cat), f) + 40, y + 17, upper(chrome.metaLine || ''), ui(11, 600), { color: MUTED, letterSpacing: 0.5 });
+      y += 40;
     }
-    y = b.para(PAD, y + 12, m.content.title, { family: d.title, size: d.title === SERIF ? 40 : 36, weight: 700 }, colW, { lineHeight: 46, color: INK });
-    if (d.stars && chrome.rating) {
-      b.text(PAD, y + 22, chrome.rating, { family: d.ui, size: 18 }, { color: d.accent });
-      y += 26;
+    const titleSize = d.title === SERIF ? 43 : 40;
+    y = b.para(PAD, y + titleSize, m.content.title, { family: d.title, size: titleSize, weight: 800 }, colW,
+      { lineHeight: titleSize + 9, color: INK, letterSpacing: d.title === DISPLAY ? -0.8 : 0 }) - titleSize + 12;
+    if (d.stars) {
+      for (let i = 0; i < 5; i++) b.icon('star', PAD + i * 26, y + 4, 22, { fill: i < 4 ? d.accent : '#E2E8F0', stroke: false });
+      y += 34;
     }
-    if (meta.standfirst) y = b.para(PAD, y + 20, meta.standfirst, { family: d.body, size: 18, style: 'italic' }, colW, { color: MUTED });
+    if (meta.standfirst) y = b.para(PAD, y + 24, meta.standfirst, { family: d.body, size: 19, style: 'italic' }, colW, { color: '#475569', lineHeight: 28 });
 
-    // byline
-    y += 26;
-    avatar(b, PAD + 18, y + 4, 18, chrome.authorInitials || '', d.accent);
-    b.text(PAD + 48, y, meta.byline || '', { family: d.ui, size: 14, weight: 600 }, { color: INK });
-    b.text(PAD + 48, y + 18, chrome.metaLine || meta.dateline || '', { family: d.ui, size: 12 }, { color: MUTED });
+    // byline with avatar, and the small save/share icons on the right
+    y += 30;
+    avatar(b, PAD + 19, y + 4, 19, chrome.authorInitials || initial(meta.byline), d.accent);
+    b.text(PAD + 50, y, meta.byline || '', ui(14, 700), { color: INK });
+    b.text(PAD + 50, y + 19, chrome.metaLine || meta.dateline || '', ui(12), { color: MUTED });
+    b.icon('share', PAD + colW - 30, y - 8, 20, { color: MUTED, weight: 1.7 });
+    b.icon('bookmark', PAD + colW - 68, y - 8, 20, { color: MUTED, weight: 1.7 });
     y += 36;
     b.line(PAD, y, PAD + colW, y, { color: LINE });
-    y += 26;
+    y += 28;
 
-    // body
-    const bodyFont = { family: d.body, size: 17 };
-    for (const p of m.content.paragraphs || []) {
-      const heading = p.length < 60 && !/[.!?]$/.test(p.trim());
-      if (heading) {
-        y = b.para(PAD, y, p, { family: d.title, size: 20, weight: 700 }, colW, { color: INK, role: 'body' }) + 8;
-      } else {
-        y = b.para(PAD, y, p, bodyFont, colW, { color: INK, role: 'body', lineHeight: 27 }) + 16;
+    // the lead picture with its caption
+    if (d.kicker || d.sidebar) {
+      const ph = Math.round(colW * 0.46);
+      b.photo(PAD, y, colW, ph, { seed: 11, colour: true, tint: d.breaking ? 'cool' : 'warm' });
+      y += ph + 18;
+      if (chrome.photoCaption) {
+        y = b.para(PAD, y, chrome.photoCaption, ui(12), colW - 110, { color: MUTED, lineHeight: 17 });
+        if (chrome.captionCredit) b.text(PAD + colW, y - 12, chrome.captionCredit, ui(10.5), { color: '#94A3B8', align: 'right' });
+        y += 16;
       }
     }
+
+    // the text itself
+    const bodyFont = { family: d.body, size: 17 };
+    const paragraphs = m.content.paragraphs || [];
+    paragraphs.forEach((p, i) => {
+      const heading = p.length < 60 && !/[.!?]$/.test(p.trim());
+      if (heading) {
+        y = b.para(PAD, y + 8, p, { family: d.title, size: 21, weight: 700 }, colW, { color: INK, role: 'body' }) + 8;
+      } else if (i === 0 && d.body === SERIF && p.length > 140) {
+        y = dropCapPara(b, PAD, y, p, bodyFont, colW, d.title, measure, d.accent) + 18;
+      } else {
+        y = b.para(PAD, y, p, bodyFont, colW, { color: INK, role: 'body', lineHeight: 27 }) + 18;
+      }
+    });
+
     if (meta.pullQuote) {
-      b.line(PAD, y + 6, PAD + colW, y + 6, { color: d.accent, width: 3 });
-      y = b.para(PAD, y + 34, meta.pullQuote, { family: d.body, size: 20, style: 'italic' }, colW, { color: d.accent });
-      b.line(PAD, y + 12, PAD + colW, y + 12, { color: d.accent, width: 3 });
-      y += 26;
+      b.text(PAD, y + 48, '“', { family: d.title, size: 64, weight: 700 }, { color: d.accent + '55' });
+      y = b.para(PAD + 46, y + 34, meta.pullQuote, { family: d.body, size: 21, style: 'italic', weight: 600 }, colW - 60, { color: d.accent, lineHeight: 30 });
+      b.line(PAD, y + 16, PAD + 70, y + 16, { color: d.accent, width: 3 });
+      y += 40;
     }
+
     if ((meta.tags || []).length) {
       let tx = PAD;
       for (const t of meta.tags.slice(0, 5)) {
-        const font = { family: d.ui, size: 12 };
-        const w = approxMeasure('#' + t, font) + 24;
-        b.pill(tx, y + 8, w, 26, '#' + t, font, { fill: '#EEF2FF', color: d.accent });
+        const font = ui(12, 600);
+        const w = approxMeasure('#' + t, font) + 26;
+        b.pill(tx, y, w, 27, '#' + t, font, { fill: '#F1F5F9', color: d.accent, stroke: '#E2E8F0' });
         tx += w + 8;
       }
-      y += 42;
+      y += 44;
     }
-    if (d.actions && (chrome.actions || []).length) y = actionRow(b, PAD, y + 10, chrome.actions, { family: d.ui, size: 13 }) + 18;
+    if (d.actions && (chrome.actions || []).length) y = iconActions(b, PAD, y, chrome.actions, ui(13, 600), d.accent) + 26;
 
-    // sidebar
+    // the author box under the text
+    if (meta.byline) {
+      b.rect(PAD, y, colW, 92, { fill: SOFT, radius: 12, stroke: LINE });
+      avatar(b, PAD + 46, y + 46, 24, chrome.authorInitials || initial(meta.byline), d.accent);
+      b.text(PAD + 84, y + 40, meta.byline || '', ui(14, 700), { color: INK });
+      b.text(PAD + 84, y + 60, chrome.metaLine || meta.dateline || '', ui(12), { color: MUTED });
+      y += 112;
+    }
+
+    // the column beside the text: most-read list with thumbnails, then an ad slot
+    let sideBottom = articleTop;
     if (hasSide) {
-      const sx = PAD + colW + 40;
-      let sy = 200;
-      b.rect(sx - 16, sy - 28, W - sx - PAD + 32, 40 + (chrome.sidebarItems.length) * 52, { fill: SOFT, radius: 10, stroke: LINE });
-      b.text(sx, sy, String(chrome.sidebarTitle || '').toUpperCase(), { family: d.ui, size: 11, weight: 700 }, { color: d.accent });
-      sy += 24;
+      const sx = PAD + colW + 44;
+      const sw = W - sx - PAD;
+      let sy = articleTop + 34;
+      b.rect(sx, sy, sw, 4, { fill: d.accent });
+      b.text(sx, sy + 30, upper(chrome.sidebarTitle || ''), ui(12, 800), { color: INK, letterSpacing: 1 });
+      sy += 46;
       chrome.sidebarItems.slice(0, 4).forEach((it, i) => {
-        b.text(sx - 14, sy + 14, String(i + 1), { family: d.title, size: 20, weight: 700 }, { color: '#CBD5E1' });
-        sy = b.para(sx + 14, sy, it, { family: d.ui, size: 13, weight: 600 }, W - sx - PAD - 20, { color: INK, lineHeight: 18 }) + 16;
+        b.photo(sx, sy, 74, 56, { seed: 30 + i * 7, colour: true, tint: i % 2 ? 'green' : 'dusk' });
+        b.text(sx + 86, sy + 2, String(i + 1), { family: d.title, size: 15, weight: 800 }, { color: d.accent });
+        const end = b.para(sx + 86, sy + 20, it, ui(13, 600), sw - 86, { color: INK, lineHeight: 18 });
+        sy = Math.max(sy + 70, end + 18);
+        b.line(sx, sy - 10, sx + sw, sy - 10, { color: LINE });
       });
+      sy += 14;
+      b.rect(sx, sy, sw, 200, { fill: '#F1F5F9', radius: 10, stroke: LINE });
+      b.rect(sx + 18, sy + 18, sw - 36, 96, { fill: '#E2E8F0', radius: 6 });
+      b.circle(sx + sw / 2, sy + 66, 18, { fill: '#CBD5E1' });
+      [0, 1, 2].forEach(i => b.rect(sx + 18, sy + 130 + i * 16, (sw - 36) * (i === 2 ? 0.55 : 1), 8, { fill: '#DDE3EA', radius: 4 }));
+      sideBottom = sy + 200;
     }
 
-    y += 20;
-    b.line(0, y, W, y, { color: LINE });
-    b.text(PAD, y + 26, chrome.footerNote || '', { family: d.ui, size: 12 }, { color: MUTED });
-    return finish(b, W, y + 52);
+    y = Math.max(y, sideBottom) + 24;
+    // the footer of the site
+    b.rect(0, y, W, 120, { fill: '#0F172A' });
+    b.rect(PAD, y + 28, 30, 30, { fill: d.accent, radius: d.title === SERIF ? 3 : 9 });
+    b.text(PAD + 15, y + 49, initial(site), { family: d.title, size: 17, weight: 800 }, { color: '#FFFFFF', align: 'center' });
+    b.text(PAD + 44, y + 50, site, { family: d.title, size: 18, weight: 800 }, { color: '#FFFFFF' });
+    let fx = PAD;
+    (chrome.footerLinks || chrome.navItems || []).slice(0, 5).forEach(l => {
+      const f = ui(11.5);
+      b.text(fx, y + 86, upper(l), f, { color: '#94A3B8', letterSpacing: 0.5 });
+      fx += approxMeasure(upper(l), f) + 24;
+    });
+    b.text(W - PAD, y + 50, chrome.footerNote || '', ui(11.5), { color: '#64748B', align: 'right' });
+    return finish(b, W, y + 120);
   }
 
   /* --- mail client ---------------------------------------------------- */
   function mailModel(m, chrome, d, measure) {
-    const W = 1000;
+    const W = 1040;
     const b = builder(W, measure);
     const meta = m.content.meta || {};
-    const SIDE = 200, PAD = 32;
-    let y = 0;
-    b.rect(0, 0, W, 2000, { fill: '#FFFFFF' });
-    b.rect(0, 0, W, 48, { fill: d.accent });
-    b.text(PAD, 31, chrome.appName, { family: d.ui, size: 15, weight: 700 }, { color: '#FFFFFF' });
-    y = 48;
-    b.rect(0, y, SIDE, 1400, { fill: SOFT });
-    b.line(SIDE, y, SIDE, 1400, { color: LINE });
-    let sy = y + 34;
-    (chrome.mailboxItems || []).slice(0, 4).forEach((it, i) => {
-      if (i === 0) b.rect(12, sy - 18, SIDE - 24, 30, { fill: '#E2E8F0', radius: 8 });
-      b.text(24, sy, it, { family: d.ui, size: 13, weight: i === 0 ? 700 : 400 }, { color: i === 0 ? INK : MUTED });
-      sy += 34;
+    const SIDE = 220, PAD = 34;
+    const ui = (size, weight) => ({ family: d.ui, size, weight: weight || 400 });
+    b.rect(0, 0, W, 4000, { fill: '#FFFFFF' });
+
+    // window bar with the name of the program and the search field
+    b.rect(0, 0, W, 52, { fill: '#F1F4F8' });
+    ['#F87171', '#FBBF24', '#34D399'].forEach((c, i) => b.circle(24 + i * 18, 26, 5.5, { fill: c }));
+    b.text(96, 31, chrome.appName, ui(14, 700), { color: INK });
+    b.rect(W / 2 - 170, 13, 340, 26, { fill: '#E7EBF0', radius: 13 });
+    b.icon('search', W / 2 - 160, 19, 15, { color: '#94A3B8', weight: 1.7 });
+    b.icon('dots', W - 42, 17, 18, { color: '#64748B', weight: 1.7 });
+    b.line(0, 52, W, 52, { color: '#CBD5E1' });
+    let y = 52;
+
+    // the folder rail, with a round compose button
+    b.rect(0, y, SIDE, 3000, { fill: '#F7F9FB' });
+    b.line(SIDE, y, SIDE, 3000, { color: LINE });
+    b.rect(20, y + 20, 120, 42, { fill: d.accent, radius: 21 });
+    b.icon('plus', 34, y + 31, 20, { color: '#FFFFFF', weight: 2 });
+    b.icon('clip', 104, y + 31, 19, { color: '#FFFFFF', weight: 1.8 });
+    let sy = y + 92;
+    (chrome.mailboxItems || []).slice(0, 5).forEach((it, i) => {
+      if (i === 0) b.rect(10, sy - 20, SIDE - 26, 34, { fill: '#DCE7FB', radius: 17 });
+      b.icon(i === 0 ? 'inbox' : i === 1 ? 'star' : i === 2 ? 'reply' : 'bookmark', 24, sy - 13, 18,
+        { color: i === 0 ? d.accent : '#64748B', weight: 1.7 });
+      b.text(52, sy, it, ui(13, i === 0 ? 700 : 500), { color: i === 0 ? d.accent : '#334155' });
+      sy += 38;
     });
 
+    // the toolbar over the open message
     const x = SIDE + PAD, colW = W - SIDE - 2 * PAD;
-    y += 30;
-    y = b.para(x, y, meta.subject || m.content.title, { family: d.title, size: 24, weight: 700 }, colW, { color: INK, lineHeight: 30 }) + 18;
-    avatar(b, x + 20, y + 2, 20, chrome.authorInitials || '', d.accent);
-    b.text(x + 52, y - 2, meta.from || '', { family: d.ui, size: 14, weight: 600 }, { color: INK });
-    b.text(x + 52, y + 18, chrome.metaLine || meta.sent || '', { family: d.ui, size: 12 }, { color: MUTED });
-    y += 42;
+    b.rect(SIDE + 1, y, W - SIDE, 46, { fill: '#FFFFFF' });
+    ['back', 'inbox', 'trash', 'reply', 'share', 'dots'].forEach((n, i) => b.icon(n, x + i * 38, y + 14, 19, { color: '#475569', weight: 1.7 }));
+    b.line(SIDE, y + 46, W, y + 46, { color: LINE });
+    y += 46 + 30;
+
+    // subject, labels, sender
+    let sx2 = x;
+    y = b.para(x, y + 24, meta.subject || m.content.title, { family: d.title, size: 25, weight: 700 }, colW - 60, { color: INK, lineHeight: 32 }) - 24 + 12;
+    b.icon('star', x + colW - 26, y - 34, 21, { fill: '#F59E0B', stroke: false });
+    (chrome.labelChips || []).slice(0, 3).forEach(l => {
+      const f = ui(11, 600);
+      const w = approxMeasure(l, f) + 22;
+      b.pill(sx2, y, w, 22, l, f, { fill: '#E7F0FE', color: d.accent });
+      sx2 += w + 8;
+    });
+    if ((chrome.labelChips || []).length) y += 34;
+    y += 14;
+    avatar(b, x + 21, y + 4, 21, chrome.authorInitials || initial(meta.from), d.accent);
+    b.text(x + 54, y, meta.from || '', ui(14, 700), { color: INK });
+    b.text(x + 54, y + 20, chrome.metaLine || meta.sent || '', ui(12), { color: MUTED });
+    b.icon('reply', x + colW - 30, y - 8, 19, { color: MUTED, weight: 1.7 });
+    b.icon('dots', x + colW - 66, y - 8, 19, { color: MUTED, weight: 1.7 });
+    y += 40;
     b.line(x, y, x + colW, y, { color: LINE });
-    y += 26;
-    for (const p of m.content.paragraphs || []) y = b.para(x, y, p, { family: d.body, size: 15 }, colW, { color: INK, role: 'body', lineHeight: 24 }) + 16;
+    y += 28;
+
+    for (const p of m.content.paragraphs || []) y = b.para(x, y, p, { family: d.body, size: 15 }, colW, { color: '#1E293B', role: 'body', lineHeight: 25 }) + 18;
     if (meta.signature) {
-      b.line(x, y + 6, x + 180, y + 6, { color: LINE });
-      for (const l of String(meta.signature).split('\n')) { b.text(x, y + 30, l, { family: d.ui, size: 13 }, { color: MUTED }); y += 20; }
-      y += 16;
+      b.line(x, y + 4, x + 200, y + 4, { color: LINE });
+      y += 26;
+      for (const l of String(meta.signature).split('\n')) { b.text(x, y, l, ui(13), { color: MUTED }); y += 20; }
+      y += 10;
     }
-    if ((chrome.actions || []).length) y = actionRow(b, x, y + 10, chrome.actions, { family: d.ui, size: 13 }) + 16;
+    if (chrome.attachmentName) {
+      b.rect(x, y, 300, 64, { fill: '#FFFFFF', radius: 10, stroke: '#CBD5E1' });
+      b.rect(x + 12, y + 12, 40, 40, { fill: '#E7F0FE', radius: 8 });
+      b.icon('clip', x + 22, y + 22, 20, { color: d.accent, weight: 1.8 });
+      b.text(x + 64, y + 28, clipText(chrome.attachmentName, 26), ui(13, 600), { color: INK });
+      b.text(x + 64, y + 46, chrome.attachmentMeta || '', ui(11.5), { color: MUTED });
+      y += 84;
+    }
+    // the quoted message underneath, as mail programs fold it away
+    b.rect(x, y + 6, 34, 20, { fill: '#E7EBF0', radius: 10 });
+    b.icon('dots', x + 7, y + 8, 17, { color: '#64748B', weight: 1.7 });
+    y += 44;
+    if ((chrome.actions || []).length) {
+      let cx = x;
+      (chrome.actions || []).slice(0, 3).forEach((a, i) => {
+        const f = ui(13, 600);
+        const w = approxMeasure(a.label || '', f) + 54;
+        b.rect(cx, y, w, 36, { fill: i === 0 ? d.accent : '#FFFFFF', radius: 18, stroke: i === 0 ? null : '#CBD5E1' });
+        b.icon(i === 0 ? 'reply' : i === 1 ? 'share' : 'clip', cx + 16, y + 9, 18, { color: i === 0 ? '#FFFFFF' : '#475569', weight: 1.8 });
+        b.text(cx + 42, y + 23, a.label || '', f, { color: i === 0 ? '#FFFFFF' : '#475569' });
+        cx += w + 12;
+      });
+      y += 36;
+    }
     return finish(b, W, y + 40);
   }
 
   /* --- forum thread ---------------------------------------------------- */
   function threadModel(m, chrome, d, measure) {
-    const W = 1000;
+    const W = 1040;
     const b = builder(W, measure);
     const meta = m.content.meta || {};
     const PAD = 48;
-    let y = browserFrame(b, W, chrome.url, d.accent);
-    b.rect(0, y, W, 56, { fill: '#FFFFFF' });
-    b.text(PAD, y + 36, chrome.siteName, { family: d.title, size: 20, weight: 700 }, { color: d.accent });
-    let nx = PAD + approxMeasure(chrome.siteName, { family: d.title, size: 20, weight: 700 }) + 32;
-    for (const item of (chrome.navItems || []).slice(0, 5)) {
-      b.text(nx, y + 36, item, { family: d.ui, size: 13 }, { color: MUTED });
-      nx += approxMeasure(item, { family: d.ui, size: 13 }) + 24;
-    }
-    y += 56;
-    b.rect(0, y, W, 1600, { fill: '#F1F5F9' });
-    y += 28;
-    y = b.para(PAD, y, meta.threadTitle || m.content.title, { family: d.title, size: 26, weight: 700 }, W - 2 * PAD, { color: INK, lineHeight: 32 }) + 18;
+    const ui = (size, weight) => ({ family: d.ui, size, weight: weight || 400 });
+    let y = browserFrame(b, W, chrome.url, d.accent, { tabTitle: chrome.siteName });
+
+    // board header with the round logo and a search field
+    b.rect(0, y, W, 58, { fill: '#FFFFFF' });
+    b.circle(PAD + 16, y + 29, 16, { fill: d.accent });
+    b.text(PAD + 16, y + 35, initial(chrome.siteName), { family: d.title, size: 17, weight: 800 }, { color: '#FFFFFF', align: 'center' });
+    b.text(PAD + 42, y + 36, chrome.siteName, { family: d.title, size: 19, weight: 800 }, { color: INK });
+    b.rect(W / 2 - 60, y + 14, 330, 30, { fill: '#F1F5F9', radius: 15, stroke: LINE });
+    b.icon('search', W / 2 - 50, y + 21, 16, { color: '#94A3B8', weight: 1.7 });
+    b.circle(W - PAD - 16, y + 29, 16, { fill: '#E2E8F0' });
+    b.icon('menu', W - PAD - 62, y + 21, 17, { color: '#64748B', weight: 1.7 });
+    y += 58;
+    b.rect(0, y, W, 3000, { fill: '#EEF1F5' });
+    b.line(0, y, W, y, { color: '#CBD5E1' });
+    y += 26;
+
+    // the thread column, with the board box beside it
+    const SIDE = 286;
+    const MAIN = W - 2 * PAD - SIDE - 28;
+    const boxTop = y;
+    y = b.para(PAD, y + 26, meta.threadTitle || m.content.title, { family: d.title, size: 26, weight: 800 }, MAIN, { color: INK, lineHeight: 33 }) - 26 + 14;
+    let nx = PAD;
+    (chrome.navItems || []).slice(0, 5).forEach((item, i) => {
+      const f = ui(12, i === 0 ? 700 : 500);
+      const w = approxMeasure(item, f) + 26;
+      b.pill(nx, y, w, 26, item, f, { fill: i === 0 ? d.accent : '#FFFFFF', color: i === 0 ? '#FFFFFF' : '#64748B', stroke: i === 0 ? null : LINE });
+      nx += w + 8;
+    });
+    y += 42;
 
     const authors = meta.authors || [];
     const stamps = meta.timestamps || [];
     const postMeta = chrome.postMeta || [];
+    const votes = chrome.voteCounts || [];
+    const badges = chrome.userBadges || [];
+    const AV = ['#F97316', '#2563EB', '#16A34A', '#DB2777', '#7C3AED', '#0891B2'];
     (m.content.paragraphs || []).forEach((p, i) => {
+      const nest = i === 0 ? 0 : Math.min(2, i === 1 ? 1 : (i % 2 ? 1 : 2));
+      const left = PAD + nest * 34;
       const cardTop = y;
-      const inner = W - 2 * PAD - 110;
-      avatar(b, PAD + 38, cardTop + 40, 18, String(authors[i] || '').slice(0, 2).toUpperCase(), d.accent);
-      b.text(PAD + 70, cardTop + 32, authors[i] || '', { family: d.ui, size: 13, weight: 700 }, { color: INK });
-      b.text(PAD + 70 + approxMeasure(authors[i] || '', { family: d.ui, size: 13, weight: 700 }) + 14, cardTop + 32, stamps[i] || '', { family: d.ui, size: 12 }, { color: MUTED });
-      const end = b.para(PAD + 70, cardTop + 58, p, { family: d.body, size: 15 }, inner, { color: INK, role: 'body', lineHeight: 24 });
-      b.text(PAD + 70, end + 22, postMeta[i] || '', { family: d.ui, size: 12 }, { color: MUTED });
-      const h = end + 40 - cardTop;
-      b.blocks.unshift({ type: 'rect', x: PAD, y: cardTop, w: W - 2 * PAD, h, fill: '#FFFFFF', radius: 10, stroke: LINE });
-      y = cardTop + h + 16;
+      const mark = b.blocks.length; // the card is put in here once its height is known
+      const rail = 46;
+      const inner = PAD + MAIN - left - rail - 50;
+      // the vote rail on the left
+      b.icon('up', left + 14, cardTop + 18, 18, { fill: i === 0 ? d.accent : '#CBD5E1', stroke: false });
+      b.text(left + 23, cardTop + 54, String(votes[i] || ''), ui(12, 700), { color: i === 0 ? d.accent : '#475569', align: 'center' });
+      b.icon('down', left + 14, cardTop + 62, 18, { fill: '#CBD5E1', stroke: false });
+      const tx = left + rail;
+      avatar(b, tx + 14, cardTop + 26, 14, String(authors[i] || '').slice(0, 2).toUpperCase(), AV[i % AV.length]);
+      const nameF = ui(13, 700);
+      b.text(tx + 36, cardTop + 31, authors[i] || '', nameF, { color: INK });
+      let mx = tx + 36 + approxMeasure(authors[i] || '', nameF) + 10;
+      if (badges[i]) {
+        const f = ui(10, 700);
+        const w = approxMeasure(badges[i], f) + 16;
+        b.pill(mx, cardTop + 19, w, 17, badges[i], f, { fill: i === 0 ? '#FEF3C7' : '#E2E8F0', color: i === 0 ? '#B45309' : '#475569' });
+        mx += w + 10;
+      }
+      b.text(mx, cardTop + 31, stamps[i] || '', ui(11.5), { color: MUTED });
+      const end = b.para(tx + 36, cardTop + 56, p, { family: d.body, size: 15 }, inner, { color: '#1E293B', role: 'body', lineHeight: 24 });
+      b.icon('comment', tx + 36, end + 12, 17, { color: '#94A3B8', weight: 1.7 });
+      b.text(tx + 60, end + 25, postMeta[i] || '', ui(11.5), { color: MUTED });
+      b.icon('share', tx + 60 + approxMeasure(postMeta[i] || '', ui(11.5)) + 22, end + 12, 17, { color: '#94A3B8', weight: 1.7 });
+      const h = end + 44 - cardTop;
+      const under = [{ type: 'rect', x: left, y: cardTop, w: PAD + MAIN - left, h, fill: '#FFFFFF', radius: 10, stroke: LINE }];
+      if (nest) under.push({ type: 'line', x1: left - 16, y1: cardTop + 6, x2: left - 16, y2: cardTop + h - 6, color: '#CBD5E1', width: 2 });
+      b.blocks.splice(mark, 0, ...under);
+      y = cardTop + h + 14;
     });
-    b.text(PAD, y + 22, chrome.footerNote || '', { family: d.ui, size: 12 }, { color: MUTED });
-    return finish(b, W, y + 48);
+    // the reply box at the end of the thread
+    b.rect(PAD, y + 6, MAIN, 54, { fill: '#FFFFFF', radius: 10, stroke: LINE });
+    b.circle(PAD + 30, y + 33, 14, { fill: '#CBD5E1' });
+    b.rect(PAD + 56, y + 22, MAIN - 150, 22, { fill: '#F1F5F9', radius: 11 });
+    b.rect(PAD + MAIN - 82, y + 20, 62, 26, { fill: d.accent, radius: 13 });
+    b.icon('reply', PAD + MAIN - 60, y + 24, 18, { color: '#FFFFFF', weight: 1.8 });
+    y += 76;
+
+    // the box about the board, as every forum has on the right
+    const bx = PAD + MAIN + 28;
+    b.rect(bx, boxTop, SIDE, 4, { fill: d.accent, radius: 2 });
+    const by = boxTop + 4;
+    const box = { type: 'rect', x: bx, y: by, w: SIDE, h: 150, fill: '#FFFFFF', radius: 10, stroke: LINE };
+    b.blocks.push(box);
+    b.circle(bx + 34, by + 34, 18, { fill: d.accent });
+    b.text(bx + 34, by + 40, initial(chrome.siteName), { family: d.title, size: 19, weight: 800 }, { color: '#FFFFFF', align: 'center' });
+    b.text(bx + 62, by + 40, chrome.siteName, ui(14, 700), { color: INK });
+    let iy = b.para(bx + 18, by + 74, chrome.boardInfo || '', ui(12), SIDE - 36, { color: MUTED, lineHeight: 18 });
+    iy = Math.max(iy, by + 96);
+    b.line(bx + 18, iy + 4, bx + SIDE - 18, iy + 4, { color: LINE });
+    (chrome.boardStats || []).slice(0, 3).forEach((st, i) => b.text(bx + 18 + i * 92, iy + 28, st, ui(12, 700), { color: INK }));
+    box.h = Math.max(150, iy + 44 - by);
+    y = Math.max(y, by + box.h + 20);
+    b.text(PAD, y + 12, chrome.footerNote || '', ui(11.5), { color: MUTED });
+    return finish(b, W, y + 36);
   }
 
   /* --- messenger chat --------------------------------------------------- */
   function chatModel(m, chrome, d, measure) {
-    const W = 520;
+    const W = 560;
     const b = builder(W, measure);
-    let y = 0;
-    b.rect(0, 0, W, 1600, { fill: '#ECE5DD' });
-    b.rect(0, 0, W, 34, { fill: '#0B3D2E' });
-    b.text(20, 22, chrome.deviceTime || '', { family: d.ui, size: 12, weight: 600 }, { color: '#FFFFFF' });
-    b.text(W - 96, 22, chrome.appName, { family: d.ui, size: 11 }, { color: '#CBD5E1' });
-    for (let i = 0; i < 4; i++) b.rect(W - 40 + i * 5, 14 - i, 3, 8 + i * 2, { fill: '#FFFFFF' });
-    y = 34;
-    b.rect(0, y, W, 58, { fill: d.accent });
-    avatar(b, 36, y + 29, 17, chrome.authorInitials || '', '#0B3D2E');
-    b.text(66, y + 26, chrome.contactName || '', { family: d.ui, size: 15, weight: 700 }, { color: '#FFFFFF' });
-    b.text(66, y + 44, chrome.statusLine || '', { family: d.ui, size: 11 }, { color: '#E2E8F0' });
-    y += 58 + 18;
+    const ui = (size, weight) => ({ family: d.ui, size, weight: weight || 400 });
+    const HEAD = '#075E54', BAR = '#054A42', MINE = '#DCF8C6', THEIRS = '#FFFFFF', TICK = '#34B7F1';
+    b.rect(0, 0, W, 4000, { fill: '#ECE5DD' });
+
+    // status bar of the phone
+    b.rect(0, 0, W, 32, { fill: BAR });
+    b.text(20, 21, chrome.deviceTime || '', ui(12, 700), { color: '#FFFFFF' });
+    for (let i = 0; i < 4; i++) b.rect(W - 78 + i * 6, 18 - i * 3, 4, 8 + i * 3, { fill: '#FFFFFF', radius: 1 });
+    b.rect(W - 46, 12, 22, 11, { fill: '#FFFFFF', radius: 2 });
+    b.rect(W - 22, 15, 3, 5, { fill: '#FFFFFF', radius: 1 });
+    let y = 32;
+
+    // chat header: back arrow, contact, call icons
+    b.rect(0, y, W, 60, { fill: HEAD });
+    b.icon('back', 12, y + 20, 21, { color: '#FFFFFF', weight: 2.1 });
+    avatar(b, 52, y + 30, 18, chrome.authorInitials || initial(chrome.contactName), '#B7C4C0');
+    b.text(80, y + 27, chrome.contactName || '', ui(15.5, 700), { color: '#FFFFFF' });
+    b.text(80, y + 45, chrome.statusLine || '', ui(11.5), { color: '#BFD8D2' });
+    b.icon('video', W - 112, y + 20, 21, { color: '#FFFFFF', weight: 1.8 });
+    b.icon('phone', W - 72, y + 20, 19, { color: '#FFFFFF', weight: 1.8 });
+    b.icon('dots', W - 32, y + 20, 20, { color: '#FFFFFF', weight: 1.8 });
+    y += 60;
+    const wall = { type: 'wallpaper', x: 0, y, w: W, h: 0, fill: '#ECE5DD', doodle: 'rgba(186,175,158,.55)', seed: 5 };
+    b.blocks.push(wall);
+    const wallTop = y;
+    y += 16;
+
+    // the grey date pill above the first message
+    if (chrome.dateLabel) {
+      const f = ui(11, 600);
+      const w = approxMeasure(upper(chrome.dateLabel), f) + 30;
+      b.rect(W / 2 - w / 2, y, w, 24, { fill: '#DDEAD3', radius: 12 });
+      b.text(W / 2, y + 16, upper(chrome.dateLabel), f, { color: '#64748B', align: 'center' });
+      y += 38;
+    }
 
     const times = chrome.bubbleTimes || [];
     (m.content.paragraphs || []).forEach((p, i) => {
       const mine = i % 2 === 1;
+      const font = { family: d.body, size: 14.5 };
       const maxW = W - 150;
-      const font = { family: d.body, size: 14 };
       const lines = wrap(p, font, maxW, measure);
-      const textW = Math.min(maxW, Math.max(...lines.map(l => measure(l, font))));
-      const bw = textW + 28, bh = lines.length * 21 + 34;
-      const bx = mine ? W - 20 - bw : 20;
-      b.rect(bx, y, bw, bh, { fill: mine ? '#DCF8C6' : '#FFFFFF', radius: 12 });
-      lines.forEach((l, k) => b.text(bx + 14, y + 24 + k * 21, l, font, { color: INK, role: 'body' }));
-      b.text(bx + bw - 44, y + bh - 10, times[i] || '', { family: d.ui, size: 10 }, { color: MUTED });
+      const timeW = 52;
+      const textW = Math.max(120, Math.min(maxW, Math.max(...lines.map(l => measure(l, font)))));
+      const lastW = measure(lines[lines.length - 1], font);
+      const bw = Math.min(maxW + 28, Math.max(textW, lastW + timeW) + 28);
+      const bh = lines.length * 22 + 30;
+      const bx = mine ? W - 18 - bw : 18;
+      b.rect(bx, y, bw, bh, { fill: mine ? MINE : THEIRS, radius: 9, shadow: 'soft' });
+      // the little tail that points at the speaker
+      b.poly(mine
+        ? [[bx + bw - 1, y + 2], [bx + bw + 9, y + 2], [bx + bw - 1, y + 16]]
+        : [[bx + 1, y + 2], [bx - 9, y + 2], [bx + 1, y + 16]], { fill: mine ? MINE : THEIRS });
+      lines.forEach((l, k) => b.text(bx + 14, y + 24 + k * 22, l, font, { color: '#111B21', role: 'body' }));
+      b.text(bx + bw - (mine ? 26 : 12), y + bh - 10, times[i] || '', ui(10.5), { color: '#8696A0', align: 'right' });
+      if (mine) b.icon('ticks', bx + bw - 24, y + bh - 20, 15, { color: TICK, weight: 1.5 });
       y += bh + 10;
     });
-    y += 8;
-    b.rect(0, y, W, 52, { fill: '#F1F5F9' });
-    b.rect(16, y + 10, W - 80, 32, { fill: '#FFFFFF', radius: 16, stroke: LINE });
-    b.circle(W - 34, y + 26, 16, { fill: d.accent });
-    return finish(b, W, y + 52);
+    y += 12;
+    wall.h = y - wallTop;
+
+    // the writing bar at the bottom
+    b.rect(0, y, W, 62, { fill: '#F0F2F5' });
+    b.rect(12, y + 11, W - 88, 40, { fill: '#FFFFFF', radius: 20 });
+    b.icon('clip', 34, y + 22, 20, { color: '#64748B', weight: 1.8 });
+    b.rect(66, y + 27, W - 190, 8, { fill: '#E2E8F0', radius: 4 });
+    b.icon('camera', W - 118, y + 22, 20, { color: '#64748B', weight: 1.8 });
+    b.circle(W - 38, y + 31, 22, { fill: '#00A884' });
+    b.icon('mic', W - 48, y + 21, 20, { color: '#FFFFFF', weight: 1.9 });
+    return finish(b, W, y + 62);
   }
+
 
   /* ------------------------------------------------------------------ */
   /* Printed media: a photographed page instead of a screenshot           */
@@ -464,13 +828,14 @@
   const PAGE_PAD = 46; // the surface the page lies on
 
   /** Wrapped body lines, poured into `cols` columns of equal height. */
-  function flowColumns(paragraphs, font, colW, cols, measure, lineHeight) {
+  function flowColumns(paragraphs, font, colW, cols, measure, lineHeight, opts) {
+    const o = opts || {};
     const items = [];
-    for (const p of paragraphs) {
-      const lines = wrap(p, font, colW, measure);
-      lines.forEach((l, i) => items.push({ text: l, first: i === 0, last: i === lines.length - 1 }));
+    paragraphs.forEach((p, pi) => {
+      const lines = wrap(p, font, colW - (o.indent && pi >= 0 ? o.indent : 0), measure);
+      lines.forEach((l, i) => items.push({ text: l, first: i === 0, pi }));
       items.push({ gap: true });
-    }
+    });
     while (items.length && items[items.length - 1].gap) items.pop();
     const perCol = Math.ceil(items.length / cols);
     const out = [];
@@ -478,109 +843,260 @@
     for (let i = 0; i < items.length; i++) {
       if (i > 0 && i % perCol === 0 && col < cols - 1) { col += 1; y = 0; }
       const it = items[i];
-      if (!it.gap) out.push({ text: it.text, col, y });
+      if (!it.gap) out.push({ text: it.text, col, y, first: it.first, pi: it.pi });
       y += it.gap ? lineHeight * 0.55 : lineHeight;
     }
     return { placed: out, height: perCol * lineHeight };
   }
 
-  /** Newspaper or magazine page. */
+  /**
+   * Pour the body into columns that may start at different heights (the first
+   * ones under the photo, the last one at the top), filling each to the same
+   * baseline — the way a page is actually made up.
+   */
+  function flowUneven(paragraphs, font, colW, cols, measure, lh, tops, indent) {
+    const items = [];
+    paragraphs.forEach((p, pi) => {
+      const ls = wrap(p, font, colW - indent, measure);
+      ls.forEach((l, i) => items.push({ text: l, first: i === 0, last: i === ls.length - 1, pi }));
+      items.push({ gap: true });
+    });
+    while (items.length && items[items.length - 1].gap) items.pop();
+    const lowest = Math.max(...tops);
+    const tryFill = (bottom) => {
+      const placed = [];
+      let col = 0, y = tops[0];
+      for (let i = 0; i < items.length; i++) {
+        const it = items[i];
+        const step = it.gap ? lh * 0.5 : lh;
+        if (!it.gap && y + lh > bottom) {
+          col += 1;
+          if (col >= cols) return null;
+          y = tops[col];
+        }
+        if (!it.gap) placed.push({ text: it.text, col, y, first: it.first, last: it.last, pi: it.pi });
+        y += step;
+      }
+      return placed;
+    };
+    let bottom = lowest + Math.ceil(items.length / cols) * lh;
+    for (let guard = 0; guard < 400; guard++) {
+      const placed = tryFill(bottom);
+      if (placed) return { placed, bottom };
+      bottom += lh;
+    }
+    return { placed: tryFill(bottom) || [], bottom };
+  }
+
+  /** Newspaper or magazine page, in the density of a real paper. */
   function pressModel(m, chrome, d, measure) {
-    const W = 1060;
+    const W = 1080;
     const b = builder(W, measure);
     const meta = m.content.meta || {};
-    const P = PAGE_PAD, M = 56;
+    const P = PAGE_PAD, M = 48;
     const pageW = W - 2 * P, inner = pageW - 2 * M;
     const cols = d.columns || 3;
-    const gutter = 26;
+    const gutter = 24;
     const colW = (inner - gutter * (cols - 1)) / cols;
-    let y = P + 40;
-    // masthead
-    b.text(W / 2, y, String(chrome.publication || '').toUpperCase(), { family: SERIF, size: d.masthead ? 44 : 34, weight: 700 }, { color: INK, align: 'center', letterSpacing: 2 });
-    y += 16;
-    b.line(P + M, y, W - P - M, y, { color: INK, width: 2 });
-    y += 8;
-    b.text(P + M, y + 12, String(chrome.publicationLine || ''), { family: SANS, size: 11 }, { color: '#44403C' });
-    b.text(W - P - M, y + 12, String(chrome.sectionLabel || '').toUpperCase(), { family: SANS, size: 11, weight: 700 }, { color: '#44403C', align: 'right' });
-    y += 20;
-    b.line(P + M, y, W - P - M, y, { color: INK, width: 1 });
-    y += 34;
-    // headline
-    y = b.para(P + M, y, m.content.title, { family: SERIF, size: cols >= 3 ? 42 : 38, weight: 700 }, inner, { lineHeight: 46, color: INK });
-    if (meta.standfirst) y = b.para(P + M, y + 22, meta.standfirst, { family: SERIF, size: 17, style: 'italic' }, inner * 0.8, { color: '#44403C', lineHeight: 24 });
-    y += 24;
-    const byline = [meta.byline ? 'By ' + meta.byline : '', meta.location, meta.dateline].filter(Boolean).join('  ·  ');
-    if (byline) { b.text(P + M, y, byline.toUpperCase(), { family: SANS, size: 10, weight: 700 }, { color: '#57534E', letterSpacing: 1 }); y += 14; }
-    b.line(P + M, y, W - P - M, y, { color: '#A8A29E' });
-    y += 22;
-    // photo across the first columns
+    const accent = d.pressAccent || '#1B4E8F';
+    const warm = d.pressWarm || '#C2410C';
+    const L = P + M, R = W - P - M;
+    let y = P + 34;
+
+    // running head: page number and section left, date and paper right
+    b.text(L, y, String(chrome.pageLabel || '').replace(/^page\s*/i, '') || '2', { family: SERIF, size: 15, weight: 700 }, { color: INK });
+    b.text(L + 26, y, String(chrome.sectionLabel || '').toUpperCase(), { family: SANS, size: 11, weight: 700 }, { color: '#57534E', letterSpacing: 1.4 });
+    b.text(R, y, String(chrome.publicationLine || ''), { family: SERIF, size: 11 }, { color: '#57534E', align: 'right' });
+    y += 10;
+    b.line(L, y, R, y, { color: '#78716C', width: 1 });
+    y += 30;
+
+    // the editorial line: small caps between rules, as papers set their standing heads
+    const kicker = String(chrome.standingHead || chrome.publication || '').toUpperCase();
+    if (kicker) {
+      const kf = { family: SERIF, size: 13, weight: 700 };
+      const band = cols >= 3 ? colW * 2 + gutter : inner;
+      const kw = measure(kicker, kf) + kicker.length * 1.6;
+      const kx = L + band / 2 - kw / 2;
+      b.line(L, y - 4, kx - 14, y - 4, { color: INK, width: 1 });
+      b.text(kx, y, kicker, kf, { color: INK, letterSpacing: 1.6 });
+      b.line(kx + kw + 14, y - 4, L + band, y - 4, { color: INK, width: 1 });
+      y += 26;
+    }
+
+    // headline in the paper's colour, across the first columns
+    const headW = cols >= 3 ? colW * 2 + gutter : inner;
+    y = b.para(L, y + 18, m.content.title, { family: SERIF, size: cols >= 3 ? 46 : 42, weight: 700 }, headW, { lineHeight: 50, color: accent });
+    y += 12;
+
+    // lead: a coloured keyword, then the stand-first in bold
+    const keyword = String((meta.tags && meta.tags[0]) || chrome.sectionLabel || '').toUpperCase();
+    if (meta.standfirst) {
+      const font = { family: SERIF, size: 17, weight: 700 };
+      const kwWidth = keyword ? measure(keyword + '  ', Object.assign({}, font, { family: SANS, size: 13 })) : 0;
+      if (keyword) b.text(L, y + 16, keyword, { family: SANS, size: 13, weight: 700 }, { color: warm, letterSpacing: 0.8 });
+      const lines = wrap(meta.standfirst, font, headW - kwWidth, measure);
+      lines.forEach((l, i) => b.text(i === 0 ? L + kwWidth : L, y + 16 + i * 24, l, font, { color: INK }));
+      y += 16 + lines.length * 24 + 6;
+    }
+    const byline = [meta.byline ? 'By ' + meta.byline : '', meta.location].filter(Boolean).join('  ·  ');
+    if (byline) { b.text(L, y + 14, byline.toUpperCase(), { family: SANS, size: 10, weight: 700 }, { color: '#57534E', letterSpacing: 1 }); y += 20; }
+    y += 10;
+
+    // press photo with a caption bar, spanning the first columns
+    let photoBottom = y;
     if (d.photo !== false) {
       const photoW = cols >= 3 ? colW * 2 + gutter : inner;
-      const photoH = Math.round(photoW * 0.42);
-      b.blocks.push({ type: 'photo', x: P + M, y, w: photoW, h: photoH, seed: (m.content.title || '').length });
-      let cy = y + photoH + 14;
-      cy = b.para(P + M, cy, chrome.photoCaption || '', { family: SANS, size: 11.5, style: 'italic' }, photoW, { color: '#44403C', lineHeight: 16 });
-      if (chrome.captionCredit) { b.text(P + M, cy + 4, String(chrome.captionCredit).toUpperCase(), { family: SANS, size: 9 }, { color: '#78716C', letterSpacing: 0.6 }); cy += 14; }
-      y = cy + 16;
+      const photoH = Math.round(photoW * 0.44);
+      b.photo(L, y, photoW, photoH, { seed: (m.content.title || '').length, colour: d.photoColour !== false });
+      let cy = y + photoH + 12;
+      const capFont = { family: SANS, size: 11.5 };
+      const capLines = wrap(chrome.photoCaption || '', capFont, photoW - 120, measure);
+      capLines.forEach((l, i) => b.text(L, cy + i * 15, l, capFont, { color: '#44403C' }));
+      if (chrome.captionCredit) b.text(L + photoW, cy, '| ' + chrome.captionCredit, { family: SANS, size: 10, style: 'italic' }, { color: '#78716C', align: 'right' });
+      photoBottom = cy + Math.max(capLines.length * 15, 15) + 14;
     }
-    // body in columns
+
+    // body: numbered paragraphs in columns, with hairlines between them
     const font = { family: SERIF, size: 14.5 };
-    const lh = 21;
-    const flow = flowColumns(m.content.paragraphs || [], font, colW, cols, measure, lh);
-    for (const l of flow.placed) b.text(P + M + l.col * (colW + gutter), y + l.y + lh, l.text, font, { color: INK, role: 'body' });
-    for (let c = 1; c < cols; c++) {
-      const x = P + M + c * (colW + gutter) - gutter / 2;
-      b.line(x, y, x, y + flow.height, { color: '#D6D3D1' });
+    const lh = 20.5;
+    const indent = 16;
+    // the first columns start under the photo, the last one beside it
+    const tops = [];
+    for (let c = 0; c < cols; c++) tops.push(cols >= 3 && c === cols - 1 ? y : photoBottom);
+    const flow = flowUneven(m.content.paragraphs || [], font, colW, cols, measure, lh, tops, indent);
+    for (const l of flow.placed) {
+      const x = L + l.col * (colW + gutter);
+      const yy = l.y + lh;
+      if (l.first) b.text(x, yy, String(l.pi + 1), { family: SANS, size: 11, weight: 700 }, { color: warm });
+      const lx = x + (l.first ? indent : 0), lw = colW - (l.first ? indent : 0);
+      if (l.last) b.text(lx, yy, l.text, font, { color: INK, role: 'body' });
+      else justifyLine(b, lx, yy, l.text, font, lw, measure, { color: INK, role: 'body' });
     }
-    y += flow.height + 26;
-    b.line(P + M, y, W - P - M, y, { color: '#A8A29E' });
-    b.text(P + M, y + 18, String(chrome.footerNote || ''), { family: SANS, size: 10 }, { color: '#78716C' });
-    b.text(W - P - M, y + 18, String(chrome.pageLabel || ''), { family: SANS, size: 10, weight: 700 }, { color: '#78716C', align: 'right' });
-    return paperFinish(b, W, y + 40 + P, d);
+    const bodyBottom = flow.bottom + 6;
+
+    // a newspaper never leaves the foot of the last column empty: a boxed
+    // quote if there is one, otherwise the house advertisement
+    const lastCol = cols - 1;
+    const lastLines = flow.placed.filter(l => l.col === lastCol);
+    const lastY = lastLines.length ? Math.max(...lastLines.map(l => l.y + lh)) : tops[lastCol];
+    const hole = bodyBottom - lastY;
+    if (hole > 150) {
+      const gx = L + lastCol * (colW + gutter), gy = lastY + 22, gh = hole - 34;
+      const quote = (m.content.meta || {}).pullQuote || '';
+      const qFont = { family: SERIF, size: 17, style: 'italic' };
+      const qLines = quote ? wrap(quote, qFont, colW - 36, measure) : [];
+      if (qLines.length && qLines.length * 24 + 74 <= gh) {
+        b.line(gx, gy, gx + colW, gy, { color: accent, width: 3 });
+        qLines.forEach((l, i) => b.text(gx + 18, gy + 44 + i * 24, l, qFont, { color: accent }));
+        b.text(gx + 18, gy + 44 + qLines.length * 24 + 18, upper(chrome.publication || ''), { family: SANS, size: 9, weight: 700 }, { color: warm, letterSpacing: 1.2 });
+        b.line(gx, gy + 44 + qLines.length * 24 + 30, gx + colW, gy + 44 + qLines.length * 24 + 30, { color: '#C7C2B5' });
+      } else {
+        b.rect(gx, gy, colW, gh, { fill: '#EDE8DC', radius: 2 });
+        b.rect(gx + 18, gy + 18, 34, 34, { fill: accent, radius: 3 });
+        b.text(gx + 35, gy + 42, initial(chrome.publication || ''), { family: SERIF, size: 20, weight: 700 }, { color: '#FFFFFF', align: 'center' });
+        for (let i = 0; i < 4; i++) b.rect(gx + 18, gy + 68 + i * 16, (colW - 36) * (i === 3 ? 0.5 : 1), 7, { fill: '#D9D2C2', radius: 3 });
+      }
+    }
+    for (let c = 1; c < cols; c++) {
+      const x = L + c * (colW + gutter) - gutter / 2;
+      b.line(x, tops[c] + 2, x, bodyBottom - 8, { color: '#D6D3D1' });
+    }
+    y = bodyBottom + 16;
+    b.line(L, y, R, y, { color: '#A8A29E' });
+    b.text(L, y + 18, String(chrome.footerNote || ''), { family: SERIF, size: 10, style: 'italic' }, { color: '#78716C' });
+    b.text(R, y + 18, String(chrome.publication || ''), { family: SANS, size: 10, weight: 700 }, { color: '#78716C', align: 'right', letterSpacing: 1 });
+    return paperFinish(b, W, y + 42 + P, d);
   }
 
   /** A page out of a book. */
+  /** A page out of a book: a narrow, justified measure with a drop cap. */
   function bookModel(m, chrome, d, measure) {
-    const W = 780;
+    const W = 720;
     const b = builder(W, measure);
-    const P = PAGE_PAD, M = 92;
-    const inner = W - 2 * P - 2 * M;
-    let y = P + 56;
-    b.text(W / 2, y, String(chrome.publication || '').toUpperCase(), { family: SERIF, size: 10 }, { color: '#78716C', align: 'center', letterSpacing: 2 });
-    y += 40;
-    if (chrome.sectionLabel) { b.text(W / 2, y, String(chrome.sectionLabel).toUpperCase(), { family: SERIF, size: 11, weight: 700 }, { color: '#57534E', align: 'center', letterSpacing: 2 }); y += 28; }
-    y = b.para(W / 2, y + 10, m.content.title, { family: SERIF, size: 26, weight: 700 }, inner, { color: INK, align: 'center', lineHeight: 32 }) + 28;
+    const P = PAGE_PAD, M = 92, GUT = 116;
+    const L = P + GUT, R = W - P - M;
+    const inner = R - L;
+    let y = P + 52;
+
+    // running head, chapter line, ornament, title
+    b.text(W / 2, y, upper(chrome.publication || ''), { family: SERIF, size: 9.5 }, { color: '#8A8578', align: 'center', letterSpacing: 2.6 });
+    y += 54;
+    if (chrome.sectionLabel) {
+      b.text(W / 2, y, upper(chrome.sectionLabel), { family: SERIF, size: 11, weight: 700 }, { color: '#57534E', align: 'center', letterSpacing: 2.4 });
+      y += 22;
+      [-1, 0, 1].forEach(i => b.circle(W / 2 + i * 11, y + 2, 1.7, { fill: '#A8A29E' }));
+      y += 30;
+    }
+    y = b.para(W / 2, y + 18, m.content.title, { family: SERIF, size: 24, weight: 700 }, inner, { color: INK, align: 'center', lineHeight: 31 }) + 12;
+    b.line(W / 2 - 34, y, W / 2 + 34, y, { color: '#C7C2B5' });
+    y += 38;
+
+    // the text: first paragraph with an initial, the others indented
     const font = { family: SERIF, size: 15 };
+    const lh = 25;
     (m.content.paragraphs || []).forEach((p, i) => {
-      const lines = wrap(p, font, inner, measure);
-      lines.forEach((l, k) => b.text(P + M + (k === 0 && i > 0 ? 22 : 0), y + k * 24, l, font, { color: INK, role: 'body' }));
-      y += lines.length * 24 + 6;
+      if (i === 0 && p.length > 60) {
+        y = dropCapPara(b, L, y, p, font, inner, SERIF, measure, INK, { lineHeight: lh, justify: true }) + lh - 6;
+        return;
+      }
+      const indent = i > 0 ? 24 : 0;
+      const lines = wrapIndent(p, font, inner, measure, indent);
+      lines.forEach((l, k) => {
+        const x = L + (k === 0 ? indent : 0);
+        const width = inner - (k === 0 ? indent : 0);
+        if (k === lines.length - 1) b.text(x, y + k * lh, l, font, { color: INK, role: 'body' });
+        else justifyLine(b, x, y + k * lh, l, font, width, measure, { color: INK, role: 'body' });
+      });
+      y += lines.length * lh;
     });
-    b.text(W / 2, y + 40, String(chrome.pageLabel || ''), { family: SERIF, size: 11 }, { color: '#78716C', align: 'center' });
-    return paperFinish(b, W, y + 70 + P, d);
+    b.text(W / 2, y + 46, String(chrome.pageLabel || ''), { family: SERIF, size: 11 }, { color: '#78716C', align: 'center' });
+    const model = paperFinish(b, W, y + 76 + P, d);
+    // the shadow of the binding along the inner edge of the page
+    model.finish.gutter = { x: P, w: 58 };
+    return model;
   }
 
-  /** A hand-written page in a notebook. */
+  /** A hand-written page in a ruled notebook, the writing sitting on the rules. */
   function notebookModel(m, chrome, d, measure) {
-    const W = 800;
+    const W = 780;
     const b = builder(W, measure);
-    const P = PAGE_PAD, M = 70;
-    const inner = W - 2 * P - M - 40;
-    let y = P + 54;
-    b.text(W - P - 40, y, String(chrome.publicationLine || ''), { family: HAND, size: 20 }, { color: '#3F3F46', align: 'right' });
-    y += 34;
-    y = b.para(P + M, y, m.content.title, { family: HAND, size: 30, weight: 600 }, inner, { color: '#1E3A8A', lineHeight: 34 }) + 16;
-    const font = { family: HAND, size: 21 };
-    const lh = 30;
-    const lines = [];
-    for (const p of m.content.paragraphs || []) { wrap(p, font, inner, measure).forEach(l => lines.push(l)); lines.push(''); }
-    lines.forEach((l, i) => { if (l) b.text(P + M, y + i * lh, l, font, { color: '#1F2937', role: 'body' }); });
-    const bottom = y + lines.length * lh + 20;
-    // the ruling is drawn under everything
-    const rules = [];
-    for (let ry = P + 40; ry < bottom; ry += lh) rules.push({ type: 'line', x1: P + 18, y1: ry + 6, x2: W - P - 18, y2: ry + 6, color: '#DBEAFE', width: 1 });
-    rules.push({ type: 'line', x1: P + M - 18, y1: P + 10, x2: P + M - 18, y2: bottom, color: '#FCA5A5', width: 1.5 });
-    b.blocks.unshift(...rules);
+    const P = PAGE_PAD, M = 86;
+    const L = P + M, R = W - P - 42;
+    const inner = R - L;
+    const lh = 31;
+    const top = P + 34;              // the first rule
+    const rule = (n) => top + n * lh; // every line of writing sits on rule n
+
+    const ink = '#1F3A93', dark = '#16306F';
+    let n = 1;
+    b.text(R, rule(n) - 7, String(chrome.publicationLine || chrome.pageLabel || ''), { family: HAND, size: 19 }, { color: '#475569', align: 'right' });
+    n += 2;
+    const titleLines = wrap(m.content.title, { family: HAND, size: 29, weight: 600 }, inner, measure);
+    titleLines.forEach((l, i) => b.text(L, rule(n + i) - 7, l, { family: HAND, size: 29, weight: 600 }, { color: dark }));
+    n += titleLines.length;
+    b.line(L, rule(n - 1) + 2, L + Math.min(inner, measure(titleLines[0], { family: HAND, size: 29, weight: 600 }) + 12), rule(n - 1) + 3, { color: '#93C5FD', width: 2 });
+    n += 1;
+
+    // the writing: every line on its rule, with the small unevenness of a hand
+    (m.content.paragraphs || []).forEach((para, pi) => {
+      const font = { family: HAND, size: 21 };
+      wrapIndent(para, font, inner, measure, pi ? 16 : 0).forEach((l, k) => {
+        const jitter = ((pi * 7 + k * 13) % 5) - 2;
+        b.text(L + (k === 0 && pi ? 16 : 0) + jitter, rule(n) - 7, l, { family: HAND, size: 21 + (jitter % 2) * 0.3 }, { color: ink, role: 'body' });
+        n += 1;
+      });
+      n += 1;
+    });
+    const bottom = rule(n + 1) + 10;
+
+    // the ruling, the red margin and the punched holes go under the writing
+    const under = [];
+    for (let ry = top; ry < bottom; ry += lh) under.push({ type: 'line', x1: P + 16, y1: ry, x2: W - P - 16, y2: ry, color: '#CBDDF6', width: 1 });
+    under.push({ type: 'line', x1: L - 22, y1: P + 6, x2: L - 22, y2: bottom, color: '#F4A6A6', width: 1.5 });
+    b.blocks.unshift(...under);
+    const holes = [0.22, 0.5, 0.78].map(f => ({ type: 'circle', x: P + 24, y: P + (bottom - P) * f, r: 9, fill: '#D8D2C6' }));
+    b.blocks.push(...holes);
     return paperFinish(b, W, bottom + P, d);
   }
 
@@ -590,24 +1106,42 @@
     const b = builder(W, measure);
     const meta = m.content.meta || {};
     const P = PAGE_PAD, M = 64;
-    const inner = W - 2 * P - 2 * M;
-    let y = P + 52;
-    const head = [chrome.publication || chrome.siteName, chrome.sectionLabel].filter(Boolean).join('  ·  ');
-    if (head) { b.text(P + M, y, head.toUpperCase(), { family: SANS, size: 10, weight: 700 }, { color: '#57534E', letterSpacing: 1 }); }
-    b.text(W - P - M, y, String(chrome.publicationLine || chrome.metaLine || ''), { family: SANS, size: 10 }, { color: '#78716C', align: 'right' });
-    y += 10;
-    b.line(P + M, y, W - P - M, y, { color: '#A8A29E' });
-    y += 34;
-    y = b.para(P + M, y, meta.subject || m.content.title, { family: SANS, size: 24, weight: 700 }, inner, { color: INK, lineHeight: 30 });
+    const L = P + M, R = W - P - M;
+    const inner = R - L;
+    const accent = d.accent || '#334155';
+    let y = P + 46;
+
+    // letterhead: a logo mark, the name, the date on the right, an accent rule
+    const name = chrome.publication || chrome.siteName || '';
+    b.rect(L, y - 18, 30, 30, { fill: accent, radius: 5 });
+    b.text(L + 15, y + 3, initial(name), { family: SANS, size: 17, weight: 800 }, { color: '#FFFFFF', align: 'center' });
+    b.text(L + 42, y - 2, name, { family: SANS, size: 15, weight: 800 }, { color: '#1C1917' });
+    if (chrome.sectionLabel) b.text(L + 42, y + 14, upper(chrome.sectionLabel), { family: SANS, size: 9.5, weight: 700 }, { color: '#78716C', letterSpacing: 1.2 });
+    b.text(R, y - 2, String(chrome.publicationLine || chrome.metaLine || ''), { family: SANS, size: 10 }, { color: '#78716C', align: 'right' });
+    y += 28;
+    b.rect(L, y, inner, 3, { fill: accent });
+    y += 40;
+
+    y = b.para(L, y, meta.subject || m.content.title, { family: SANS, size: 24, weight: 800 }, inner, { color: '#1C1917', lineHeight: 31 });
     const byline = [meta.byline, meta.from, meta.dateline].filter(Boolean).join('  ·  ');
-    if (byline) { y += 22; b.text(P + M, y, byline, { family: SANS, size: 11 }, { color: '#57534E' }); }
-    y += 26;
+    if (byline) { y += 22; b.text(L, y, byline, { family: SANS, size: 11 }, { color: '#57534E' }); }
+    if (meta.standfirst) y = b.para(L, y + 26, meta.standfirst, { family: SANS, size: 13, style: 'italic' }, inner, { color: '#57534E', lineHeight: 20 }) - 4;
+    y += 28;
     const font = { family: SANS, size: 14 };
-    for (const p of m.content.paragraphs || []) y = b.para(P + M, y, p, font, inner, { color: INK, role: 'body', lineHeight: 22 }) + 14;
-    b.line(P + M, y + 10, W - P - M, y + 10, { color: '#D6D3D1' });
-    b.text(P + M, y + 30, String(chrome.footerNote || ''), { family: SANS, size: 10 }, { color: '#78716C' });
-    b.text(W - P - M, y + 30, String(chrome.pageLabel || ''), { family: SANS, size: 10 }, { color: '#78716C', align: 'right' });
-    return paperFinish(b, W, y + 52 + P, d);
+    for (const p of m.content.paragraphs || []) y = b.para(L, y, p, font, inner, { color: '#1C1917', role: 'body', lineHeight: 22 }) + 16;
+    y += 8;
+    b.line(L, y, R, y, { color: '#D6D3D1' });
+    b.text(L, y + 22, String(chrome.footerNote || ''), { family: SANS, size: 10 }, { color: '#78716C' });
+    if (chrome.pageLabel) {
+      const f = { family: SANS, size: 10, weight: 700 };
+      const w = approxMeasure(chrome.pageLabel, f) + 20;
+      b.pill(R - w, y + 8, w, 20, chrome.pageLabel, f, { fill: '#EDEAE3', color: '#78716C' });
+    }
+    const model = paperFinish(b, W, y + 52 + P, d);
+    // a staple in the top corner, as a handout from the copier has
+    model.blocks.push({ type: 'line', x1: P + 20, y1: P + 34, x2: P + 46, y2: P + 20, color: '#A8A29E', width: 3 });
+    model.blocks.push({ type: 'line', x1: P + 22, y1: P + 37, x2: P + 48, y2: P + 23, color: '#E7E2D6', width: 1.4 });
+    return model;
   }
 
   /** Put the page on a surface: paper colour, shadow, a slight tilt and a vignette. */
@@ -653,7 +1187,10 @@
 
   /** Everything the picture shows of the generated text itself. */
   function bodyText(model) {
-    return (model.blocks || []).filter(x => x.type === 'text' && x.role === 'body').map(x => x.text).join(' ');
+    const parts = (model.blocks || []).filter(x => x.type === 'text' && x.role === 'body');
+    let out = '';
+    parts.forEach((x, i) => { out += (i === 0 ? '' : (parts[i - 1].glue ? '' : ' ')) + x.text; });
+    return out;
   }
   /** Everything the interface around it shows. */
   function chromeText(model) {
@@ -671,8 +1208,13 @@
         if (typeof x.text !== 'string') problems.push('text block without text');
         if (!x.font || !x.font.size || !x.font.family) problems.push('text block without font');
         if (x.y > model.height + 2 || x.y < 0) problems.push('text outside the picture at y=' + Math.round(x.y));
-      } else if (x.type === 'rect' || x.type === 'photo') {
+      } else if (x.type === 'rect' || x.type === 'photo' || x.type === 'wallpaper' || x.type === 'gradient') {
         if (!(x.w > 0) || !(x.h > 0)) problems.push('block without size');
+      } else if (x.type === 'icon') {
+        if (!ICONS[x.name]) problems.push('unknown icon: ' + x.name);
+        if (!(x.size > 0)) problems.push('icon without size: ' + x.name);
+      } else if (x.type === 'poly') {
+        if (!Array.isArray(x.points) || x.points.length < 3) problems.push('polygon with too few points');
       }
     }
     return [...new Set(problems)];
@@ -686,35 +1228,79 @@
     return `${f.style || 'normal'} ${f.weight || 400} ${f.size}px ${f.family}`;
   }
 
+  /*
+   * A small vector icon set, drawn in a 24×24 box and scaled. Real interfaces
+   * are full of these; without them a picture never looks like the thing it
+   * is imitating.
+   */
+  const ICONS = {
+    back: (c) => { c.moveTo(15, 5); c.lineTo(8, 12); c.lineTo(15, 19); },
+    chevron: (c) => { c.moveTo(9, 5); c.lineTo(16, 12); c.lineTo(9, 19); },
+    phone: (c) => { c.moveTo(6, 4); c.quadraticCurveTo(4, 4, 4, 7); c.quadraticCurveTo(4, 17, 14, 20); c.quadraticCurveTo(18, 21, 19, 17); c.lineTo(15, 15); c.lineTo(13, 17); c.quadraticCurveTo(8, 14, 7, 10); c.lineTo(9, 8); c.closePath(); },
+    video: (c) => { c.rect(3, 7, 12, 10); c.moveTo(16, 11); c.lineTo(21, 8); c.lineTo(21, 16); c.lineTo(16, 13); c.closePath(); },
+    dots: (c) => { [6, 12, 18].forEach(y => { c.moveTo(14, y); c.arc(12, y, 1.6, 0, Math.PI * 2); }); },
+    search: (c) => { c.arc(11, 11, 6, 0, Math.PI * 2); c.moveTo(15.5, 15.5); c.lineTo(20, 20); },
+    menu: (c) => { [7, 12, 17].forEach(y => { c.moveTo(4, y); c.lineTo(20, y); }); },
+    heart: (c) => { c.moveTo(12, 20); c.quadraticCurveTo(3, 13, 3, 8.5); c.quadraticCurveTo(3, 4, 7.5, 4); c.quadraticCurveTo(12, 4, 12, 8); c.quadraticCurveTo(12, 4, 16.5, 4); c.quadraticCurveTo(21, 4, 21, 8.5); c.quadraticCurveTo(21, 13, 12, 20); },
+    comment: (c) => { c.moveTo(4, 5); c.lineTo(20, 5); c.lineTo(20, 16); c.lineTo(11, 16); c.lineTo(7, 20); c.lineTo(7, 16); c.lineTo(4, 16); c.closePath(); },
+    share: (c) => { c.arc(18, 6, 2.6, 0, Math.PI * 2); c.moveTo(8.6, 12); c.arc(6, 12, 2.6, 0, Math.PI * 2); c.moveTo(20.6, 18); c.arc(18, 18, 2.6, 0, Math.PI * 2); c.moveTo(8.4, 10.8); c.lineTo(15.6, 7.2); c.moveTo(8.4, 13.2); c.lineTo(15.6, 16.8); },
+    bookmark: (c) => { c.moveTo(6, 4); c.lineTo(18, 4); c.lineTo(18, 20); c.lineTo(12, 15.5); c.lineTo(6, 20); c.closePath(); },
+    mic: (c) => { c.moveTo(9, 6); c.quadraticCurveTo(9, 3, 12, 3); c.quadraticCurveTo(15, 3, 15, 6); c.lineTo(15, 11); c.quadraticCurveTo(15, 14, 12, 14); c.quadraticCurveTo(9, 14, 9, 11); c.closePath(); c.moveTo(6, 11); c.quadraticCurveTo(6, 18, 12, 18); c.quadraticCurveTo(18, 18, 18, 11); c.moveTo(12, 18); c.lineTo(12, 21); },
+    clip: (c) => { c.moveTo(16, 7); c.lineTo(9, 14); c.quadraticCurveTo(7, 16, 9, 18); c.quadraticCurveTo(11, 20, 13, 18); c.lineTo(19, 12); c.quadraticCurveTo(22, 9, 19, 6); c.quadraticCurveTo(16, 3, 13, 6); c.lineTo(6, 13); },
+    camera: (c) => { c.rect(3, 7, 18, 12); c.moveTo(9, 7); c.lineTo(10.5, 4.5); c.lineTo(13.5, 4.5); c.lineTo(15, 7); c.moveTo(15, 13); c.arc(12, 13, 3.4, 0, Math.PI * 2); },
+    ticks: (c) => { c.moveTo(2, 12); c.lineTo(7, 17); c.lineTo(15, 7); c.moveTo(9, 12); c.lineTo(13, 16); c.lineTo(21, 6); },
+    star: (c) => { for (let i = 0; i < 10; i++) { const r = i % 2 ? 4.2 : 9.5, a = -Math.PI / 2 + i * Math.PI / 5; const x = 12 + r * Math.cos(a), y = 12 + r * Math.sin(a); i ? c.lineTo(x, y) : c.moveTo(x, y); } c.closePath(); },
+    plus: (c) => { c.moveTo(12, 5); c.lineTo(12, 19); c.moveTo(5, 12); c.lineTo(19, 12); },
+    up: (c) => { c.moveTo(4, 14); c.lineTo(12, 5); c.lineTo(20, 14); c.closePath(); },
+    down: (c) => { c.moveTo(4, 10); c.lineTo(12, 19); c.lineTo(20, 10); c.closePath(); },
+    reply: (c) => { c.moveTo(10, 6); c.lineTo(4, 11); c.lineTo(10, 16); c.moveTo(4, 11); c.lineTo(15, 11); c.quadraticCurveTo(20, 11, 20, 17); c.lineTo(20, 19); },
+    inbox: (c) => { c.moveTo(4, 5); c.lineTo(20, 5); c.lineTo(20, 19); c.lineTo(4, 19); c.closePath(); c.moveTo(4, 13); c.lineTo(9, 13); c.lineTo(10.5, 15.5); c.lineTo(13.5, 15.5); c.lineTo(15, 13); c.lineTo(20, 13); },
+    trash: (c) => { c.moveTo(5, 7); c.lineTo(19, 7); c.moveTo(7, 7); c.lineTo(8.5, 20); c.lineTo(15.5, 20); c.lineTo(17, 7); c.moveTo(9.5, 7); c.lineTo(9.5, 4.5); c.lineTo(14.5, 4.5); c.lineTo(14.5, 7); },
+    lock: (c) => { c.rect(6, 11, 12, 9); c.moveTo(9, 11); c.lineTo(9, 8); c.quadraticCurveTo(9, 4.5, 12, 4.5); c.quadraticCurveTo(15, 4.5, 15, 8); c.lineTo(15, 11); },
+  };
+
   /** Deterministic pseudo random, so the same picture is drawn every time. */
   function rng(seed) {
     let x = (seed || 1) * 1103515245 + 12345;
     return () => { x = (x * 1103515245 + 12345) % 2147483648; return x / 2147483648; };
   }
 
-  /** A printed photograph: muted tones, a horizon, silhouettes, halftone dots. */
+  /** The colour a picture is held in — press photos are never all the same. */
+  const TINTS = {
+    cool: ['#9DB7CE', '#C3C7BE', '#8A8F84'],
+    warm: ['#E3C39A', '#C9A98C', '#8C7663'],
+    dusk: ['#8E87B5', '#C49AA6', '#6B6076'],
+    green: ['#A9C0A2', '#C6CBAA', '#6F7C62'],
+  };
+
+  /** A photograph: muted tones, a horizon, silhouettes, halftone dots. */
   function drawPhoto(ctx, b) {
     const r = rng(b.seed || 7);
+    const col = b.colour !== false;
+    ctx.save();
+    ctx.beginPath(); ctx.rect(b.x, b.y, b.w, b.h); ctx.clip();
+    const t = TINTS[b.tint] || TINTS.cool;
     const g = ctx.createLinearGradient(b.x, b.y, b.x, b.y + b.h);
-    g.addColorStop(0, '#C8CBD0'); g.addColorStop(0.62, '#9AA0A8'); g.addColorStop(1, '#6F757D');
+    if (col) { g.addColorStop(0, t[0]); g.addColorStop(0.55, t[1]); g.addColorStop(1, t[2]); }
+    else { g.addColorStop(0, '#C8CBD0'); g.addColorStop(0.62, '#9AA0A8'); g.addColorStop(1, '#6F757D'); }
     ctx.fillStyle = g; ctx.fillRect(b.x, b.y, b.w, b.h);
     const horizon = b.y + b.h * (0.66 + r() * 0.08);
     // a soft light behind the skyline
-    ctx.fillStyle = '#C3C7CC';
+    ctx.fillStyle = col ? '#E8D9B5' : '#C3C7CC';
     ctx.beginPath(); ctx.arc(b.x + b.w * (0.2 + r() * 0.55), horizon - b.h * 0.42, b.h * 0.13, 0, Math.PI * 2); ctx.fill();
     // skyline: blocks of different heights, some with lit windows
     let bx = b.x - b.w * 0.02;
     while (bx < b.x + b.w) {
       const bw = b.w * (0.05 + r() * 0.09);
       const bh = b.h * (0.12 + r() * 0.42);
-      ctx.fillStyle = r() > 0.5 ? '#5A6069' : '#4A5058';
+      ctx.fillStyle = col ? (r() > 0.5 ? '#6B6257' : '#565E63') : (r() > 0.5 ? '#5A6069' : '#4A5058');
       ctx.fillRect(bx, horizon - bh, bw, bh);
       ctx.fillStyle = 'rgba(220,225,230,.25)';
       for (let wy = horizon - bh + 6; wy < horizon - 6; wy += 10) for (let wx = bx + 4; wx < bx + bw - 5; wx += 9) if (r() > 0.55) ctx.fillRect(wx, wy, 4, 5);
       bx += bw + b.w * 0.012;
     }
     // ground with a lighter path
-    ctx.fillStyle = '#6E747C'; ctx.fillRect(b.x, horizon, b.w, b.y + b.h - horizon);
+    ctx.fillStyle = col ? t[2] : '#6E747C'; ctx.fillRect(b.x, horizon, b.w, b.y + b.h - horizon);
     ctx.fillStyle = 'rgba(200,205,212,.28)';
     ctx.beginPath();
     ctx.moveTo(b.x + b.w * 0.3, b.y + b.h); ctx.lineTo(b.x + b.w * 0.46, horizon);
@@ -723,12 +1309,68 @@
     // halftone
     ctx.save();
     ctx.beginPath(); ctx.rect(b.x, b.y, b.w, b.h); ctx.clip();
-    ctx.fillStyle = 'rgba(30,30,30,.12)';
+    ctx.fillStyle = col ? 'rgba(30,30,30,.07)' : 'rgba(30,30,30,.12)';
     for (let yy = b.y; yy < b.y + b.h; yy += 3) for (let xx = b.x + (yy % 6 === 0 ? 0 : 1.5); xx < b.x + b.w; xx += 3) {
       ctx.beginPath(); ctx.arc(xx, yy, 0.7, 0, Math.PI * 2); ctx.fill();
     }
     ctx.restore();
+    ctx.restore();
     ctx.strokeStyle = 'rgba(0,0,0,.25)'; ctx.lineWidth = 1; ctx.strokeRect(b.x + .5, b.y + .5, b.w - 1, b.h - 1);
+  }
+
+  /** One icon, filled or stroked, in the given box. */
+  function drawIcon(ctx, b) {
+    const f = ICONS[b.name];
+    if (!f) return;
+    ctx.save();
+    ctx.translate(b.x, b.y);
+    ctx.scale(b.size / 24, b.size / 24);
+    ctx.beginPath();
+    f(ctx);
+    if (b.fill) { ctx.fillStyle = b.fill; ctx.fill(); }
+    if (b.stroke !== false) {
+      ctx.strokeStyle = b.color || b.fill || '#334155';
+      ctx.lineWidth = (b.weight || 1.8) * 24 / b.size * (b.size / 24);
+      ctx.lineWidth = b.weight || 1.8;
+      ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  /** Messenger wallpaper: a warm tint with faint doodles, as the apps have. */
+  function drawWallpaper(ctx, b) {
+    ctx.save();
+    ctx.beginPath(); ctx.rect(b.x, b.y, b.w, b.h); ctx.clip();
+    ctx.fillStyle = b.fill || '#ECE5DD';
+    ctx.fillRect(b.x, b.y, b.w, b.h);
+    const r = rng(b.seed || 3);
+    ctx.globalAlpha = 0.5;
+    for (let y = b.y; y < b.y + b.h; y += 54) {
+      for (let x = b.x; x < b.x + b.w; x += 54) {
+        const pick = Math.floor(r() * 4);
+        const cx = x + 10 + r() * 24, cy = y + 10 + r() * 24, sz = 7 + r() * 5;
+        ctx.strokeStyle = b.doodle || 'rgba(190,180,165,.55)';
+        ctx.lineWidth = 1.4;
+        ctx.beginPath();
+        if (pick === 0) ctx.arc(cx, cy, sz * 0.6, 0, Math.PI * 2);
+        else if (pick === 1) { ctx.moveTo(cx - sz / 2, cy - sz / 2); ctx.lineTo(cx + sz / 2, cy + sz / 2); ctx.moveTo(cx + sz / 2, cy - sz / 2); ctx.lineTo(cx - sz / 2, cy + sz / 2); }
+        else if (pick === 2) { ctx.rect(cx - sz / 2, cy - sz / 2, sz, sz * 0.8); }
+        else { ctx.moveTo(cx, cy + sz / 2); ctx.quadraticCurveTo(cx - sz, cy - sz / 2, cx, cy - sz); ctx.quadraticCurveTo(cx + sz, cy - sz / 2, cx, cy + sz / 2); }
+        ctx.stroke();
+      }
+    }
+    ctx.restore();
+  }
+
+  /** A colour band, e.g. an app header or a hero area. */
+  function drawGradient(ctx, b) {
+    const g = ctx.createLinearGradient(b.x, b.y, b.vertical === false ? b.x + b.w : b.x, b.vertical === false ? b.y : b.y + b.h);
+    (b.stops || []).forEach(([o, c]) => g.addColorStop(o, c));
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    roundRect(ctx, b.x, b.y, b.w, b.h, b.radius || 0);
+    ctx.fill();
   }
 
   /** Draw the model onto a canvas 2D context, ready to be exported as PNG. */
@@ -749,7 +1391,8 @@
       if (b.type === 'rect') {
         ctx.beginPath();
         roundRect(ctx, b.x, b.y, b.w, b.h, b.radius || 0);
-        if (b.shadow) { ctx.shadowColor = 'rgba(0,0,0,.35)'; ctx.shadowBlur = 26; ctx.shadowOffsetY = 10; }
+        if (b.shadow === 'soft') { ctx.shadowColor = 'rgba(15,23,42,.12)'; ctx.shadowBlur = 4; ctx.shadowOffsetY = 1; }
+        else if (b.shadow) { ctx.shadowColor = 'rgba(0,0,0,.35)'; ctx.shadowBlur = 26; ctx.shadowOffsetY = 10; }
         ctx.fillStyle = b.fill || '#FFFFFF';
         ctx.fill();
         ctx.shadowColor = 'transparent'; ctx.shadowBlur = 0; ctx.shadowOffsetY = 0;
@@ -762,8 +1405,19 @@
         ctx.beginPath();
         ctx.arc(b.x, b.y, b.r, 0, Math.PI * 2);
         ctx.fillStyle = b.fill; ctx.fill();
+      } else if (b.type === 'poly') {
+        ctx.beginPath();
+        (b.points || []).forEach(([px, py], i) => (i ? ctx.lineTo(px, py) : ctx.moveTo(px, py)));
+        ctx.closePath();
+        ctx.fillStyle = b.fill || '#FFFFFF'; ctx.fill();
       } else if (b.type === 'photo') {
         drawPhoto(ctx, b);
+      } else if (b.type === 'icon') {
+        drawIcon(ctx, b);
+      } else if (b.type === 'wallpaper') {
+        drawWallpaper(ctx, b);
+      } else if (b.type === 'gradient') {
+        drawGradient(ctx, b);
       } else if (b.type === 'text') {
         ctx.font = fontString(b.font);
         ctx.fillStyle = b.color || INK;
@@ -789,6 +1443,14 @@
         ctx.fillRect(r() * W, r() * H, 1.2, 1.2);
       }
       ctx.restore();
+    }
+    if (fin.gutter) {
+      const g = ctx.createLinearGradient(fin.gutter.x, 0, fin.gutter.x + fin.gutter.w, 0);
+      g.addColorStop(0, 'rgba(60,50,35,.30)');
+      g.addColorStop(0.55, 'rgba(60,50,35,.08)');
+      g.addColorStop(1, 'rgba(60,50,35,0)');
+      ctx.fillStyle = g;
+      ctx.fillRect(fin.gutter.x, fin.page ? fin.page.y : 0, fin.gutter.w, fin.page ? fin.page.h : H);
     }
     if (fin.vignette) {
       const g = ctx.createRadialGradient(W / 2, H / 2, Math.min(W, H) * 0.35, W / 2, H / 2, Math.max(W, H) * 0.72);
@@ -822,5 +1484,5 @@
     };
   }
 
-  return { LAYOUTS, CHROME_SPECS, layoutFor, chromeSpec, fallbackChrome, buildModel, drawPhoto, bodyText, chromeText, validate, draw, canvasMeasure, approxMeasure, wrap, fontString };
+  return { LAYOUTS, CHROME_SPECS, ICONS, layoutFor, chromeSpec, fallbackChrome, buildModel, drawPhoto, drawIcon, bodyText, chromeText, validate, draw, canvasMeasure, approxMeasure, wrap, fontString };
 });

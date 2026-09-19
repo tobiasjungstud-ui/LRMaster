@@ -1335,6 +1335,44 @@
       }
       return ok(kinds.has('page') && kinds.has('mail') && kinds.has('thread') && kinds.has('chat') && Object.keys(env.mock.LAYOUTS).length >= 14, [...kinds].join(','));
     } });
+  add({ id: 'S37.medium_detail', section: 37, title: 'Jedes Medium ist im Detail gebaut wie das echte: Browserfenster mit Tableiste und Schloss, Blog/News mit Logo, Bild, Tags und Aktionsleiste, Mail mit Werkzeugleiste und Ordnern, Forum mit Stimmpfeilen und Antwortstufen, Messenger mit Hintergrundmuster, Sprechblasenspitzen und Häkchen', kind: 'function',
+    check(env) {
+      const model = (type) => env.quality.layoutModel(env.fixture.material({ textType: type, authenticLayout: true, layoutMedium: 'screen' }, 'reading'));
+      const icons = (m) => new Set((m.blocks || []).filter(b => b.type === 'icon').map(b => b.name));
+      const has = (m, t) => (m.blocks || []).some(b => b.type === t);
+      const blog = model('Blog Post'), bi = icons(blog);
+      if (!bi.has('lock') || !bi.has('plus') || !bi.has('search')) return 'the browser window has no tab strip with a padlock';
+      if (!has(blog, 'photo')) return 'the blog post has no picture';
+      if (!['heart', 'comment', 'share', 'bookmark'].every(n => bi.has(n))) return 'the action bar has no icons';
+      const mail = icons(model('Email'));
+      if (!['inbox', 'trash', 'reply', 'star'].every(n => mail.has(n))) return 'the mail program has no toolbar and no folder icons';
+      const forum = model('Forum Discussion'), fi = icons(forum);
+      if (!fi.has('up') || !fi.has('down')) return 'the forum has no vote arrows';
+      if (!(forum.blocks || []).some(b => b.type === 'line' && b.x1 === b.x2)) return 'the forum shows no reply levels';
+      const chat = model('Dialogue'), ci = icons(chat);
+      if (!has(chat, 'wallpaper')) return 'the messenger has no wallpaper';
+      if (!has(chat, 'poly')) return 'the bubbles have no tails';
+      if (!['phone', 'video', 'dots', 'mic', 'camera', 'clip', 'ticks'].every(n => ci.has(n))) return 'the messenger has no app icons';
+      return ok(Object.keys(env.mock.ICONS).length >= 20, 'too few interface icons');
+    } });
+  add({ id: 'S37.print_detail', section: 37, title: 'Gedruckte Medien sehen fotografiert aus: Zeitungsseite im Blocksatz mit Spalten, Bild und Legende, Buchseite mit Initial und Bundschatten, Heftseite mit Lineatur, Randlinie und Lochung, Blatt mit Briefkopf', kind: 'function',
+    check(env) {
+      const model = (type) => env.quality.layoutModel(env.fixture.material({ textType: type, authenticLayout: true, layoutMedium: 'paper' }, 'reading'));
+      const words = (m) => (m.blocks || []).filter(b => b.type === 'text' && b.role === 'body' && !/\s/.test(b.text)).length;
+      const press = model('News Article');
+      if (!press.finish || !press.finish.grain || !press.finish.page) return 'the newspaper page is not photographed';
+      if (!(press.blocks || []).some(b => b.type === 'photo')) return 'the newspaper has no press photo';
+      if (words(press) < 20) return 'the newspaper columns are not justified';
+      const book = model('Story');
+      if (!book.finish || !book.finish.gutter) return 'the book page has no binding shadow';
+      if (words(book) < 20) return 'the book page is not justified';
+      const note = model('Diary Entry');
+      if ((note.blocks || []).filter(b => b.type === 'line').length < 10) return 'the notebook has no ruling';
+      if ((note.blocks || []).filter(b => b.type === 'circle').length < 3) return 'the notebook has no punched holes';
+      const sheet = model('Report');
+      if (!(sheet.blocks || []).some(b => b.type === 'line' && b.width === 3)) return 'the printed sheet has no staple';
+      return ok(true);
+    } });
   add({ id: 'S37.prompt', section: 37, title: 'Claude gestaltet die Oberfläche (Adresse, Seitenname, Navigation, Buttons, Zahlen) – ohne den Text zu verändern', kind: 'function',
     check(env) {
       const s = layoutState(env, { textType: 'Blog Post' });
