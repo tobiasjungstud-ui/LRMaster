@@ -151,6 +151,29 @@ test('the screenshot shows exactly the generated text, for every text type', () 
   // no layout data, no layout findings
   assert.equal(quality.runContentChecks(m.settings, m.plan, m.content).filter(f => f.group === 'layout').length, 0);
 });
+test('template cards carry short tags and a checked redo', () => {
+  const tb = fixture.textbooks()[0];
+  const ctx = { textbook: tb, unit: tb.units[0] };
+  for (const kind of ['listening', 'reading']) {
+    for (const preset of core.setupPresets(kind)) {
+      const base = core.normalizeState(Object.assign(core.defaults(kind), { textbookId: tb.id, unitId: tb.units[0].id }));
+      const s = core.applySetupPreset(base, preset.key);
+      const tags = core.tagsFor(s, ctx);
+      assert.ok(tags.length >= 5 && tags.length <= 8, preset.key + ': ' + tags.length + ' tags');
+      assert.equal(tags[0], s.cefr, preset.key);
+      assert.ok(tags.every(t => t.length <= 24), preset.key + ': ' + tags.join('|'));
+      // a drawn variant may change the idea, never the frame
+      const applied = core.applyTemplateVariant(s, { customTopic: 'a new idea', languageComplexity: 70, cefr: 'A1.1', questionLevel: 'B', wordCount: 5000, junk: true });
+      assert.equal(applied.customTopic, 'a new idea', preset.key);
+      assert.equal(applied.cefr, s.cefr, preset.key);
+      assert.equal(applied.questionLevel, s.questionLevel, preset.key);
+      assert.equal(applied.junk, undefined);
+      assert.ok(applied.wordCount <= 1200);
+      assert.deepEqual(core.validateState(applied, ctx), [], preset.key + ' variant invalid');
+    }
+  }
+  assert.equal(core.applyTemplateVariant(core.defaults('reading'), {}).customTopic, core.defaults('reading').customTopic);
+});
 test('with a template the single settings stay folded away', () => {
   const css = fs.readFileSync(path.join(APP, 'styles.css'), 'utf8');
   const folded = css.split('\n').filter(l => l.includes('body[data-setup="preset"]')).join(' ');

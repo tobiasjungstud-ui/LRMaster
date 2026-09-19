@@ -2,7 +2,7 @@
 
 Erzeugt von `npm run coverage`. Jede Zeile ist eine Anforderung aus `docs/Konzept_Listening_Reading_Creator.md`, gebunden an die Stelle im Code, die sie umsetzt, und das Ergebnis der automatischen Prüfung (`npm test`).
 
-**Ergebnis: 300 von 300 Anforderungen bestanden.**
+**Ergebnis: 302 von 302 Anforderungen bestanden.**
 
 Prüfarten: **setting** – Steuerelement vorhanden und Änderung des Werts verändert nachweislich den Prompt an Claude · **function** – Verhalten wird mit echten Eingaben ausgeführt und verglichen · **rule** – Qualitätsregel existiert als Messung oder Claude-Review-Kriterium · **render** – Ausgabe wird auf einer Fixture gerendert und inhaltlich geprüft · **ui** – Navigations-/Strukturelement existiert.
 
@@ -486,13 +486,15 @@ Prüfarten: **setting** – Steuerelement vorhanden und Änderung des Werts ver�
 | ✅ | `S37.rule_image` | Kontrolle: das Bild ist zeichenbar und wird nur dann ausgeliefert | rule | Quality rule `layout.image_valid` (gemessen in quality.js) |
 | ✅ | `S37.rule_authentic` | Kontrolle (Claude): das Medium wirkt echt und passt zum Text | rule | Quality rule `layout.authentic` (Claude-Review über buildReviewPrompt) |
 
-## §38 Vorlagen & Custom-Modus (5/5)
+## §38 Vorlagen & Custom-Modus (7/7)
 
 | Status | ID | Anforderung | Art | Umsetzung |
 |---|---|---|---|---|
 | ✅ | `S38.gallery` | Vorlagen-Galerie über dem Formular: Karten mit Titel, Kurzbeschreibung und der Konfiguration in Worten | ui | Element `#setup-bar` |
 | ✅ | `S38.presets` | Je sechs Vorlagen für Listening und Reading, die alle Bereiche individuell setzen (Thema, Sprache, Aufbau, Vokabular, Fragen, Aufgabenphasen) | function | Funktion (siehe Check im Manifest) |
 | ✅ | `S38.summary` | Jede Vorlage wird in Worten zusammengefasst – aus den Einstellungen selbst, also immer zutreffend | function | Funktion (siehe Check im Manifest) |
+| ✅ | `S38.tags` | Jede Vorlagenkarte zeigt die wichtigsten Angaben oben als kurze Tags (Niveau, Länge, Textsorte, Fragen, Aufgabenzeiten) | function | Funktion (siehe Check im Manifest) |
+| ✅ | `S38.redo` | Jede Karte hat einen Redo-Knopf: Claude schlägt eine neue Variante derselben Vorlage vor, geprüft übernommen | function | Funktion (siehe Check im Manifest) |
 | ✅ | `S38.folding` | Mit Vorlage bleiben die Einzeleinstellungen zugeklappt; „Vorlage anpassen“ und „Alles selbst einstellen“ öffnen sie | ui | Element `#btn-setup-adapt` |
 | ✅ | `S38.adjustable` | Eine Vorlage lässt sich weiter anpassen; danach gilt sie als „angepasst“ | setting | Setting `setupMode` (core.SCHEMA → Control `[data-setting="setupMode"]` → prompts.js) |
 

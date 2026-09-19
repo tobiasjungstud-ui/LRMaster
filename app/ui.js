@@ -113,6 +113,7 @@
     textbooks: [],
     materials: [],
     material: null,
+    templateVariants: {}, // freshly drawn variants of the template cards, per session
     running: null, // AbortController while generating
   };
 
@@ -160,18 +161,24 @@
 
     box.hidden = custom;
     box.innerHTML = custom ? '' : core.setupPresets(s.kind).map(p => {
-      const preview = core.describeSetup(core.applySetupPreset(s, p.key), ctx());
-      return `<button type="button" class="setup-card${p.key === active ? ' active' : ''}" data-setup-preset="${esc(p.key)}">
-        <span class="sc-title">${esc(p.label)}</span>
-        <span class="sc-blurb">${esc(p.blurb)}</span>
-        <ul class="sc-list">${preview.map(b => `<li>${esc(b)}</li>`).join('')}</ul>
-      </button>`;
+      const cardState = templateState(p.key);
+      const v = app.templateVariants[p.key];
+      return `<div class="setup-card${p.key === active ? ' active' : ''}" data-card="${esc(p.key)}">
+        <button type="button" class="sc-pick" data-setup-preset="${esc(p.key)}">
+          <span class="sc-title">${esc(v && v.label ? v.label : p.label)}</span>
+          <span class="sc-tags">${core.tagsFor(cardState, ctx()).map(t => `<span class="sc-tag">${esc(t)}</span>`).join('')}</span>
+          <span class="sc-blurb">${esc(v && v.blurb ? v.blurb : p.blurb)}</span>
+          <ul class="sc-list">${core.describeSetup(cardState, ctx()).map(b => `<li>${esc(b)}</li>`).join('')}</ul>
+        </button>
+        <button type="button" class="sc-redo" data-redo="${esc(p.key)}" title="Neue Variante dieser Vorlage von Claude vorschlagen lassen" aria-label="Vorlage neu laden"${caps.sample ? '' : ' disabled'}>↻</button>
+      </div>`;
     }).join('');
     $$('#setup-presets [data-setup-preset]').forEach(b => b.addEventListener('click', () => {
-      app.state = core.applySetupPreset(app.state, b.dataset.setupPreset);
+      app.state = applyTemplate(b.dataset.setupPreset);
       fillForm();
       onStateChange('setupMode');
     }));
+    $$('#setup-presets [data-redo]').forEach(b => b.addEventListener('click', () => redrawTemplate(b.dataset.redo, b)));
 
     $('#setup-title').textContent = custom ? 'Eigene Einstellungen' : 'Vorlage wählen';
     $('#setup-hint').textContent = custom
@@ -184,6 +191,57 @@
 
     const bullets = core.describeSetup(s, ctx());
     $('#setup-summary').innerHTML = `<div class="ss-head">Das wird erzeugt</div><ul>${bullets.map(b => `<li>${esc(b)}</li>`).join('')}</ul>`;
+  }
+
+  /** The settings a template card stands for, including a drawn variant. */
+  function templateState(key) {
+    const base = core.applySetupPreset(app.state, key);
+    const v = app.templateVariants[key];
+    return v ? core.applyTemplateVariant(base, v.settings) : base;
+  }
+  /** Put a template (with its variant, if one was drawn) into the form. */
+  function applyTemplate(key) {
+    const next = templateState(key);
+    next.setupMode = 'preset';
+    return core.normalizeState(next);
+  }
+
+  /**
+   * Let Claude draw a fresh variant of one card: another content idea in the
+   * same spirit. Only the allowed dials are taken over, and only if the
+   * result is a valid configuration — otherwise the card stays as it was.
+   */
+  async function redrawTemplate(key, button) {
+    if (!caps.sample) { toast(ERROR_COPY.not_granted); return; }
+    const preset = core.setupPresets(app.state.kind).find(p => p.key === key);
+    if (!preset) return;
+    const card = button.closest('.setup-card');
+    card.classList.add('loading');
+    button.disabled = true;
+    try {
+      const base = core.applySetupPreset(app.state, key);
+      const prompt = prompts.buildTemplateVariantPrompt(preset, base, ctx());
+      const raw = await askJSON(prompt, {});
+      const candidate = core.applyTemplateVariant(base, raw);
+      const errors = core.validateState(candidate, ctx());
+      if (errors.length) { toast('Vorschlag passte nicht: ' + errors[0].message); return; }
+      app.templateVariants[key] = {
+        label: String((raw && raw.label) || '').trim().slice(0, 40) || preset.label,
+        blurb: String((raw && raw.blurb) || '').trim().slice(0, 140) || preset.blurb,
+        settings: raw,
+      };
+      if (core.activeSetupPreset(app.state) === key || app.state.setupMode === 'preset') {
+        // the card the teacher is on follows the new draw straight away
+        if (core.activeSetupPreset(app.state) === key) { app.state = applyTemplate(key); fillForm(); }
+      }
+      onStateChange('setupMode');
+      toast('Neue Variante: ' + app.templateVariants[key].label);
+    } catch (e) {
+      if (e.code !== 'cancelled') toast('Variante nicht möglich: ' + errorCopy(e));
+    } finally {
+      card.classList.remove('loading');
+      button.disabled = !caps.sample;
+    }
   }
 
   /** Fold the single settings away again; the chosen values stay. */
@@ -1576,5 +1634,5 @@
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init); else init();
 
-  window.LR.ui = { app, generate, produceWorksheet, store, caps, showView, openCreator, importState, detectUnits, fetchTopics, confirmImport, newTextbook, askText, askConfirm, clone, parsePasted, initLevelPage, download, renderOutput, renderQualityPanel, renderTaskPreview, refreshDerived, renderLayout, renderSetupBar, openCustomSetup, backToTemplates };
+  window.LR.ui = { app, generate, produceWorksheet, store, caps, showView, openCreator, importState, detectUnits, fetchTopics, confirmImport, newTextbook, askText, askConfirm, clone, parsePasted, initLevelPage, download, renderOutput, renderQualityPanel, renderTaskPreview, refreshDerived, renderLayout, renderSetupBar, openCustomSetup, backToTemplates, redrawTemplate, templateState };
 })();

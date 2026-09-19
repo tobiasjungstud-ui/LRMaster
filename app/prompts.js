@@ -528,6 +528,31 @@
     ].join('\n\n');
   }
 
+  /**
+   * A freshly drawn variant of a template card: another content idea in the
+   * same spirit, with at most a few dials moved. The kind of material, the
+   * level and the didactic setup stay as the template has them.
+   */
+  function buildTemplateVariantPrompt(preset, state, ctx) {
+    const unit = (ctx && ctx.unit) || { words: [] };
+    const isL = state.kind === 'listening';
+    return [
+      `You suggest ideas for English teaching material. Below is a template a teacher uses. Propose ONE fresh variant of it: the same kind of material and the same level, but another content idea — and, where it helps, slightly different dials.`,
+      `## The template\nName: ${preset.label}\nShort description: ${preset.blurb}\nCurrent topic: ${state.useUnitTopic && state.topicMode === 'unit' ? 'the unit topic (' + (unit.topic || unit.name || '') + ')' : state.customTopic}`,
+      `## Fixed (do not change)\n- Kind: ${isL ? 'listening script' : 'reading text'}\n- CEFR level: ${state.cefr}\n- ${isL ? 'Format and preset: ' + state.format + ' / ' + state.preset : 'Text type: ' + state.textType}\n- Questions, pre-task and post-task stay as they are.`,
+      `## The class\nTextbook unit: ${(ctx && ctx.unit && (ctx.unit.name || '')) || ''}${unit.topic ? ' — ' + unit.topic : ''}\nTarget vocabulary of the unit: ${(unit.words || []).slice(0, 20).map(w => w.word).join(', ')}`,
+      '## What you may propose\n'
+        + '- "label": a new name for the card, two or three words, in German.\n'
+        + '- "blurb": one short German sentence that says what makes this variant different.\n'
+        + `- "customTopic": the new content idea in English, one sentence, concrete enough to write ${isL ? 'a script' : 'a text'} from. It must work with the unit vocabulary above and be suitable for a school class.\n`
+        + '- Optionally these dials, each 0–100, only where the idea really calls for it: '
+        + (isL ? '"languageComplexity", "grammarComplexity", "vocabularyDifficulty", "idiomaticLanguage", "explicitness", "naturalness", "inferenceLevel"' : '"languageComplexity", "grammarComplexity", "vocabularyDifficulty", "idiomaticLanguage", "explicitness", "inferenceLevel", "dialogueProportion", "styleBalance"')
+        + `.\n- Keep every dial within ±20 of the template's value, so the variant stays at ${state.cefr}.`,
+      `## The template's dials\n` + ['languageComplexity', 'grammarComplexity', 'vocabularyDifficulty', 'idiomaticLanguage', 'explicitness', 'inferenceLevel', isL ? 'naturalness' : 'styleBalance', isL ? '' : 'dialogueProportion'].filter(Boolean).map(k => `- ${k}: ${state[k]}`).join('\n'),
+      'Reply with only a JSON object: {"label": "…", "blurb": "…", "customTopic": "…", …optional dials…}',
+    ].join('\n\n');
+  }
+
   /* ------------------------------------------------------------------ */
   /* 5b2. The medium the text appears in (authentic layout, §37)          */
   /* ------------------------------------------------------------------ */
@@ -658,6 +683,6 @@
     buildContentRevisionPrompt, buildQuestionRevisionPrompt, buildQuestionRepairPrompt, findingsBlock, buildVocabParsePrompt,
     buildUnitDetectPrompt, buildUnitTopicPrompt, buildAllPrompts, buildGlossaryPrompt, buildLevelOpinionPrompt,
     chronologyRule, levelTargetBlock, questionLevelLines, taskBlock, preTaskBlock, postTaskBlock,
-    buildTaskRepairPrompt, buildPreTaskRepairPrompt, buildPostTaskRepairPrompt, buildLayoutPrompt, buildLayoutRepairPrompt,
+    buildTaskRepairPrompt, buildPreTaskRepairPrompt, buildPostTaskRepairPrompt, buildLayoutPrompt, buildLayoutRepairPrompt, buildTemplateVariantPrompt,
   };
 });

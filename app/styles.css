@@ -436,9 +436,19 @@ body[data-setup="preset"] #sec-posttask, body[data-setup="preset"] #sec-advanced
 body[data-setup="preset"] .ctl[data-key="setupMode"] { display: none; }
 .setup-actions { display: flex; flex-wrap: wrap; gap: .4rem; }
 .setup-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: .7rem; margin: .2rem 0 .9rem; }
-.setup-card { text-align: left; font: inherit; cursor: pointer; background: var(--ground); border: 1px solid var(--line); border-radius: 10px; padding: .7rem .85rem; display: flex; flex-direction: column; gap: .3rem; transition: border-color .15s, box-shadow .15s; }
+.setup-card { position: relative; background: var(--ground); border: 1px solid var(--line); border-radius: 10px; transition: border-color .15s, box-shadow .15s, opacity .15s; }
 .setup-card:hover { border-color: var(--accent, #0f766e); box-shadow: var(--shadow); }
-.setup-card.active { border-color: var(--ink); border-width: 2px; padding: calc(.7rem - 1px) calc(.85rem - 1px); background: var(--surface); }
+.setup-card.active { border-color: var(--ink); border-width: 2px; background: var(--surface); }
+.setup-card.loading { opacity: .55; }
+.sc-pick { display: flex; flex-direction: column; gap: .3rem; width: 100%; text-align: left; font: inherit; cursor: pointer; background: none; border: 0; padding: .7rem 2.4rem .8rem .85rem; color: inherit; }
+.sc-redo { position: absolute; top: .45rem; right: .45rem; width: 28px; height: 28px; border-radius: 50%; border: 1px solid var(--line); background: var(--surface); color: var(--muted); font-size: 1rem; line-height: 1; cursor: pointer; }
+.sc-redo:hover:not(:disabled) { color: var(--ink); border-color: var(--ink); }
+.sc-redo:disabled { opacity: .4; cursor: not-allowed; }
+.setup-card.loading .sc-redo { animation: spin 1s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.sc-tags { display: flex; flex-wrap: wrap; gap: .25rem; margin: .1rem 0 .1rem; }
+.sc-tag { font-size: .72rem; font-weight: 600; letter-spacing: .01em; padding: .1rem .45rem; border-radius: 999px; background: var(--surface); border: 1px solid var(--line); color: var(--ink); white-space: nowrap; }
+.setup-card.active .sc-tag { background: var(--ground); }
 .sc-title { font-weight: 700; }
 .sc-blurb { color: var(--muted); font-size: .85rem; }
 .sc-list { list-style: none; margin: .3rem 0 0; padding: 0; font-size: .8rem; color: var(--ink); }

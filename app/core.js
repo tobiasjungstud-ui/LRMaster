@@ -1004,6 +1004,62 @@
     return out;
   }
 
+  /**
+   * The few facts a teacher scans first, as short tags. Like the summary they
+   * are read off the settings, so a tag can never promise something else.
+   */
+  function tagsFor(state, ctx) {
+    const s = normalizeState(clone(state));
+    const plan = buildPlan(s, { textbook: (ctx && ctx.textbook) || { name: '' }, unit: (ctx && ctx.unit) || { words: [] } });
+    const lv = QUESTION_LEVELS[s.questionLevel];
+    const tags = [s.cefr];
+    if (s.kind === 'listening') {
+      tags.push(Math.round(audioSeconds(s) / 60 * 10) / 10 + ' min');
+      tags.push(plan.preset && plan.preset.key !== 'none' ? plan.preset.label : { monologue: 'Monolog', dialogue: 'Dialog', conversation: 'Gespräch' }[s.format]);
+      tags.push(plan.targetWords + ' Wörter');
+    } else {
+      tags.push(plan.targetWords + ' Wörter');
+      tags.push(s.textType === 'Custom' ? (s.customTextType || 'Custom') : s.textType);
+    }
+    if (plan.questionCount) tags.push(plan.questionCount + ' Fragen' + (lv ? ' · Niveau ' + lv.key : ''));
+    if (plan.preTask) tags.push('Pre ' + plan.preTask.minutes + ' min');
+    if (plan.postTask) tags.push('Post ' + plan.postTask.minutes + ' min');
+    return tags;
+  }
+
+  /*
+   * A freshly drawn variant of a template: Claude may suggest another topic
+   * and shift a few dials, but never the kind of material, the level band or
+   * anything that is not in this list. Everything is clamped and validated
+   * before it reaches the form.
+   */
+  const VARIANT_KEYS = {
+    customTopic: 'text',
+    wordCount: [80, 1200], audioLength: 'audio',
+    languageComplexity: [0, 100], grammarComplexity: [0, 100], vocabularyDifficulty: [0, 100],
+    idiomaticLanguage: [0, 100], explicitness: [0, 100], naturalness: [0, 100], inferenceLevel: [0, 100],
+    dialogueProportion: [0, 100], styleBalance: [0, 100],
+  };
+
+  /** Apply what Claude proposed for a template card, ignoring everything else. */
+  function applyTemplateVariant(state, variant) {
+    const v = variant && typeof variant === 'object' ? variant : {};
+    const next = clone(state);
+    for (const [key, rule] of Object.entries(VARIANT_KEYS)) {
+      if (!(key in v) || v[key] === null || v[key] === undefined) continue;
+      if (rule === 'text') {
+        const t = String(v[key]).trim();
+        if (t) { next[key] = t.slice(0, 300); next.useUnitTopic = false; next.topicMode = 'custom'; }
+      } else if (rule === 'audio') {
+        const seconds = String(Math.round(Number(v[key]) / 30) * 30);
+        if (AUDIO_LENGTHS.some(a => a.key === seconds)) next.audioLength = seconds;
+      } else if (Number.isFinite(Number(v[key]))) {
+        next[key] = clamp(Math.round(Number(v[key])), rule[0], rule[1]);
+      }
+    }
+    return normalizeState(next);
+  }
+
   /** Which template the settings still match, or null once something was changed. */
   function activeSetupPreset(state) {
     for (const preset of setupPresets(state.kind)) {
@@ -1314,7 +1370,8 @@
     QUESTION_LEVELS, QUESTION_LEVEL_KEYS, questionVariants, variantState, effectiveQuestionDifficulty, questionBands,
     skillSequence, availableFormats, assignFormats, targetVocabulary, validateState, buildPlan,
     taskCount, taskTypes, taskTypeMix, autoTaskSocial, effectiveTaskSocial, taskSequence, buildTaskPlan, taskBand, splitMinutes,
-    applyTaskPreset, activeTaskPreset, setupPresets, applySetupPreset, activeSetupPreset, describeSetup,
+    applyTaskPreset, activeTaskPreset, setupPresets, applySetupPreset, activeSetupPreset, describeSetup, tagsFor,
+    VARIANT_KEYS, applyTemplateVariant,
     preTaskCount, preTaskTypes, preTaskTypeMix, autoPreTaskSocial, effectivePreTaskSocial, preTaskSequence, buildPreTaskPlan, preTaskBand,
     postTaskCount, postTaskTypes, effectivePostTaskSocial, postTaskSequence, buildPostTaskPlan, postTaskBand,
     applyExampleConfig,

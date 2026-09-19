@@ -99,7 +99,7 @@ Jede Post-Task-Aufgabe nennt zusätzlich ihren **Ansatzpunkt im Material** (`ref
 |---|---|
 | Podcast-Interview (B1.2) · Alltagsgespräch im Café (A2.2) · Radio-Nachricht (B2.1) · Streitgespräch, 3 Stimmen (B2.1) · Telefonat mit dem Kundendienst (B1.1) · Erzählung/Anekdote (B1.1) | Horror-Blogpost (B2.2) · Zeitungsmeldung (B2.1) · E-Mail an die Gastfamilie (A2.2) · Forumsthread (B1.1) · Kurzgeschichte mit offenem Ende (B1.2) · Serien-Kritik (B1.2) |
 
-Jede Karte zeigt, was die Vorlage tut – **in Worten, aus den Einstellungen selbst erzeugt** (`core.describeSetup`), also nie abweichend von dem, was wirklich generiert wird:
+Ganz oben auf jeder Karte stehen die wichtigsten Angaben als **kurze Tags** – `B2.2` `380 Wörter` `Blog Post` `10 Fragen · Niveau A` `Pre 8 min` `Post 25 min` –, darunter die vollständige Konfiguration **in Worten, aus den Einstellungen selbst erzeugt** (`core.describeSetup` und `core.tagsFor`), also nie abweichend von dem, was wirklich generiert wird:
 
 ```
 · Blog Post · Thema: the horror genre: why people enjoy being scared …
@@ -113,6 +113,8 @@ Jede Karte zeigt, was die Vorlage tut – **in Worten, aus den Einstellungen sel
 · Post-Task: Kreativ + Wortschatz · 2 Aufgaben, 25 min, 0 mündlich
 · Extras: Fremdwörter erklärt · Text im echten Layout (Bild) · Schwierigkeit wird gemessen
 ```
+
+**Redo pro Karte:** Der Knopf ↻ oben rechts lässt Claude **eine neue Variante genau dieser Vorlage** vorschlagen – ein anderer Inhalt im selben Geist, dazu leicht verschobene Regler. Festgelegt bleibt, was die Vorlage ausmacht: Materialart, CEFR-Niveau, Textsorte/Format sowie Fragen und Aufgabenphasen. Übernommen wird nur, was auf der Erlaubnisliste steht (Thema, Länge und einige Regler, jeweils gekappt) **und** eine gültige Konfiguration ergibt; sonst bleibt die Karte, wie sie war. Die gezogenen Varianten gelten für die laufende Sitzung.
 
 **Solange eine Vorlage gewählt ist, bleiben die Einzeleinstellungen vollständig zugeklappt** – sichtbar sind nur Lehrmittel/Unit, die Zusammenfassung „Das wird erzeugt“ und der Generate-Bereich. Zwei Schaltflächen öffnen sie: **„Vorlage anpassen“** (alle Felder mit den Werten der Vorlage als Ausgangspunkt) und **„Alles selbst einstellen“** (alle Felder ab Standardwerten). **„Zurück zu den Vorlagen“** klappt wieder zu; die Werte bleiben erhalten. Sobald etwas verändert wird, gilt die Vorlage als angepasst.
 
@@ -197,7 +199,7 @@ Das Arbeitsblatt ist ein echtes Arbeitsblatt: Name-/Klasse-/Datum-Zeile, Aufgabe
 
 ## Kontrollmechanismen
 
-- **Konzept-Manifest** (`app/manifest.js`): 300 Anforderungen aus dem Konzeptdokument und den Auftragserweiterungen (§33 Word-Export, §34 Schwierigkeitsmesser & Niveau der Fragen, §35 Pre-Task, §36 Post-Task, §37 Authentisches Layout, §38 Vorlagen), jede mit Prüfart:
+- **Konzept-Manifest** (`app/manifest.js`): 302 Anforderungen aus dem Konzeptdokument und den Auftragserweiterungen (§33 Word-Export, §34 Schwierigkeitsmesser & Niveau der Fragen, §35 Pre-Task, §36 Post-Task, §37 Authentisches Layout, §38 Vorlagen), jede mit Prüfart:
   - `setting` – Steuerelement existiert **und** die Änderung des Werts verändert nachweislich mindestens einen Prompt (Prompt-Sensitivitätstest; tote Einstellungen fallen durch).
   - `function` – Verhalten wird mit echten Eingaben ausgeführt (z. B. Preset *Interview* ⇒ Anteile 25/75, Skill-Mix verschiebt sich mit der Schwierigkeit, Beispielkonfiguration §32 reproduziert alle Werte).
   - `rule` – Qualitätsregel existiert als Messfunktion oder als Review-Kriterium und wird im Review-Prompt an Claude übergeben.

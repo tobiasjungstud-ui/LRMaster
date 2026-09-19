@@ -1428,6 +1428,46 @@
       const after = env.core.describeSetup(changed, env.ctx).join(' | ');
       return ok(after.includes('A2.1') && after.includes('150') && !after.includes('Fremdwörter erklärt') && after !== text, 'the summary does not follow the settings');
     } });
+  add({ id: 'S38.tags', section: 38, title: 'Jede Vorlagenkarte zeigt die wichtigsten Angaben oben als kurze Tags (Niveau, Länge, Textsorte, Fragen, Aufgabenzeiten)', kind: 'function',
+    check(env) {
+      const src = env.uiSource || '';
+      const wired = !src || (/sc-tags/.test(src) && /core\.tagsFor\(/.test(src));
+      for (const kind of ['listening', 'reading']) {
+        for (const preset of env.core.setupPresets(kind)) {
+          const s = env.core.applySetupPreset(env.state({ kind }), preset.key);
+          const tags = env.core.tagsFor(s, env.ctx);
+          if (tags.length < 5 || tags.length > 8) return preset.key + ': ' + tags.length + ' tags';
+          if (tags.some(t => t.length > 24)) return preset.key + ': a tag is not short';
+          if (tags[0] !== s.cefr) return preset.key + ': the level is not the first tag';
+          const plan = env.core.buildPlan(s, env.ctx);
+          if (!tags.some(t => t.includes(String(plan.targetWords)))) return preset.key + ': no length tag';
+          if (!tags.some(t => t.includes(String(plan.questionCount) + ' Fragen'))) return preset.key + ': no question tag';
+          if (!tags.some(t => t.includes('Pre ')) || !tags.some(t => t.includes('Post '))) return preset.key + ': no task tags';
+        }
+      }
+      // the tags follow the settings
+      const s = env.core.applySetupPreset(env.state({ kind: 'reading' }), 'hostemail');
+      const changed = env.core.normalizeState(Object.assign(env.core.clone(s), { cefr: 'B2.2', wordCount: 420 }));
+      const after = env.core.tagsFor(changed, env.ctx);
+      return ok(wired && after[0] === 'B2.2' && after.some(t => t.includes('420')), 'the tags do not follow the settings');
+    } });
+  add({ id: 'S38.redo', section: 38, title: 'Jede Karte hat einen Redo-Knopf: Claude schlägt eine neue Variante derselben Vorlage vor, geprüft übernommen', kind: 'function',
+    check(env) {
+      const src = env.uiSource || '';
+      const wired = !src || (/data-redo=/.test(src) && /function redrawTemplate/.test(src) && /buildTemplateVariantPrompt/.test(src)
+        && /applyTemplateVariant/.test(src) && /validateState\(candidate/.test(src));
+      const preset = env.core.setupPresets('reading').find(p => p.key === 'horrorblog');
+      const base = env.core.applySetupPreset(env.state({ kind: 'reading' }), 'horrorblog');
+      const p = env.prompts.buildTemplateVariantPrompt(preset, base, env.ctx);
+      const demands = /Propose ONE fresh variant/.test(p) && /do not change/.test(p) && new RegExp('CEFR level: ' + base.cefr).test(p) && /"customTopic"/.test(p);
+      // only the allowed dials are taken over, and they stay inside their range
+      const applied = env.core.applyTemplateVariant(base, { customTopic: 'another idea', languageComplexity: 70, cefr: 'A1.1', questionCount: '30', wordCount: 99999, nonsense: 1 });
+      const safe = applied.customTopic === 'another idea' && applied.languageComplexity === 70 && applied.cefr === base.cefr
+        && applied.questionCount === base.questionCount && applied.wordCount <= 1200 && applied.nonsense === undefined;
+      const empty = env.core.applyTemplateVariant(base, { customTopic: '   ' });
+      return ok(wired && demands && safe && empty.customTopic === base.customTopic && env.core.validateState(applied, env.ctx).length === 0,
+        'the redo does not ask for a checked variant of the same template');
+    } });
   add({ id: 'S38.folding', section: 38, title: 'Mit Vorlage bleiben die Einzeleinstellungen zugeklappt; „Vorlage anpassen“ und „Alles selbst einstellen“ öffnen sie', kind: 'ui', selector: '#btn-setup-adapt',
     extra(env) {
       const src = env.uiSource || '';
