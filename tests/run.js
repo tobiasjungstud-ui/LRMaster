@@ -130,6 +130,43 @@ test('pre-task findings get their own repair bucket', () => {
   assert.equal(rp.content.length, 1);
   assert.equal(rp.worksheet.length, 0);
 });
+test('the screenshot shows exactly the generated text, for every text type', () => {
+  const mock = require(path.join(APP, 'mock.js'));
+  for (const type of core.TEXT_TYPES) {
+    const m = fixture.material({ textType: type, authenticLayout: true }, 'reading');
+    const model = quality.layoutModel(m);
+    assert.deepEqual(mock.validate(model), [], type);
+    assert.equal(quality.normalizeForSearch(mock.bodyText(model)), quality.normalizeForSearch(m.content.paragraphs.join(' ')), type);
+    assert.ok(model.width >= 400 && model.height >= 300, type + ': ' + model.width + 'x' + model.height);
+  }
+  // a picture that drops a paragraph is caught
+  const m = fixture.material({ textType: 'Blog Post', authenticLayout: true }, 'reading');
+  const short = JSON.parse(JSON.stringify(m));
+  short.content.paragraphs = short.content.paragraphs.slice(0, 1);
+  const shown = quality.normalizeForSearch(mock.bodyText(quality.layoutModel(short)));
+  assert.notEqual(shown, quality.normalizeForSearch(m.content.paragraphs.join(' ')));
+  const found = quality.runContentChecks(m.settings, m.plan, m.content, { layout: m.layout });
+  assert.equal(found.find(f => f.id === 'layout.text_identical').status, 'pass');
+  assert.equal(found.find(f => f.id === 'layout.image_valid').status, 'pass');
+  // no layout data, no layout findings
+  assert.equal(quality.runContentChecks(m.settings, m.plan, m.content).filter(f => f.group === 'layout').length, 0);
+});
+test('whole-setup templates configure a complete, valid material', () => {
+  for (const kind of ['listening', 'reading']) {
+    for (const preset of core.setupPresets(kind)) {
+      const tb = fixture.textbooks()[0];
+      const base = core.normalizeState(Object.assign(core.defaults(kind), { textbookId: tb.id, unitId: tb.units[0].id }));
+      const s = core.applySetupPreset(base, preset.key);
+      assert.equal(s.kind, kind);
+      assert.equal(core.activeSetupPreset(s), preset.key, preset.key);
+      assert.deepEqual(core.validateState(s, { textbook: tb, unit: tb.units[0] }), [], preset.key);
+      const plan = core.buildPlan(s, { textbook: tb, unit: tb.units[0] });
+      assert.ok(plan.preTask && plan.postTask, preset.key + ': task phases missing');
+      assert.ok(plan.questionCount > 0 && plan.targetWords > 0, preset.key);
+      if (kind === 'reading') assert.equal(plan.authenticLayout, true, preset.key);
+    }
+  }
+});
 test('ready-made task sequences produce complete, valid plans', () => {
   const ctx = { textbook: { id: 't' }, unit: { id: 'u', topic: 'Friends', words: [{ word: 'argue' }, { word: 'trust' }] } };
   const base = core.normalizeState({ kind: 'listening', textbookId: 't', unitId: 'u', createWorksheet: true, targetVocabMin: 1, targetVocabMax: 2 });

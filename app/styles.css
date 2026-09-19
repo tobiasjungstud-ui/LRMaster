@@ -412,3 +412,20 @@ mark.vocab { background: var(--mark); color: inherit; border-radius: 3px; paddin
 .tp-social, .tp-mode, .tp-min { font-size: .8rem; color: var(--muted); }
 .tp-mode.oral { color: #8a5a00; }
 .task-preview .bad { color: var(--bad); }
+
+/* Authentic layout: the text as a screenshot of its medium */
+.layout-note { color: var(--muted); font-size: .9rem; margin: 0 0 .6rem; }
+.layout-actions { margin-bottom: .8rem; }
+.layout-shot { overflow: auto; background: var(--ground); border: 1px solid var(--line); border-radius: 10px; padding: 1rem; }
+.layout-shot canvas { display: block; margin: 0 auto; box-shadow: 0 8px 30px rgba(15, 23, 42, .18); border-radius: 6px; max-width: 100%; height: auto; }
+
+/* Template bar: whole ready-made configurations */
+.setup-bar { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: .8rem 1rem 1rem; margin-bottom: 1rem; box-shadow: var(--shadow); }
+.setup-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: .6rem; margin-bottom: .5rem; }
+.setup-label { font-weight: 700; }
+.setup-bar .chips { margin-bottom: .5rem; }
+.setup-bar .chip-btn.active { background: var(--ink); color: var(--surface); border-color: var(--ink); }
+.setup-bar .chip-btn.custom { border-style: dashed; }
+.setup-bar .help { margin: 0; }
+body[data-setup="preset"] #sec-level, body[data-setup="preset"] #sec-structure,
+body[data-setup="preset"] #sec-vocab, body[data-setup="preset"] #sec-advanced { display: none; }

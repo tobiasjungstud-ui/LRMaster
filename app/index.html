@@ -64,6 +64,11 @@
       </div>
     </div>
     <p class="help">Simple Mode zeigt nur Unit, Topic, Level, Length, Format, Question Difficulty und Number of Questions; alle anderen Werte werden sinnvoll automatisch gewählt. Advanced Mode öffnet sämtliche Einstellungen.</p>
+    <section class="setup-bar" id="setup-bar">
+      <div class="setup-head"><span class="setup-label">Vorlage</span><span class="muted small" id="setup-hint"></span></div>
+      <div class="chips" id="setup-presets"></div>
+      <p class="help" id="setup-summary"></p>
+    </section>
     <form id="creator-form" class="creator-form" autocomplete="off" onsubmit="return false"></form>
 
     <section id="output" class="output" hidden>
@@ -72,6 +77,7 @@
         <div class="tabs" role="tablist">
           <button type="button" class="tab active" data-tab="student">Student Version</button>
           <button type="button" class="tab" data-tab="teacher">Teacher Version</button>
+          <button type="button" class="tab" data-tab="layout" id="tab-layout" hidden>Layout</button>
           <button type="button" class="tab" data-tab="quality">Quality Check</button>
           <button type="button" class="tab" data-tab="prompts">Prompts</button>
           <button type="button" class="tab" data-tab="json">JSON</button>
@@ -88,6 +94,7 @@
       </div>
       <div class="pane" data-pane="student" id="out-student"></div>
       <div class="pane" data-pane="teacher" id="out-teacher" hidden></div>
+      <div class="pane" data-pane="layout" id="out-layout" hidden></div>
       <div class="pane" data-pane="quality" id="out-quality" hidden></div>
       <div class="pane" data-pane="prompts" id="out-prompts" hidden></div>
       <pre class="pane json" data-pane="json" id="out-json" hidden></pre>
@@ -200,6 +207,7 @@ body{font-family:Georgia,serif;margin:2cm;color:#111;line-height:1.45}.sheet h1{
 <script src="core.js"></script>
 <script src="wordlist.js"></script>
 <script src="level.js"></script>
+<script src="mock.js"></script>
 <script src="prompts.js"></script>
 <script src="quality.js"></script>
 <script src="render.js"></script>

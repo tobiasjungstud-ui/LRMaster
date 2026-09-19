@@ -91,6 +91,28 @@ Jede Post-Task-Aufgabe nennt zusätzlich ihren **Ansatzpunkt im Material** (`ref
 
 **Gezielte Korrektur:** Pre-Task- und Post-Task-Befunde haben je einen eigenen Reparaturweg. Claude bekommt Material, die fertigen Fragen (bei der Pre-Task »nimm davon nichts vorweg«, bei der Post-Task »wiederhole sie nicht«), die aktuellen Aufgaben und die Befunde im Wortlaut und schreibt nur diese Phase neu; Fragen und die jeweils andere Phase bleiben unangetastet. Übernommen wird auch hier nur, was die Prüfung verbessert.
 
+## Vorlagen und Custom-Modus
+
+Über dem Formular steht die **Vorlagen-Leiste**: ganze Konfigurationen, wie eine Lehrperson sie in einem Satz beschreibt – für Listening *Podcast-Interview*, *Alltagsgespräch*, *Radio-Nachricht*, *Gespräch in der Klasse*, für Reading *Blogpost*, *Zeitungsartikel*, *E-Mail*, *Forumsdiskussion*, *Geschichte*. Ein Klick setzt Niveau, Textsorte/Format, Länge, Sprechweise, Fragen **und** beide Aufgabenphasen. Danach lässt sich alles weiter anpassen (die Vorlage gilt dann als „angepasst“).
+
+Im Vorlagen-Modus bleiben nur Unit, Thema, Fragen und die beiden Aufgabenphasen sichtbar; **„Custom …“** klappt zusätzlich Sprache, Aufbau, Vokabular und die Advanced Settings auf. Eine Zeile unter den Vorlagen fasst zusammen, was herauskommt (Niveau, Wortzahl, Fragen, Minuten der Aufgabenphasen).
+
+## Authentisches Layout: der Text als Screenshot seines Mediums
+
+Für Reading-Texte standardmässig an (Schalter *Text im echten Layout zeigen*). Nach dem Schreiben des Textes gestaltet Claude die **Oberfläche des Mediums**, in dem der Text wirklich erscheinen würde – Adressleiste, Seitenname, Navigation, Buttons mit Zahlen, „Meistgelesen“-Kasten, Mail-Ordner, Forum-Angaben, Chat-Kopfzeile. Die App zeichnet daraus ein **echtes Bild**: eigener Tab *Layout*, Download als PNG.
+
+Vier Medien decken die 14 Texttypen ab: **Browserfenster** (Blog, Artikel, News, Review, Story, Bericht, Tagebuch, Interview, Meinung, Infotext, Custom), **Mailprogramm** (E-Mail), **Forum-Thread** (Forumsdiskussion) und **Messenger** (Dialog) – je mit eigener Typografie, Akzentfarbe und Interface.
+
+Das Bild entsteht nicht aus einer Bildgenerierung, sondern wird aus dem Text und Claudes Layoutdaten in der App komponiert (`mock.js` baut ein Zeichenmodell, das auf ein Canvas gezeichnet und als PNG ausgegeben wird). Genau deshalb lässt sich prüfen, **dass Bild und Text übereinstimmen**:
+
+- `layout.text_identical` (blockierend): Der im Bild gezeichnete Fliesstext ist Wort für Wort der generierte Text – kein Absatz fehlt, kein Wort kommt dazu.
+- `layout.fields` (blockierend): Die Oberfläche des Mediums ist vollständig (z. B. Adresse, Seitenname, Navigation, Buttons).
+- `layout.no_invented_text`: Die Oberfläche erzählt den Text nicht nach (kein Satzstück von sechs Wörtern aus dem Text in Sidebar, Titeln oder Buttons).
+- `layout.image_valid` (blockierend): Das Bild ist zeichenbar – Grösse plausibel, nichts ausserhalb der Fläche; vor dem PNG-Download wird erneut geprüft und bei einem Problem nichts ausgeliefert.
+- `layout.authentic` (Claude): Wirkt die Oberfläche wie ein echtes Beispiel dieses Mediums und passt sie zum Text (Namen, Orte, Daten)?
+
+Abweichungen gehen in dieselbe automatische Korrektur wie alles andere: Claude bekommt die Befunde und gestaltet die Oberfläche neu; übernommen wird nur, was die Prüfung verbessert.
+
 ## Schwierigkeitsmesser (`level.js`, `wordlist.js`)
 
 Der Messer bestimmt das CEFR-Niveau eines Skripts oder Texts auf der Sechser-Skala A2.1–B2.2 aus sieben Dimensionen und liefert je Dimension Wert, Stufe und Korrekturhinweis:
@@ -156,7 +178,7 @@ Das Arbeitsblatt ist ein echtes Arbeitsblatt: Name-/Klasse-/Datum-Zeile, Aufgabe
 
 ## Kontrollmechanismen
 
-- **Konzept-Manifest** (`app/manifest.js`): 284 Anforderungen aus dem Konzeptdokument und den Auftragserweiterungen (§33 Word-Export, §34 Schwierigkeitsmesser & Niveau der Fragen, §35 Pre-Task, §36 Post-Task), jede mit Prüfart:
+- **Konzept-Manifest** (`app/manifest.js`): 299 Anforderungen aus dem Konzeptdokument und den Auftragserweiterungen (§33 Word-Export, §34 Schwierigkeitsmesser & Niveau der Fragen, §35 Pre-Task, §36 Post-Task, §37 Authentisches Layout, §38 Vorlagen), jede mit Prüfart:
   - `setting` – Steuerelement existiert **und** die Änderung des Werts verändert nachweislich mindestens einen Prompt (Prompt-Sensitivitätstest; tote Einstellungen fallen durch).
   - `function` – Verhalten wird mit echten Eingaben ausgeführt (z. B. Preset *Interview* ⇒ Anteile 25/75, Skill-Mix verschiebt sich mit der Schwierigkeit, Beispielkonfiguration §32 reproduziert alle Werte).
   - `rule` – Qualitätsregel existiert als Messfunktion oder als Review-Kriterium und wird im Review-Prompt an Claude übergeben.

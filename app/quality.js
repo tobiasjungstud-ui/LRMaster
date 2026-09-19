@@ -5,9 +5,9 @@
  * stable id that the concept manifest references.
  */
 (function (root, factory) {
-  if (typeof module === 'object' && module.exports) module.exports = factory(require('./core.js'), require('./level.js'));
-  else { root.LR = root.LR || {}; root.LR.quality = factory(root.LR.core, root.LR.level); }
-})(typeof self !== 'undefined' ? self : this, function (core, level) {
+  if (typeof module === 'object' && module.exports) module.exports = factory(require('./core.js'), require('./level.js'), require('./mock.js'));
+  else { root.LR = root.LR || {}; root.LR.quality = factory(root.LR.core, root.LR.level, root.LR.mock); }
+})(typeof self !== 'undefined' ? self : this, function (core, level, mock) {
   'use strict';
 
   /* ------------------------------------------------------------------ */
@@ -698,12 +698,90 @@
       } },
     ...taskRules('pre'),
     ...taskRules('post'),
+    // Authentic layout (concept §37): the picture of the text in its real medium
+    { id: 'layout.fields', group: 'layout', kind: 'deterministic', title: 'Interface of the medium is complete', needsLayout: true, blocking: true,
+      check(ctx) {
+        const spec = mock.chromeSpec({ settings: ctx.state, content: ctx.content });
+        const c = (ctx.layout && ctx.layout.chrome) || {};
+        const missing = spec.required.filter(k => {
+          const v = c[k];
+          return Array.isArray(v) ? v.length === 0 : !String(v || '').trim();
+        });
+        const longOnes = Object.keys(c).filter(k => typeof c[k] === 'string' && c[k].length > 120);
+        const status = missing.length ? 'fail' : longOnes.length ? 'warn' : 'pass';
+        return finding(this, status, missing.length ? `Missing for ${spec.label}: ${missing.join(', ')}.`
+          : longOnes.length ? 'Too long for an interface: ' + longOnes.join(', ') + '.' : `${spec.label}: all parts present.`);
+      } },
+    { id: 'layout.text_identical', group: 'layout', kind: 'deterministic', title: 'The picture shows exactly the generated text', needsLayout: true, blocking: true,
+      check(ctx) {
+        const model = layoutModel({ settings: ctx.state, content: ctx.content, layout: ctx.layout });
+        const shown = normalizeForSearch(mock.bodyText(model));
+        const source = normalizeForSearch((ctx.content.paragraphs || []).join(' '));
+        if (shown === source) return finding(this, 'pass', `${(ctx.content.paragraphs || []).length} paragraph(s), word for word the same as in the text.`);
+        const missing = (ctx.content.paragraphs || []).filter(p => !shown.includes(normalizeForSearch(p).slice(0, 60))).length;
+        const extra = Math.max(0, shown.split(' ').length - source.split(' ').length);
+        return finding(this, 'fail', `The picture does not show the text unchanged: ${missing} paragraph(s) missing` + (extra ? `, ${extra} word(s) too many` : '') + '.');
+      } },
+    { id: 'layout.no_invented_text', group: 'layout', kind: 'deterministic', title: 'The interface does not retell the text', needsLayout: true, blocking: false,
+      check(ctx) {
+        const model = layoutModel({ settings: ctx.state, content: ctx.content, layout: ctx.layout });
+        const source = (ctx.content.paragraphs || []).join(' ');
+        const copies = (model.blocks || []).filter(b => b.type === 'text' && b.role !== 'body' && b.text.split(/\s+/).length >= 5 && sharedRun(b.text, source) >= 6).map(b => b.text);
+        return finding(this, copies.length ? 'warn' : 'pass', copies.length ? 'Interface repeats the text: “' + copies[0].slice(0, 60) + '”.' : 'The interface adds no sentences from the text.');
+      } },
+    { id: 'layout.image_valid', group: 'layout', kind: 'deterministic', title: 'The picture can be drawn and handed out', needsLayout: true, blocking: true,
+      check(ctx) {
+        const model = layoutModel({ settings: ctx.state, content: ctx.content, layout: ctx.layout });
+        const problems = mock.validate(model);
+        return finding(this, problems.length ? 'fail' : 'pass', problems.length ? problems.join('; ') : `${model.label}: ${model.width} × ${model.height} px, ${model.blocks.length} elements.`);
+      } },
+    { id: 'layout.authentic', group: 'layout', kind: 'llm', title: 'The medium looks real and fits the text', needsLayout: true,
+      criterion: 'the interface around the text (address, site or app name, navigation, buttons, counts, times) is what that medium really looks like and fits this text: same world, names, places and dates agree, nothing contradicts the text', blocking: false },
   ];
+
+  /** Claude's interface data → the shape the picture is built from. */
+  function normalizeChrome(raw, spec) {
+    const out = {};
+    const src = raw && typeof raw === 'object' ? raw : {};
+    for (const [key] of spec.fields) {
+      const v = src[key];
+      if (Array.isArray(v)) {
+        out[key] = v.map(x => (x && typeof x === 'object')
+          ? { label: String(x.label || x.title || '').trim(), count: String(x.count === undefined || x.count === null ? '' : x.count).trim() }
+          : String(x).trim()).filter(x => (typeof x === 'string' ? x : x.label));
+      } else if (v !== undefined && v !== null && typeof v !== 'object') {
+        out[key] = String(v).trim();
+      } else if (v && typeof v === 'object') {
+        out[key] = String(v.label || '').trim();
+      } else out[key] = '';
+    }
+    return out;
+  }
+
+  /** The picture as it will be drawn, from the stored interface data. */
+  function layoutModel(material, opts) {
+    const chrome = (material.layout && material.layout.chrome) || {};
+    return mock.buildModel(material, chrome, opts);
+  }
+
+  /** Longest run of words that a string shares with the material. */
+  function sharedRun(text, source) {
+    const a = normalizeForSearch(text).split(' ').filter(Boolean);
+    const hay = ' ' + normalizeForSearch(source) + ' ';
+    let best = 0;
+    for (let i = 0; i < a.length; i++) {
+      for (let len = Math.min(12, a.length - i); len > best; len--) {
+        if (hay.includes(' ' + a.slice(i, i + len).join(' ') + ' ')) { best = len; break; }
+      }
+    }
+    return best;
+  }
 
   function applicableRules(state, plan, worksheet) {
     return RULES.filter(r => {
       if (r.only && r.only !== state.kind) return false;
       if (r.needsWorksheet && !worksheet) return false;
+      if (r.needsLayout && !plan.authenticLayout) return false;
       if (r.phase) {
         const p = plan[r.phase === 'post' ? 'postTask' : 'preTask'];
         if (r.needsPhase && !(p && p.count)) return false;
@@ -714,18 +792,21 @@
   }
 
   /** Run all deterministic rules. */
-  function runDeterministic(state, plan, content, worksheet) {
-    const ctx = { state, plan, content, worksheet };
-    return applicableRules(state, plan, worksheet).filter(r => r.kind === 'deterministic').map(r => r.check(ctx));
+  /** `extras` carries what is not part of the material itself yet, e.g. {layout}. */
+  function runDeterministic(state, plan, content, worksheet, extras) {
+    const ctx = Object.assign({ state, plan, content, worksheet }, extras || {});
+    return applicableRules(state, plan, worksheet).filter(r => r.kind === 'deterministic' && (!r.needsLayout || ctx.layout)).map(r => r.check(ctx));
   }
 
   /** Deterministic rules that judge content only (used before the questions are written). */
-  function runContentChecks(state, plan, content) {
-    return runDeterministic(state, plan, content, null);
+  function runContentChecks(state, plan, content, extras) {
+    return runDeterministic(state, plan, content, null, extras);
   }
 
-  function llmRules(state, plan, worksheet) {
-    return applicableRules(state, plan, worksheet).filter(r => r.kind === 'llm');
+  /** `extras` may carry {layout}: rules that judge it are only asked when it exists. */
+  function llmRules(state, plan, worksheet, extras) {
+    const has = extras || {};
+    return applicableRules(state, plan, worksheet).filter(r => r.kind === 'llm' && (!r.needsLayout || has.layout));
   }
 
   /** Merge Claude's review into findings. */
@@ -837,7 +918,7 @@
     speakerStats, tagStats, normalizeContent, normalizeMeta, normalizeWorksheet, normalizeQuestion,
     repairable, repairPlan, problemScore, applyQuestionPatch, applyTaskPatch, applyPreTaskPatch, applyPostTaskPatch,
     changedQuestions, changedTasks, changedPreTasks, changedPostTasks, STRUCTURAL, applicableRules, runDeterministic,
-    normalizePreTask, preTaskText, socialLabel, taskRules,
+    normalizePreTask, preTaskText, socialLabel, taskRules, normalizeChrome, layoutModel, sharedRun,
     runContentChecks, llmRules, mergeReview, blockingFailures, summarize,
     chronologyReport, enforceChronology, normalizeGlossary, slimMeasurement,
   };

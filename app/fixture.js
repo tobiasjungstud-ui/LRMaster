@@ -152,8 +152,18 @@
     if (!settings.preTask) ws.preTasks = [];
     if (!settings.postTask) ws.postTasks = [];
     const plan = core.buildPlan(settings, ctx || { textbook: textbooks()[0], unit: textbooks()[0].units[0] });
+    const layout = kind === 'reading' && settings.authenticLayout ? {
+      kind: 'page', label: 'Fixture medium',
+      chrome: {
+        url: 'www.fixture.example/friends', siteName: 'Fixture Voices', navItems: ['Life', 'School'], authorInitials: 'FX',
+        metaLine: 'Fixture date · 3 min read', actions: [{ label: 'Like', count: '128' }, { label: 'Comment', count: '14' }],
+        sidebarTitle: 'Most read', sidebarItems: ['Fixture sidebar one', 'Fixture sidebar two'], footerNote: 'Fixture footer',
+        appName: 'Fixture Mail', mailboxItems: ['Inbox', 'Sent'], postMeta: ['12 upvotes', '3 replies', '1 reply'],
+        deviceTime: '14:32', contactName: 'Fixture contact', bubbleTimes: ['14:28', '14:29', '14:31'], statusLine: 'online',
+      },
+    } : null;
     return {
-      id: 'fixture', kind, createdAt: 0, settings, plan, content: c, worksheet: settings.createWorksheet ? ws : null,
+      id: 'fixture', kind, createdAt: 0, settings, plan, content: c, worksheet: settings.createWorksheet ? ws : null, layout,
       vocabFound: ['argue', 'trust'], vocabMissing: ['gossip'],
       quality: { findings: [] },
     };

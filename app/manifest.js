@@ -1273,5 +1273,150 @@
         && /Post-Task/.test(dt) && dt.includes(post.reference) && t.includes(env.render.esc(post.reference)), 'post-task details missing in an output');
     } });
 
+
+  /* §37 Authentisches Layout: der Text als Screenshot seines Mediums (Auftragserweiterung) */
+  const layoutState = (env, over) => env.state(Object.assign({ kind: 'reading', authenticLayout: true }, over || {}));
+  const layoutMaterial = (env, over) => env.fixture.material(Object.assign({ authenticLayout: true }, over || {}), 'reading');
+  const layoutFind = (env, id, over, mutate) => {
+    const m = layoutMaterial(env, over);
+    if (mutate) mutate(m.layout.chrome, m);
+    return env.quality.runContentChecks(m.settings, m.plan, m.content, { layout: m.layout }).find(f => f.id === id);
+  };
+
+  add({ id: 'S37.toggle', section: 37, title: 'Schalter „Text im echten Layout zeigen“ – standardmässig an, nur für Reading', kind: 'setting', key: 'authenticLayout', alt: false, mode: 'reading',
+    extra(env) {
+      const on = env.core.buildPlan(layoutState(env, {}), env.ctx).authenticLayout;
+      const listening = env.core.buildPlan(env.state({ kind: 'listening' }), env.ctx).authenticLayout;
+      return ok(env.core.SCHEMA_BY_KEY.authenticLayout.default === true && on === true && listening === false, 'the switch is not on by default or applies to listening');
+    } });
+  add({ id: 'S37.media', section: 37, title: 'Jeder Texttyp hat ein echtes Medium (Browserfenster, Mailprogramm, Forum, Messenger) mit eigener Oberfläche', kind: 'function',
+    check(env) {
+      const kinds = new Set();
+      for (const type of env.core.TEXT_TYPES) {
+        const m = env.fixture.material({ textType: type, authenticLayout: true }, 'reading');
+        const d = env.mock.layoutFor(m);
+        const spec = env.mock.chromeSpec(m);
+        if (!d || !d.kind || !d.accent) return 'no medium for ' + type;
+        if (!spec || !spec.fields.length || !spec.required.length) return 'no interface description for ' + type;
+        kinds.add(d.kind);
+      }
+      return ok(kinds.has('page') && kinds.has('mail') && kinds.has('thread') && kinds.has('chat') && Object.keys(env.mock.LAYOUTS).length >= 14, [...kinds].join(','));
+    } });
+  add({ id: 'S37.prompt', section: 37, title: 'Claude gestaltet die Oberfläche (Adresse, Seitenname, Navigation, Buttons, Zahlen) – ohne den Text zu verändern', kind: 'function',
+    check(env) {
+      const s = layoutState(env, { textType: 'Blog Post' });
+      const m = env.fixture.material({ textType: 'Blog Post', authenticLayout: true }, 'reading');
+      const spec = env.mock.chromeSpec(m);
+      const p = env.prompts.buildLayoutPrompt(s, env.core.buildPlan(s, env.ctx), m.content, spec);
+      const mail = env.state({ kind: 'reading', textType: 'Email', authenticLayout: true });
+      const pm = env.prompts.buildLayoutPrompt(mail, env.core.buildPlan(mail, env.ctx), env.fixture.content('reading'), env.mock.chromeSpec({ settings: mail, content: env.fixture.content('reading') }));
+      const rep = env.prompts.buildLayoutRepairPrompt(s, env.core.buildPlan(s, env.ctx), m.content, m.layout.chrome, [{ status: 'fail', title: 'x', detail: 'y' }], spec);
+      return ok(/Do NOT repeat, summarise or continue the text/.test(p) && /"url"/.test(p) && /"actions"/.test(p) && /Blog post/.test(p)
+        && /"appName"/.test(pm) && /Mail client/.test(pm) && !/"url"/.test(pm)
+        && /What is wrong with it/.test(rep) && /Your previous version/.test(rep), 'the layout prompt is not type-specific or allows rewriting');
+    } });
+  add({ id: 'S37.image', section: 37, title: 'Die App zeichnet daraus ein echtes Bild – für jeden Texttyp gültig und mit dem Text Wort für Wort', kind: 'function',
+    check(env) {
+      for (const type of env.core.TEXT_TYPES) {
+        const m = env.fixture.material({ textType: type, authenticLayout: true }, 'reading');
+        const model = env.quality.layoutModel(m);
+        const problems = env.mock.validate(model);
+        if (problems.length) return type + ': ' + problems[0];
+        const shown = env.quality.normalizeForSearch(env.mock.bodyText(model));
+        const source = env.quality.normalizeForSearch(m.content.paragraphs.join(' '));
+        if (shown !== source) return type + ': the picture does not show the text unchanged';
+        if (!(model.width > 400) || !(model.height > 300)) return type + ': implausible size';
+      }
+      return ok(true);
+    } });
+  add({ id: 'S37.download', section: 37, title: 'Eigener Tab „Layout“ mit Bild und PNG-Download, der vor der Ausgabe geprüft wird', kind: 'ui', selector: '#tab-layout',
+    extra(env) {
+      const src = env.uiSource || '';
+      const wired = !src || (/function renderLayout/.test(src) && /mock\.draw\(/.test(src) && /canvas\.toBlob/.test(src) && /kind === 'png'/.test(src) && /mock\.validate\(model\)/.test(src));
+      return ok(wired && env.hasControl('#out-layout'), 'the layout tab or the checked PNG download is missing');
+    } });
+  add({ id: 'S37.pipeline', section: 37, title: 'Das Layout entsteht im Durchlauf: Claude gestaltet, die App prüft und lässt nachbessern', kind: 'function',
+    check(env) {
+      const src = env.pipelineSource || '';
+      const wired = !src || (/buildLayoutPrompt/.test(src) && /normalizeChrome/.test(src) && /buildLayoutRepairPrompt/.test(src) && /target: 'layout'/.test(src));
+      return ok(wired, 'the layout is not generated, checked and repaired in the pipeline');
+    } });
+  add({ id: 'S37.rule_fields', section: 37, title: 'Kontrolle: die Oberfläche des Mediums ist vollständig', kind: 'rule', ruleId: 'layout.fields',
+    extra(env) {
+      const good = layoutFind(env, 'layout.fields');
+      const bad = layoutFind(env, 'layout.fields', {}, (c) => { c.url = ''; c.actions = []; });
+      return ok(good.status === 'pass' && bad.status === 'fail' && /url/.test(bad.detail), `${good.status}/${bad.status}`);
+    } });
+  add({ id: 'S37.rule_text', section: 37, title: 'Kontrolle: das Bild zeigt genau den generierten Text (Wort für Wort, nichts fehlt, nichts dazu)', kind: 'rule', ruleId: 'layout.text_identical',
+    extra(env) {
+      const good = layoutFind(env, 'layout.text_identical');
+      const m = layoutMaterial(env, {});
+      const shortened = JSON.parse(JSON.stringify(m));
+      shortened.content.paragraphs = shortened.content.paragraphs.slice(0, 1);
+      const model = env.quality.layoutModel(shortened);
+      const full = env.quality.normalizeForSearch(m.content.paragraphs.join(' '));
+      const cut = env.quality.normalizeForSearch(env.mock.bodyText(model));
+      return ok(good.status === 'pass' && cut !== full && cut.length < full.length, `${good.status}; a shortened text would be noticed: ${cut !== full}`);
+    } });
+  add({ id: 'S37.rule_invented', section: 37, title: 'Kontrolle: die Oberfläche erzählt den Text nicht nach', kind: 'rule', ruleId: 'layout.no_invented_text',
+    extra(env) {
+      // the box beside the text only exists on a page layout, so check it there
+      const good = layoutFind(env, 'layout.no_invented_text', { textType: 'Blog Post' });
+      const m = layoutMaterial(env, { textType: 'Blog Post' });
+      const bad = layoutFind(env, 'layout.no_invented_text', { textType: 'Blog Post' }, (c) => { c.sidebarItems = [m.content.paragraphs[0]]; });
+      return ok(good.status === 'pass' && bad.status === 'warn', `${good.status}/${bad.status}`);
+    } });
+  add({ id: 'S37.rule_image', section: 37, title: 'Kontrolle: das Bild ist zeichenbar und wird nur dann ausgeliefert', kind: 'rule', ruleId: 'layout.image_valid',
+    extra(env) {
+      const good = layoutFind(env, 'layout.image_valid');
+      const broken = env.mock.validate({ width: 10, height: 10, blocks: [{ type: 'text', x: 0, y: 900, text: 'x' }] });
+      return ok(good.status === 'pass' && broken.length >= 2, `${good.status}; broken model reports ${broken.length} problems`);
+    } });
+  add({ id: 'S37.rule_authentic', section: 37, title: 'Kontrolle (Claude): das Medium wirkt echt und passt zum Text', kind: 'rule', ruleId: 'layout.authentic' });
+
+
+  /* §38 Vorlagen: ganze Konfigurationen auf Klick, Custom öffnet alles (Auftragserweiterung) */
+  add({ id: 'S38.bar', section: 38, title: 'Vorlagen-Leiste über dem Formular, in beiden Modi sichtbar', kind: 'ui', selector: '#setup-bar',
+    extra(env) {
+      const src = env.uiSource || '';
+      const wired = !src || (/function renderSetupBar/.test(src) && /data-setup-preset/.test(src) && /applySetupPreset/.test(src) && /activeSetupPreset/.test(src));
+      return ok(wired && env.hasControl('#setup-presets') && env.hasControl('#setup-summary'), 'the template bar is missing or not wired');
+    } });
+  add({ id: 'S38.mode', section: 38, title: 'Vorlage oder Custom: die Feineinstellungen klappen erst mit „Custom“ auf', kind: 'setting', key: 'setupMode', alt: 'custom', promptSensitive: false,
+    extra(env) {
+      const src = env.uiSource || '';
+      const folds = !src || /document\.body\.dataset\.setup = /.test(src);
+      return ok(env.core.SCHEMA_BY_KEY.setupMode.default === 'preset' && folds, 'custom does not open the detail settings');
+    } });
+  add({ id: 'S38.presets', section: 38, title: 'Vorlagen für Listening und Reading setzen Sprache, Aufbau, Fragen und beide Aufgabenphasen', kind: 'function',
+    check(env) {
+      for (const kind of ['listening', 'reading']) {
+        const list = env.core.setupPresets(kind);
+        if (list.length < 4) return kind + ': too few templates';
+        for (const preset of list) {
+          if (!preset.label || !preset.hint) return preset.key + ' has no label or hint';
+          const base = env.state({ kind });
+          const s = env.core.applySetupPreset(base, preset.key);
+          const errs = env.core.validateState(s, env.ctx);
+          if (errs.length) return preset.key + ' is invalid: ' + errs[0].message;
+          if (env.core.activeSetupPreset(s) !== preset.key) return preset.key + ' is not recognised as active';
+          const plan = env.core.buildPlan(s, env.ctx);
+          if (!plan.questionCount || !plan.targetWords) return preset.key + ' does not produce a complete plan';
+          if (!plan.preTask || !plan.postTask) return preset.key + ' does not set both task phases';
+          if (kind === 'reading' && !plan.authenticLayout) return preset.key + ' does not show the text in its real layout';
+          if (s.kind !== kind) return preset.key + ' changes the kind';
+        }
+      }
+      return ok(true);
+    } });
+  add({ id: 'S38.adjustable', section: 38, title: 'Eine Vorlage lässt sich weiter anpassen; danach gilt sie als „angepasst“', kind: 'function',
+    check(env) {
+      const s = env.core.applySetupPreset(env.state({ kind: 'reading' }), 'blog');
+      const changed = env.core.normalizeState(Object.assign(env.core.clone(s), { wordCount: 500 }));
+      const taskChanged = env.core.applyTaskPreset(s, 'post', 'writing');
+      return ok(env.core.activeSetupPreset(s) === 'blog' && env.core.activeSetupPreset(changed) === null && env.core.activeSetupPreset(taskChanged) === null,
+        'changing a setting does not mark the template as adjusted');
+    } });
+
   return { REQUIREMENTS: M };
 });

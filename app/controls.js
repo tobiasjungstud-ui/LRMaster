@@ -12,6 +12,7 @@
   function esc(s) { return String(s === undefined || s === null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
 
   const OPTION_LABELS = {
+    setupMode: { preset: 'Vorlage (empfohlen)', custom: 'Custom – alle Einstellungen' },
     topicMode: { unit: 'Use Unit Topic', custom: 'Custom Topic' },
     format: { monologue: 'Monologue', dialogue: 'Dialogue – 2 speakers', conversation: 'Conversation – X speakers' },
     speakerBalance: { balanced: 'Balanced', natural: 'Natural Variation', main: 'Main Speaker', custom: 'Custom' },
@@ -60,6 +61,7 @@
   };
 
   const HELP = {
+    setupMode: 'Mit einer Vorlage sind Sprache, Aufbau und Vokabular sinnvoll gesetzt und ausgeblendet; du änderst nur noch Unit, Fragen und die Aufgabenphasen. „Custom“ öffnet sämtliche Einstellungen.',
     useUnitTopic: 'ON: content clearly follows the unit topic. OFF: mainly the vocabulary is used and the topic is free.',
     languageComplexity: 'Sentence length, grammar, idioms, synonyms, conversational language, explicitness.',
     explicitness: 'How easily information can be taken from the material. Implicit material enables inference questions.',
@@ -67,9 +69,11 @@
     emotionTags: 'Tags such as [hesitant] or [laughing] are used selectively and can later drive a TTS system.',
     naturalness: 'Higher values add contractions, fillers, hesitation, reactions, reformulations and interruptions – always within the CEFR level.',
     vocabUsage: 'How prominently the target vocabulary is used. Words are never forced into the text.',
+    vocabularyDifficulty: 'Feinjustierung INNERHALB des gewählten CEFR-Niveaus (Section Language Level), nicht statt ihm: ein eher leichtes B1.2 gegenüber einem eher anspruchsvollen B1.2. Der Schwierigkeitsmesser prüft danach, dass der Text trotzdem im Band bleibt. Das Fragen-Niveau A/B steuert nur die Fragen, nicht den Text.',
     questionDifficulty: 'Independent of the text level. Affects explicitness, distance, synonyms, combinations, distractors, inference share and question language.',
     questionLevel: 'Meta-Einstellung: Niveau B kann B1.1-Fragen lösen, Niveau A B1.2 bis B2.1. Mit «Beide» entstehen zwei Fragebögen zum selben Text; die Lehrerversion enthält beide Lösungen. Fragen folgen immer der Reihenfolge des Materials (wird geprüft).',
     glossary: 'Der Schwierigkeitsmesser ermittelt die Wörter über dem Niveau (ohne Zielvokabular); Claude erklärt sie in einfachem Englisch mit deutscher Entsprechung auf der ersten Seite des Fragebogens.',
+    authenticLayout: 'Nur Reading: Claude gestaltet das Medium, aus dem der Text käme (Adressleiste, Seitenname, Navigation, Buttons, Zahlen). Die App zeichnet daraus ein echtes Bild und prüft vor der Ausgabe, dass es genau den generierten Text zeigt – herunterladbar als PNG.',
     appendScript: 'Nur Listening: Das vollständige Skript wird als letzte Seite an die Schülerversion angehängt (Bildschirm, Word, Markdown).',
     levelMeter: 'Der Text wird nach dem Schreiben auf Satzlänge, Wortschatz (Häufigkeitsränge), Nebensätze, anspruchsvolle Grammatik, Idiomatik und Beitragslänge gemessen. Weicht das Ergebnis vom gewählten CEFR-Niveau ab, wird der Text mit konkreten Vorgaben nachgebessert.',
     higherOrder: 'Interpretation, transfer and evaluation tasks are kept separate from the comprehension questions.',
@@ -156,13 +160,13 @@
 
   // Ordering inside sections follows the concept.
   const ORDER = {
-    1: ['textbookId', 'unitId', 'useUnitTopic'],
+    1: ['setupMode', 'textbookId', 'unitId', 'useUnitTopic'],
     2: ['topicMode', 'customTopic'],
     3: ['cefr', 'levelMeter', 'languageComplexity'],
     4: ['format', 'speakerCount', 'preset', 'speakerBalance', 'customShares', 'turnLength', 'turnVariability', 'audioLength', 'audioLengthCustom', 'speakingSpeed', 'speakerProfiles', 'emotionTags', 'naturalness', 'explicitness',
         'textType', 'customTextType', 'lengthMode', 'wordCount', 'a4Pages'],
     5: ['vocabUsage', 'targetVocabMin', 'targetVocabMax', 'vocabSelectionMode', 'selectedVocab', 'highlightVocab'],
-    6: ['createWorksheet', 'questionCount', 'questionCountCustom', 'questionLevel', 'questionDifficulty', 'glossary', 'appendScript', 'skillMixMode', 'customSkillMix', 'questionFormats', 'autoFormatMix', 'higherOrder', 'higherOrderCount', 'higherOrderTypes'],
+    6: ['createWorksheet', 'questionCount', 'questionCountCustom', 'questionLevel', 'questionDifficulty', 'glossary', 'appendScript', 'authenticLayout', 'skillMixMode', 'customSkillMix', 'questionFormats', 'autoFormatMix', 'higherOrder', 'higherOrderCount', 'higherOrderTypes'],
     7: ['preTask', 'preTaskFocus', 'preTaskCount', 'preTaskTypes', 'preTaskSocialMode', 'customPreTaskSocial', 'preTaskOralCount', 'preTaskMinutes', 'preTaskDifficulty', 'preTaskScaffolding', 'preTaskLevel', 'preTaskCriteria'],
     8: ['postTask', 'postTaskFocus', 'postTaskCount', 'postTaskTypes', 'postTaskSocialMode', 'customPostTaskSocial', 'postTaskOralCount', 'postTaskMinutes', 'postTaskDifficulty', 'postTaskScaffolding', 'postTaskLevel', 'postTaskCriteria'],
     9: ['grammarComplexity', 'vocabularyDifficulty', 'idiomaticLanguage', 'paragraphLength', 'dialogueProportion', 'styleBalance', 'distractorDifficulty', 'inferenceLevel', 'autoFix', 'autoFixRounds'],
@@ -172,7 +176,7 @@
     { title: 'Audio', keys: ['speakerCount', 'customShares', 'turnLength', 'turnVariability', 'speakingSpeed', 'naturalness', 'emotionTags', 'explicitness'] },
     { title: 'Text', keys: ['wordCount', 'paragraphLength', 'dialogueProportion', 'styleBalance'] },
     { title: 'Language', keys: ['cefr', 'levelMeter', 'grammarComplexity', 'vocabularyDifficulty', 'vocabUsage', 'idiomaticLanguage'] },
-    { title: 'Questions', keys: ['questionCount', 'questionLevel', 'questionDifficulty', 'skillMixMode', 'questionFormats', 'distractorDifficulty', 'inferenceLevel', 'glossary', 'appendScript'] },
+    { title: 'Questions', keys: ['questionCount', 'questionLevel', 'questionDifficulty', 'skillMixMode', 'questionFormats', 'distractorDifficulty', 'inferenceLevel', 'glossary', 'appendScript', 'authenticLayout'] },
     { title: 'Pre-Task', keys: ['preTask', 'preTaskTypes', 'preTaskCount', 'preTaskSocialMode', 'preTaskOralCount', 'preTaskDifficulty', 'preTaskScaffolding', 'preTaskCriteria'] },
     { title: 'Post-Task', keys: ['postTask', 'postTaskTypes', 'postTaskCount', 'postTaskSocialMode', 'postTaskOralCount', 'postTaskDifficulty', 'postTaskScaffolding', 'postTaskCriteria'] },
     { title: 'Qualität', keys: ['autoFix', 'autoFixRounds'] },

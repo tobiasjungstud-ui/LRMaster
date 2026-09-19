@@ -298,6 +298,7 @@
    */
   const SCHEMA = [
     // 1 Source & Unit
+    { key: 'setupMode', type: 'select', default: 'preset', options: ['preset', 'custom'], section: 1, mode: 'both', simple: true, label: 'Einstellungen' },
     { key: 'textbookId', type: 'select', default: '', section: 1, mode: 'both', simple: true, label: 'Lehrmittel' },
     { key: 'unitId', type: 'select', default: '', section: 1, mode: 'both', simple: true, label: 'Unit' },
     { key: 'useUnitTopic', type: 'toggle', default: true, section: 1, mode: 'both', simple: false, label: 'Use unit topic' },
@@ -354,6 +355,7 @@
     { key: 'questionLevel', type: 'select', default: 'auto', options: ['auto', 'A', 'B', 'both'], section: 6, mode: 'both', simple: true, label: 'Niveau der Fragen (Meta-Einstellung)' },
     { key: 'glossary', type: 'toggle', default: false, section: 6, mode: 'both', simple: true, label: 'Fremdwörter auf der 1. Seite erklärt' },
     { key: 'appendScript', type: 'toggle', default: false, section: 6, mode: 'listening', simple: true, label: 'Skript auf der letzten Seite abgebildet' },
+    { key: 'authenticLayout', type: 'toggle', default: true, section: 6, mode: 'reading', simple: true, label: 'Text im echten Layout zeigen (Screenshot-Bild)' },
     { key: 'higherOrder', type: 'toggle', default: false, section: 6, mode: 'both', simple: false, label: 'Higher-Order Questions' },
     { key: 'higherOrderCount', type: 'number', default: 2, min: 1, max: 5, section: 6, mode: 'both', simple: false, label: 'Number of higher-order questions' },
     { key: 'higherOrderTypes', type: 'multiselect', default: ['interpretation', 'transfer', 'evaluation'], options: HIGHER_ORDER_TYPES.map(t => t.key), section: 6, mode: 'both', simple: false, label: 'Higher-order types' },
@@ -806,6 +808,69 @@
   }
 
   /*
+   * Ready-made whole configurations: the material a teacher asks for in one
+   * sentence ("a B1.2 podcast interview", "a blog post with a discussion
+   * afterwards"). A template sets text type, length, level, voice, questions
+   * and the two task phases; from there every single setting can still be
+   * changed, and "custom" opens all of them.
+   */
+  const SETUP_PRESETS = [
+    { key: 'podcast', kind: 'listening', label: 'Podcast-Interview', hint: 'B1.2 · 3 min · Host und Gast 30/70 · 10 Fragen Niveau A · Konfrontation vorher, Diskussion danach',
+      settings: { cefr: 'B1.2', format: 'dialogue', preset: 'podcast', audioLength: '180', speakingSpeed: 55, emotionTags: 'medium', naturalness: 65, languageComplexity: 55, explicitness: 45,
+        createWorksheet: true, questionCount: '10', questionLevel: 'A', skillMixMode: 'auto', glossary: true, appendScript: false }, tasks: { pre: 'confrontation', post: 'discussion' } },
+    { key: 'everyday', kind: 'listening', label: 'Alltagsgespräch', hint: 'A2.2 · 2 min · zwei Sprechende · 8 einfache Fragen · Wortschatz vorher, kurze Sicherung danach',
+      settings: { cefr: 'A2.2', format: 'dialogue', preset: 'casual', audioLength: '120', speakingSpeed: 40, emotionTags: 'low', naturalness: 55, languageComplexity: 25, explicitness: 25,
+        createWorksheet: true, questionCount: '8', questionLevel: 'B', skillMixMode: 'auto', glossary: true, appendScript: true }, tasks: { pre: 'vocab', post: 'quick' } },
+    { key: 'radionews', kind: 'listening', label: 'Radio-Nachricht', hint: 'B2.1 · 2 min · Monolog · 8 anspruchsvolle Fragen · kurzer Einstieg, Schreibprodukt danach',
+      settings: { cefr: 'B2.1', format: 'monologue', preset: 'news', audioLength: '120', speakingSpeed: 65, emotionTags: 'off', naturalness: 35, languageComplexity: 75, explicitness: 60,
+        createWorksheet: true, questionCount: '8', questionLevel: 'A', skillMixMode: 'auto', glossary: true, appendScript: false }, tasks: { pre: 'quick', post: 'writing' } },
+    { key: 'classtalk', kind: 'listening', label: 'Gespräch in der Klasse', hint: 'B1.1 · 4 min · drei Sprechende · 10 Fragen Niveau B · Sprechen aktivieren, Debatte danach',
+      settings: { cefr: 'B1.1', format: 'conversation', speakerCount: 3, preset: 'discussion', audioLength: '240', speakingSpeed: 50, emotionTags: 'medium', naturalness: 60, languageComplexity: 45, explicitness: 40,
+        createWorksheet: true, questionCount: '10', questionLevel: 'B', skillMixMode: 'auto', glossary: true, appendScript: true }, tasks: { pre: 'speaking', post: 'discussion' } },
+    { key: 'blog', kind: 'reading', label: 'Blogpost', hint: 'B1.2 · 350 Wörter · echtes Blog-Layout · 10 Fragen Niveau A · Konfrontation vorher, Diskussion danach',
+      settings: { cefr: 'B1.2', textType: 'Blog Post', lengthMode: 'words', wordCount: 350, languageComplexity: 50, explicitness: 45, paragraphLength: 'medium', styleBalance: 45,
+        createWorksheet: true, questionCount: '10', questionLevel: 'A', skillMixMode: 'auto', glossary: true, authenticLayout: true }, tasks: { pre: 'confrontation', post: 'discussion' } },
+    { key: 'newsarticle', kind: 'reading', label: 'Zeitungsartikel', hint: 'B2.1 · 400 Wörter · Nachrichtenseite · 10 anspruchsvolle Fragen · kurzer Einstieg, Stellungnahme danach',
+      settings: { cefr: 'B2.1', textType: 'News Article', lengthMode: 'words', wordCount: 400, languageComplexity: 70, explicitness: 60, paragraphLength: 'short', styleBalance: 85,
+        createWorksheet: true, questionCount: '10', questionLevel: 'A', skillMixMode: 'auto', glossary: true, authenticLayout: true }, tasks: { pre: 'quick', post: 'discussion' } },
+    { key: 'email', kind: 'reading', label: 'E-Mail', hint: 'A2.2 · 180 Wörter · Mailprogramm · 8 einfache Fragen · Wortschatz vorher, Antwort schreiben danach',
+      settings: { cefr: 'A2.2', textType: 'Email', lengthMode: 'words', wordCount: 180, languageComplexity: 25, explicitness: 20, paragraphLength: 'short', styleBalance: 40,
+        createWorksheet: true, questionCount: '8', questionLevel: 'B', skillMixMode: 'auto', glossary: true, authenticLayout: true }, tasks: { pre: 'vocab', post: 'writing' } },
+    { key: 'forum', kind: 'reading', label: 'Forumsdiskussion', hint: 'B1.1 · 300 Wörter · Forum-Thread · 10 Fragen Niveau B · Sprechen aktivieren, Debatte danach',
+      settings: { cefr: 'B1.1', textType: 'Forum Discussion', lengthMode: 'words', wordCount: 300, languageComplexity: 40, explicitness: 35, paragraphLength: 'short', styleBalance: 30, dialogueProportion: 70,
+        createWorksheet: true, questionCount: '10', questionLevel: 'B', skillMixMode: 'auto', glossary: true, authenticLayout: true }, tasks: { pre: 'speaking', post: 'discussion' } },
+    { key: 'story', kind: 'reading', label: 'Geschichte', hint: 'B1.1 · 400 Wörter · erzählend · 10 Fragen Niveau B · kurzer Einstieg, kreatives Schreiben danach',
+      settings: { cefr: 'B1.1', textType: 'Story', lengthMode: 'words', wordCount: 400, languageComplexity: 45, explicitness: 30, paragraphLength: 'medium', styleBalance: 10, dialogueProportion: 40,
+        createWorksheet: true, questionCount: '10', questionLevel: 'B', skillMixMode: 'auto', glossary: false, authenticLayout: true }, tasks: { pre: 'quick', post: 'writing' } },
+  ];
+
+  function setupPresets(kind) { return SETUP_PRESETS.filter(p => p.kind === (kind === 'reading' ? 'reading' : 'listening')); }
+
+  /** Apply a whole template, including the two task phases. */
+  function applySetupPreset(state, key) {
+    const preset = SETUP_PRESETS.find(p => p.key === key);
+    if (!preset) return state;
+    let next = Object.assign(clone(state), { kind: preset.kind, setupMode: 'preset' }, clone(preset.settings));
+    next = normalizeState(next);
+    if (preset.tasks) {
+      next = applyTaskPreset(next, 'pre', preset.tasks.pre);
+      next = applyTaskPreset(next, 'post', preset.tasks.post);
+      next.setupMode = 'preset';
+    }
+    return normalizeState(next);
+  }
+
+  /** Which template the settings still match, or null once something was changed. */
+  function activeSetupPreset(state) {
+    for (const preset of setupPresets(state.kind)) {
+      const same = Object.keys(preset.settings).every(k => JSON.stringify(state[k]) === JSON.stringify(preset.settings[k]));
+      const tasks = !preset.tasks || (activeTaskPreset(state, 'pre') === preset.tasks.pre && activeTaskPreset(state, 'post') === preset.tasks.post);
+      if (same && tasks) return preset.key;
+    }
+    return null;
+  }
+
+  /*
    * Ready-made task sequences, in the way a teacher plans a lesson: pick the
    * step ("short lead-in", "pre-teach the words", "discussion afterwards"),
    * fine-tune only if needed. Every preset sets the whole phase, so a single
@@ -1017,6 +1082,7 @@
       variants: state.createWorksheet ? questionVariants(state).map(v => v ? v.key : null) : [],
       glossary: !!(state.createWorksheet && state.glossary),
       appendScript: !!(state.createWorksheet && state.appendScript && state.kind === 'listening'),
+      authenticLayout: !!(state.authenticLayout && state.kind === 'reading'),
       levelMeter: state.levelMeter !== false,
       targetWords: targetWordCount(state),
       wpm: state.kind === 'listening' ? wordsPerMinute(state.speakingSpeed) : null,
@@ -1094,7 +1160,7 @@
     CEFR_BANDS, SKILLS, SKILL_KEYS, HIGHER_ORDER_TYPES, QUESTION_FORMATS, FORMAT_KEYS, TEXT_TYPES,
     EMOTION_TAGS, PRE_TASK_TYPES, PRE_TASK_TYPE_KEYS, POST_TASK_TYPES, POST_TASK_TYPE_KEYS, TASK_PHASES,
     SOCIAL_FORMS, SOCIAL_FORM_KEYS, PRE_TASK_MODES,
-    AUDIO_LENGTHS, QUESTION_COUNTS, PRESETS, TURN_PRESETS, TASK_PRESETS,
+    AUDIO_LENGTHS, QUESTION_COUNTS, PRESETS, TURN_PRESETS, TASK_PRESETS, SETUP_PRESETS,
     META_SPECS, TEXT_TYPE_DESIGN, designIdFor,
     SCHEMA, SCHEMA_BY_KEY, SIMPLE_MODE_KEYS, EXAMPLE_CONFIG, WORDS_PER_A4,
     defaults, normalizeState, clone,
@@ -1104,7 +1170,7 @@
     QUESTION_LEVELS, QUESTION_LEVEL_KEYS, questionVariants, variantState, effectiveQuestionDifficulty, questionBands,
     skillSequence, availableFormats, assignFormats, targetVocabulary, validateState, buildPlan,
     taskCount, taskTypes, taskTypeMix, autoTaskSocial, effectiveTaskSocial, taskSequence, buildTaskPlan, taskBand, splitMinutes,
-    applyTaskPreset, activeTaskPreset,
+    applyTaskPreset, activeTaskPreset, setupPresets, applySetupPreset, activeSetupPreset,
     preTaskCount, preTaskTypes, preTaskTypeMix, autoPreTaskSocial, effectivePreTaskSocial, preTaskSequence, buildPreTaskPlan, preTaskBand,
     postTaskCount, postTaskTypes, effectivePostTaskSocial, postTaskSequence, buildPostTaskPlan, postTaskBand,
     applyExampleConfig,

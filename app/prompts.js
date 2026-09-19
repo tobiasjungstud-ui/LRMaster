@@ -387,7 +387,7 @@
   /* 4. Quality review (concept §29, the judgements that need reading)     */
   /* ------------------------------------------------------------------ */
 
-  function buildReviewPrompt(state, plan, content, worksheet, llmRules, deterministicFindings) {
+  function buildReviewPrompt(state, plan, content, worksheet, llmRules, deterministicFindings, layout) {
     const lines = [];
     lines.push('You are a strict reviewer of EFL classroom material. Check the material and worksheet below against each rule and answer with pass/fail per rule. Be concrete: name question numbers or lines.');
     lines.push('## Settings\n' + [
@@ -401,6 +401,7 @@
       worksheet && plan.postTask ? `Post-task plan: ${plan.postTask.tasks.map(t => `T${t.n} ${t.type}/${t.socialForm}/${t.mode}/${t.minutes}min`).join(', ')}; focus ${plan.postTask.focus}; language ${plan.postTask.band}; demand ${plan.postTask.difficulty}/100; success criteria ${plan.postTask.criteria ? 'required' : 'not required'}` : '',
     ].filter(Boolean).join('\n'));
     lines.push('## Material\n' + contentAsText(content, state));
+    if (layout && layout.chrome) lines.push(`## The medium the text is shown in (${layout.label || ''})\nThe interface around the text, as a screenshot would show it:\n` + JSON.stringify(layout.chrome, null, 0).slice(0, 4000));
     if (worksheet) lines.push('## Worksheet (JSON)\n' + JSON.stringify({ preTasks: worksheet.preTasks, questions: worksheet.questions, higherOrder: worksheet.higherOrder }, null, 0).slice(0, 30000));
     if (deterministicFindings && deterministicFindings.length) {
       lines.push('## Automatic measurements already taken (for context)\n' + deterministicFindings.map(f => `- ${f.title}: ${f.status}${f.detail ? ' — ' + f.detail : ''}`).join('\n'));
@@ -528,6 +529,44 @@
   }
 
   /* ------------------------------------------------------------------ */
+  /* 5b2. The medium the text appears in (authentic layout, §37)          */
+  /* ------------------------------------------------------------------ */
+
+  /**
+   * The interface around a reading text: address bar, site name, buttons,
+   * counts — everything a screenshot would show besides the text itself.
+   * The text is never rewritten here; only the surroundings are invented.
+   */
+  function buildLayoutPrompt(state, plan, content, spec) {
+    const meta = content.meta || {};
+    const type = state.textType === 'Custom' ? state.customTextType : state.textType;
+    return [
+      `You design how a text looks where it really appears. The text below is a ${type} for a ${plan.cefr} English class. It will be shown as a screenshot of the medium it would come from (${spec.label}). Invent the interface around it — the text itself stays exactly as it is.`,
+      '## Text\n' + 'Title: ' + content.title + '\n' + contentAsText(content, state),
+      '## Details the text already carries\n' + Object.keys(meta).map(k => `- ${k}: ${Array.isArray(meta[k]) ? meta[k].join(', ') : meta[k]}`).join('\n'),
+      '## What the interface has to show\n' + spec.fields.map(f => `- "${f[0]}": ${f[1]}`).join('\n'),
+      '## Rules\n'
+        + '- Everything must fit this one text: the same world, the same place, the same time. A reader must believe the screenshot is real.\n'
+        + '- Do NOT repeat, summarise or continue the text. Nothing you write may be a sentence of the text.\n'
+        + '- Keep every entry short: navigation labels one or two words, button labels one word, counts as plain numbers ("128", "1.2k").\n'
+        + '- Names, places and dates must agree with the details the text already carries.\n'
+        + `- Write the interface in English, as the platform itself would.\n`
+        + `- Required: ${spec.required.map(r => '"' + r + '"').join(', ')}.`,
+      'Reply with only a JSON object with exactly these keys: ' + spec.fields.map(f => '"' + f[0] + '"').join(', ') + '.',
+    ].join('\n\n');
+  }
+
+  /** Repair round for the interface: the findings in front of it, same shape back. */
+  function buildLayoutRepairPrompt(state, plan, content, chrome, findings, spec) {
+    return [
+      buildLayoutPrompt(state, plan, content, spec),
+      '## Your previous version\n' + JSON.stringify(chrome || {}, null, 0).slice(0, 6000),
+      '## What is wrong with it\n' + findingsBlock(findings),
+      'Reply with only the corrected JSON object in the same shape.',
+    ].join('\n\n');
+  }
+
+  /* ------------------------------------------------------------------ */
   /* 5c. Second opinion on the measured level (Niveau messen page)        */
   /* ------------------------------------------------------------------ */
 
@@ -609,6 +648,7 @@
       questions: state.createWorksheet ? buildQuestionPrompt(state, plan, content) : '',
       review: buildReviewPrompt(state, plan, content, state.createWorksheet ? worksheet : null, [], []),
       glossary: state.createWorksheet && state.glossary ? buildGlossaryPrompt(state, plan, content, [{ word: 'x', count: 1 }]) : '',
+      layout: state.kind === 'reading' && state.authenticLayout ? buildLayoutPrompt(state, plan, content, { label: 'the medium', fields: [['url', 'address']], required: ['url'] }) : '',
     };
   }
 
@@ -618,6 +658,6 @@
     buildContentRevisionPrompt, buildQuestionRevisionPrompt, buildQuestionRepairPrompt, findingsBlock, buildVocabParsePrompt,
     buildUnitDetectPrompt, buildUnitTopicPrompt, buildAllPrompts, buildGlossaryPrompt, buildLevelOpinionPrompt,
     chronologyRule, levelTargetBlock, questionLevelLines, taskBlock, preTaskBlock, postTaskBlock,
-    buildTaskRepairPrompt, buildPreTaskRepairPrompt, buildPostTaskRepairPrompt,
+    buildTaskRepairPrompt, buildPreTaskRepairPrompt, buildPostTaskRepairPrompt, buildLayoutPrompt, buildLayoutRepairPrompt,
   };
 });

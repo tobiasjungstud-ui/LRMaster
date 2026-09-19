@@ -6,7 +6,7 @@
  */
 (function () {
   'use strict';
-  const { core, prompts, quality, render, vocab, controls, checks, fixture, word, ooxml, level } = window.LR;
+  const { core, prompts, quality, render, vocab, controls, checks, fixture, word, ooxml, level, mock } = window.LR;
   const $ = (sel, root) => (root || document).querySelector(sel);
   const $$ = (sel, root) => Array.from((root || document).querySelectorAll(sel));
   const esc = render.esc;
@@ -142,6 +142,39 @@
     if (name === 'materials') renderMaterials();
     if (name === 'check') runConceptCheck();
     if (name === 'level') initLevelPage();
+  }
+
+  /**
+   * The template bar: whole ready-made configurations plus "custom", which
+   * opens every single setting. Changing something afterwards keeps the
+   * template working but marks it as adjusted.
+   */
+  function renderSetupBar() {
+    const s = app.state;
+    const box = $('#setup-presets');
+    if (!box) return;
+    const presets = core.setupPresets(s.kind);
+    const active = s.setupMode === 'custom' ? 'custom' : core.activeSetupPreset(s);
+    box.innerHTML = presets.map(p => `<button type="button" class="chip-btn" data-setup-preset="${esc(p.key)}" title="${esc(p.hint)}">${esc(p.label)}</button>`).join('')
+      + '<button type="button" class="chip-btn custom" data-setup-preset="__custom__" title="Alle Einstellungen einzeln öffnen">Custom …</button>';
+    $$('#setup-presets [data-setup-preset]').forEach(b => {
+      b.classList.toggle('active', b.dataset.setupPreset === active || (active === 'custom' && b.dataset.setupPreset === '__custom__'));
+      b.addEventListener('click', () => {
+        if (b.dataset.setupPreset === '__custom__') { app.state.setupMode = 'custom'; setMode('advanced'); }
+        else { app.state = core.applySetupPreset(app.state, b.dataset.setupPreset); }
+        fillForm();
+        onStateChange('setupMode');
+        $('#creator-form').scrollIntoView({ behavior: 'smooth', block: 'start' });
+      });
+    });
+    const chosen = presets.find(p => p.key === active);
+    $('#setup-hint').textContent = s.setupMode === 'custom' ? 'Alle Einstellungen offen'
+      : chosen ? chosen.hint : 'Eigene Einstellungen – Vorlage wählen oder „Custom …“ öffnen';
+    document.body.dataset.setup = s.setupMode === 'custom' ? 'custom' : 'preset';
+    const plan = core.buildPlan(s, ctx());
+    $('#setup-summary').textContent = s.setupMode === 'custom'
+      ? 'Custom: Sprache, Aufbau, Vokabular und alle Feineinstellungen sind unten geöffnet.'
+      : `${plan.cefr} · ${plan.targetWords} Wörter${s.kind === 'listening' ? ' (' + Math.round(plan.seconds / 60 * 10) / 10 + ' min)' : ' · ' + (s.textType === 'Custom' ? s.customTextType : s.textType)} · ${plan.questionCount} Fragen · Pre-Task ${plan.preTask ? plan.preTask.count + ' (' + plan.preTask.minutes + ' min)' : 'aus'} · Post-Task ${plan.postTask ? plan.postTask.count + ' (' + plan.postTask.minutes + ' min)' : 'aus'}. Unten lässt sich alles anpassen; „Custom …“ öffnet auch Sprache, Aufbau und Vokabular.`;
   }
 
   function openCreator(kind) {
@@ -367,6 +400,7 @@
     const who = $('input[data-multi="questionFormats"][value="who_said_it"]'); if (who) who.closest('.chip').classList.toggle('disabled', !(s.kind === 'listening' && core.effectiveSpeakerCount(s) >= 2));
     // labels
     for (const phase of ['pre', 'post']) renderTaskPreview(phase);
+    renderSetupBar();
     const est = $('#audio-estimate');
     if (est && s.kind === 'listening') est.textContent = `≈ ${core.targetWordCount(s)} Wörter bei ${core.wordsPerMinute(s.speakingSpeed)} Wörtern/Minute für ${Math.round(core.audioSeconds(s) / 60 * 10) / 10} min`;
     renderPlanPreview();
@@ -462,7 +496,7 @@
 
   const STEPS = [
     ['plan', 'Plan & Validierung'], ['content', 'Skript / Text schreiben'], ['content-check', 'Content prüfen'], ['content-fix', 'Content korrigieren'],
-    ['questions', 'Aufgaben erstellen'], ['question-check', 'Aufgaben prüfen'], ['review', 'Claude-Review'], ['question-fix', 'Aufgaben korrigieren'], ['pretask-fix', 'Pre-Task korrigieren'], ['posttask-fix', 'Post-Task korrigieren'], ['glossary', 'Fremdwörter erklären'], ['done', 'Ausgabe'],
+    ['questions', 'Aufgaben erstellen'], ['question-check', 'Aufgaben prüfen'], ['review', 'Claude-Review'], ['question-fix', 'Aufgaben korrigieren'], ['pretask-fix', 'Pre-Task korrigieren'], ['posttask-fix', 'Post-Task korrigieren'], ['glossary', 'Fremdwörter erklären'], ['layout', 'Layout des Mediums'], ['done', 'Ausgabe'],
   ];
   function progress(step, status, note) {
     const el = $('#progress');
@@ -540,9 +574,41 @@
       }
       if (!repairs.some(r => r.target === 'content')) progress('content-fix', 'skip', maxRounds ? 'nicht nötig' : 'automatische Korrektur aus');
 
+      /* 3b. The medium the text really comes from (reading): Claude designs the
+         interface, the app draws the picture and checks that it shows the text. */
+      let layout = null, layoutFindings = [];
+      if (plan.authenticLayout) {
+        const spec = mock.chromeSpec({ settings: state, content });
+        progress('layout', 'running', `Claude gestaltet ${spec.label} …`);
+        try {
+          usedPrompts.layout = prompts.buildLayoutPrompt(state, plan, content, spec);
+          let chrome = quality.normalizeChrome(await askJSON(usedPrompts.layout, { signal: ctl.signal }), spec);
+          const check = (c) => quality.runContentChecks(state, plan, content, { layout: { chrome: c } }).filter(f => f.group === 'layout');
+          layoutFindings = check(chrome);
+          for (let round = 1; round <= maxRounds; round++) {
+            const items = quality.repairable(layoutFindings, state.autoFix);
+            if (!items.length) break;
+            progress('layout', 'running', `Runde ${round}: ${findingsLabel(items)}`);
+            usedPrompts['layoutRepair' + round] = prompts.buildLayoutRepairPrompt(state, plan, content, chrome, items, spec);
+            const cand = quality.normalizeChrome(await askJSON(usedPrompts['layoutRepair' + round], { signal: ctl.signal }), spec);
+            const candFindings = check(cand);
+            const better = quality.problemScore(candFindings) < quality.problemScore(layoutFindings);
+            repairs.push({ round, target: 'layout', fixed: items.map(f => f.title), accepted: better });
+            if (!better) break;
+            chrome = cand; layoutFindings = candFindings;
+          }
+          layout = { chrome, kind: spec.kind, label: spec.label };
+          progress('layout', quality.repairable(layoutFindings, state.autoFix).length ? 'warn' : 'done', `${spec.label} · ${summaryText(layoutFindings)}`);
+        } catch (e) {
+          if (e.code === 'cancelled') throw e;
+          progress('layout', 'warn', errorCopy(e));
+        }
+      } else progress('layout', 'skip', state.kind === 'reading' ? 'nicht gewählt' : 'nur für Reading');
+
       /* 4. Worksheet(s): one per question level */
       const results = [];
       let glossary = null;
+      run.layout = layout;
       if (state.createWorksheet) {
         for (let vi = 0; vi < plans.length; vi++) {
           const variant = variants[vi];
@@ -571,7 +637,7 @@
 
       /* 5. Assemble */
       progress('done', 'running');
-      const contentOnlyReview = !state.createWorksheet ? await reviewContentOnly(state, plan, content, contentFindings, ctl).catch(() => []) : [];
+      const contentOnlyReview = !state.createWorksheet ? await reviewContentOnly(state, plan, content, contentFindings, ctl, layout).catch(() => []) : [];
       const variantsOut = results.map((r, i) => ({
         key: variants[i] ? variants[i].key : null, label: variants[i] ? variants[i].label : '',
         plan: plans[i], worksheet: r.worksheet,
@@ -579,13 +645,13 @@
       }));
       const findingsAll = contentFindings.concat(
         variantsOut.flatMap(v => v.quality.findings.map(f => v.key ? Object.assign({}, f, { variant: v.key }) : f)),
-        contentOnlyReview);
+        layoutFindings, contentOnlyReview);
       const levelFinding = contentFindings.find(f => f.id === 'content.level_measured' && f.measured);
       const vm = quality.vocabMatches(quality.materialText(content, state.kind).text, plan.vocabulary);
       const material = {
         id: vocab.makeId('mat'), createdAt: Date.now(), kind: state.kind, title: (results[0] && results[0].worksheet && results[0].worksheet.title) || content.title,
         settings: state, plan, content, worksheet: results[0] ? results[0].worksheet : null,
-        variants: variantsOut, glossary, level: levelFinding ? levelFinding.measured : null,
+        variants: variantsOut, glossary, layout, level: levelFinding ? levelFinding.measured : null,
         vocabFound: vm.found, vocabMissing: vm.missing,
         quality: { findings: findingsAll, review: results[0] ? results[0].review : null, repairs, durationMs: Date.now() - t0 }, prompts: usedPrompts,
       };
@@ -625,8 +691,8 @@
     const pfx = tag ? `Niveau ${tag}: ` : '';
     const key = (name) => name + (tag || '');
     const reviewNow = async (ws, det, suffix) => {
-      const rules = quality.llmRules(state, plan, ws);
-      usedPrompts[key('review' + suffix)] = prompts.buildReviewPrompt(state, plan, content, ws, rules, det);
+      const rules = quality.llmRules(state, plan, ws, { layout: run.layout });
+      usedPrompts[key('review' + suffix)] = prompts.buildReviewPrompt(state, plan, content, ws, rules, det, run.layout);
       const res = await askJSON(usedPrompts[key('review' + suffix)], { signal: ctl.signal });
       return { review: res, findings: quality.mergeReview(rules, res) };
     };
@@ -773,9 +839,9 @@
   }
   /* end generate */
 
-  async function reviewContentOnly(state, plan, content, contentFindings, ctl) {
-    const rules = quality.llmRules(state, plan, null);
-    const review = await askJSON(prompts.buildReviewPrompt(state, plan, content, null, rules, contentFindings), { signal: ctl.signal });
+  async function reviewContentOnly(state, plan, content, contentFindings, ctl, layout) {
+    const rules = quality.llmRules(state, plan, null, { layout });
+    const review = await askJSON(prompts.buildReviewPrompt(state, plan, content, null, rules, contentFindings, layout), { signal: ctl.signal });
     return quality.mergeReview(rules, review);
   }
 
@@ -803,11 +869,33 @@
     $$('#dl-variants [data-download]').forEach(b => b.addEventListener('click', () => download(b.dataset.download, b.dataset.variant)));
     $('[data-download="docx-student"]:not([data-variant])').hidden = multi;
     $('#out-teacher').innerHTML = render.renderTeacherHTML(m);
+    renderLayout(m);
     $('#out-quality').innerHTML = renderQualityPanel(m);
     $('#out-prompts').innerHTML = Object.entries(m.prompts || {}).map(([k, v]) => `<details><summary>${esc(k)} (${v.length} Zeichen)</summary><pre>${esc(v)}</pre></details>`).join('') || '<p class="muted">–</p>';
     $('#out-json').textContent = JSON.stringify({ content: m.content, worksheet: m.worksheet, plan: m.plan }, null, 2);
     showTab('student');
     out.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  /** Draw the screenshot of the text into the Layout tab; returns the canvas. */
+  function renderLayout(m) {
+    const pane = $('#out-layout');
+    const tab = $('#tab-layout');
+    if (!m.layout || !m.layout.chrome) { pane.innerHTML = ''; tab.hidden = true; return null; }
+    tab.hidden = false;
+    pane.innerHTML = `<p class="layout-note">So sähe der Text aus, wenn er aus diesem Medium käme (${esc(m.layout.label || '')}). Das Bild enthält den generierten Text unverändert – das wird vor der Ausgabe geprüft.</p>`
+      + '<div class="layout-actions"><button type="button" class="btn tiny primary" data-download="png">Bild (PNG) herunterladen</button></div>'
+      + '<div class="layout-shot"><canvas id="layout-canvas"></canvas></div>';
+    const canvas = $('#layout-canvas');
+    const model = mock.buildModel(m, m.layout.chrome, { measure: mock.canvasMeasure(canvas) });
+    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    canvas.width = model.width * dpr; canvas.height = model.height * dpr;
+    canvas.style.width = model.width + 'px'; canvas.style.height = model.height + 'px';
+    const ctx2 = canvas.getContext('2d');
+    ctx2.scale(dpr, dpr);
+    mock.draw(ctx2, model);
+    $$('#out-layout [data-download]').forEach(b => b.addEventListener('click', () => download('png')));
+    return canvas;
   }
 
   function renderQualityPanel(m) {
@@ -867,6 +955,15 @@
       filename = word.filename(m, which, variant);
       data = new Blob([which === 'teacher' ? word.buildTeacher(m) : word.buildStudent(m, variant)],
         { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
+    } else if (kind === 'png') {
+      const canvas = $('#layout-canvas') || renderLayout(m);
+      if (!canvas) { toast('Für dieses Material gibt es kein Layout-Bild.'); return; }
+      const model = mock.buildModel(m, m.layout.chrome, { measure: mock.canvasMeasure(canvas) });
+      const problems = mock.validate(model);
+      if (problems.length) { console.error('LRMaster: invalid layout', problems); toast('Bild konnte nicht erzeugt werden: ' + problems[0]); return; }
+      filename = word.slug(m.title) + '-layout.png';
+      data = await new Promise(res => canvas.toBlob(res, 'image/png'));
+      if (!data) { toast('Bild konnte nicht erzeugt werden.'); return; }
     } else if (kind === 'md') { filename = slug + '.md'; data = render.renderMarkdown(m); }
     else if (kind === 'student') {
       const vs = render.variantsOf(m).filter(v => v.worksheet);
@@ -1389,7 +1486,7 @@
     });
     const bySection = {};
     for (const r of res.results) (bySection[r.section] = bySection[r.section] || []).push(r);
-    const SECTION_NAMES = { 0: 'Vollständigkeit', 1: 'Ziel der Anwendung', 2: 'Hauptnavigation', 3: 'Grundaufbau des Creators', 4: 'Source & Unit', 5: 'Content', 6: 'Language Level', 7: 'Vocabulary Settings', 8: 'Listening – Audio Structure', 9: 'Listening Presets', 10: 'Speaker Distribution', 11: 'Turn Length', 12: 'Audio Length', 13: 'Speaker Profiles', 14: 'Emotion & Delivery Tags', 15: 'Natural Speech Settings', 16: 'Information Explicitness', 17: 'Reading – Text Structure', 18: 'Worksheet', 19: 'Number of Questions', 20: 'Listening / Reading Skills', 21: 'Higher-Order Thinking', 22: 'Question Difficulty', 23: 'Automatic Skill Mix', 24: 'Manual Skill Mix', 25: 'Question Formats', 26: 'Question Order', 27: 'Pre-Listening / Pre-Reading', 28: 'Output', 29: 'Quality Check', 30: 'Advanced Settings', 31: 'Simple vs. Advanced Mode', 32: 'Beispielkonfiguration', 33: 'Word-Export (formatiert, typgerecht)', 34: 'Schwierigkeitsmesser & Niveau der Fragen', 35: 'Pre-Task: Typen, Sozialformen, Anforderungsniveau', 36: 'Post-Task: Typen, Sozialformen, Anforderungsniveau' };
+    const SECTION_NAMES = { 0: 'Vollständigkeit', 1: 'Ziel der Anwendung', 2: 'Hauptnavigation', 3: 'Grundaufbau des Creators', 4: 'Source & Unit', 5: 'Content', 6: 'Language Level', 7: 'Vocabulary Settings', 8: 'Listening – Audio Structure', 9: 'Listening Presets', 10: 'Speaker Distribution', 11: 'Turn Length', 12: 'Audio Length', 13: 'Speaker Profiles', 14: 'Emotion & Delivery Tags', 15: 'Natural Speech Settings', 16: 'Information Explicitness', 17: 'Reading – Text Structure', 18: 'Worksheet', 19: 'Number of Questions', 20: 'Listening / Reading Skills', 21: 'Higher-Order Thinking', 22: 'Question Difficulty', 23: 'Automatic Skill Mix', 24: 'Manual Skill Mix', 25: 'Question Formats', 26: 'Question Order', 27: 'Pre-Listening / Pre-Reading', 28: 'Output', 29: 'Quality Check', 30: 'Advanced Settings', 31: 'Simple vs. Advanced Mode', 32: 'Beispielkonfiguration', 33: 'Word-Export (formatiert, typgerecht)', 34: 'Schwierigkeitsmesser & Niveau der Fragen', 35: 'Pre-Task: Typen, Sozialformen, Anforderungsniveau', 36: 'Post-Task: Typen, Sozialformen, Anforderungsniveau', 37: 'Authentisches Layout (Screenshot des Mediums)', 38: 'Vorlagen & Custom-Modus' };
     $('#check-summary').innerHTML = `<span class="big">${res.summary.pass} / ${res.summary.total}</span> Anforderungen bestanden` + (res.summary.fail ? ` · <span class="bad">${res.summary.fail} nicht bestanden</span>` : ' · alle Konzeptpunkte mit echten Funktionen belegt');
     el.innerHTML = Object.keys(bySection).sort((a, b) => Number(a) - Number(b)).map(sec => `<section class="check-section"><h3>§${sec} ${esc(SECTION_NAMES[sec] || '')} <span class="muted">${bySection[sec].filter(r => r.status === 'pass').length}/${bySection[sec].length}</span></h3><div class="table-wrap"><table class="check-table"><tbody>` + bySection[sec].map(r => `<tr class="qc-${r.status}"><td class="qc-status">${r.status}</td><td><code>${esc(r.id)}</code></td><td>${esc(r.title)}<div class="muted small">${esc(r.kind)}${r.key ? ' · ' + esc(r.key) : ''}</div></td><td class="muted">${esc(r.detail)}</td></tr>`).join('') + '</tbody></table></div></section>').join('');
   }
@@ -1442,5 +1539,5 @@
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init); else init();
 
-  window.LR.ui = { app, generate, produceWorksheet, store, caps, showView, openCreator, importState, detectUnits, fetchTopics, confirmImport, newTextbook, askText, askConfirm, clone, parsePasted, initLevelPage, download, renderOutput, renderQualityPanel, renderTaskPreview, refreshDerived };
+  window.LR.ui = { app, generate, produceWorksheet, store, caps, showView, openCreator, importState, detectUnits, fetchTopics, confirmImport, newTextbook, askText, askConfirm, clone, parsePasted, initLevelPage, download, renderOutput, renderQualityPanel, renderTaskPreview, refreshDerived, renderLayout, renderSetupBar };
 })();
