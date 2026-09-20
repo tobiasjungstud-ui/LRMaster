@@ -162,6 +162,20 @@
         deviceTime: '14:32', contactName: 'Fixture contact', bubbleTimes: ['14:28', '14:29', '14:31'], statusLine: 'online',
         publication: 'Fixture Post', publicationLine: 'Fixture city · Tuesday · £1.20', sectionLabel: 'Fixture section',
         photoCaption: 'Fixture photo caption line.', captionCredit: 'Fixture credit', pageLabel: 'Page 7',
+        // the pictures and the things standing around the text (§37)
+        photoSubject: 'classroom', sidebarSubjects: ['sport', 'food'], attachmentSubject: 'still',
+        weatherNote: 'Cloudy, 14°C', indexItems: ['Sport 12', 'Letters 21'], portraitName: 'Fixture Reporter',
+        signatureLines: ['Fixture role', 'Fixture phone'], photoAfter: '2',
+        modules: [
+          { type: 'cookie', slot: 'top', heading: 'Fixture consent line about cookies on this site.', cta: 'Accept all', meta: 'Settings', lines: [], items: [], subject: '', shape: '' },
+          { type: 'ad_banner', slot: 'inline', label: 'Fixture Brand', heading: 'Fixture advertisement headline', lines: ['Fixture advertisement line.'], items: [], cta: 'Fixture CTA', meta: '', subject: '', shape: '' },
+          { type: 'poll', slot: 'rail', label: 'Fixture poll', heading: 'Fixture poll question?', lines: [], items: ['Fixture answer one', 'Fixture answer two'], cta: '', meta: '128 votes', subject: '', shape: '' },
+          { type: 'ad_skyscraper', slot: 'rail', label: 'Fixture Brand', heading: 'Fixture tall advertisement', lines: ['Fixture advertisement line.'], items: [], cta: 'Fixture CTA', meta: '', subject: 'sea', shape: '' },
+          { type: 'teaser', slot: 'below', label: 'Fixture section', heading: 'Fixture other story headline', lines: ['Fixture other story sentence.'], items: [], cta: '3 min read', meta: 'Fixture time', subject: 'transport', shape: '' },
+          { type: 'comments', slot: 'below', heading: 'Fixture comments', lines: [], items: ['fixture_reader|Fixture comment sentence.'], cta: 'Add a comment', meta: '', subject: '', shape: '' },
+          { type: 'list', slot: 'below', heading: 'Fixture more from', lines: [], items: ['Fixture other headline one', 'Fixture other headline two'], cta: '', meta: '', subject: '', shape: '' },
+          { type: 'fixture_invented_kind', slot: 'below', shape: 'note', heading: 'Fixture invented module', lines: ['Fixture line of an invented module.'], items: [], cta: '', meta: '', subject: '' },
+        ],
       },
     } : null;
     return {

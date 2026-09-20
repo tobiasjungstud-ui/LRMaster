@@ -9,9 +9,9 @@
  * which Claude writes. No content strings live in this file.
  */
 (function (root, factory) {
-  if (typeof module === 'object' && module.exports) module.exports = factory(require('./core.js'));
-  else { root.LR = root.LR || {}; root.LR.mock = factory(root.LR.core); }
-})(typeof self !== 'undefined' ? self : this, function (core) {
+  if (typeof module === 'object' && module.exports) module.exports = factory(require('./core.js'), require('./photo.js'));
+  else { root.LR = root.LR || {}; root.LR.mock = factory(root.LR.core, root.LR.photo); }
+})(typeof self !== 'undefined' ? self : this, function (core, photo) {
   'use strict';
 
   const SANS = '"Source Sans 3", "Helvetica Neue", Arial, sans-serif';
@@ -72,8 +72,11 @@
         ['photoCaption', 'the caption under the picture at the top — describe what the photo shows, one sentence, nothing from the text'],
         ['captionCredit', 'the small credit beside the caption, e.g. a photographer or agency name'],
         ['footerLinks', 'an array of 3–5 very short link labels in the footer'],
+        ['photoSubject', 'what the picture at the top shows — one key from the list of picture subjects'],
+        ['sidebarSubjects', 'an array with one picture subject per headline in the box beside the text'],
+        ['modules', 'everything else that stands on this page — see "The rest of the page"'],
       ],
-      required: ['url', 'siteName', 'navItems', 'actions'],
+      required: ['url', 'siteName', 'navItems', 'actions', 'photoSubject'],
     },
     mail: {
       fields: [
@@ -85,6 +88,9 @@
         ['labelChips', 'an array of 1–3 very short labels this mail is filed under'],
         ['attachmentName', 'the file name of the attachment if the mail mentions one, otherwise an empty string'],
         ['attachmentMeta', 'the small line under it, e.g. "PDF · 240 KB"'],
+        ['attachmentSubject', 'if the attachment is a picture, what it shows — one key from the picture subjects, otherwise empty'],
+        ['signatureLines', 'an array of 2–3 short lines of the sender signature, e.g. a role and a phone number'],
+        ['modules', 'everything else that stands in this message — see "The rest of the page"'],
       ],
       required: ['appName', 'mailboxItems', 'actions'],
     },
@@ -100,6 +106,8 @@
         ['boardStats', 'an array of 2–3 very short figures for that box, e.g. "14.2k members"'],
         ['voteCounts', 'an array with one vote number per paragraph, e.g. "128"'],
         ['userBadges', 'an array with one very short badge per paragraph, e.g. "OP" — an empty string where there is none'],
+        ['photoSubject', 'the picture subject of the image the first post shares, empty if it shares none'],
+        ['modules', 'everything else that stands on this page — see "The rest of the page"'],
       ],
       required: ['url', 'siteName', 'postMeta'],
     },
@@ -113,8 +121,13 @@
         ['captionCredit', 'the small credit under the caption, e.g. a photographer or agency name'],
         ['pageLabel', 'what stands in the page footer, e.g. "Page 7" or the date'],
         ['footerNote', 'one short line at the very bottom, e.g. a website or a continuation note'],
+        ['photoSubject', 'what the picture on the page shows — one key from the list of picture subjects'],
+        ['weatherNote', 'the weather line the paper prints in its running head, e.g. "Cloudy, 14°C"'],
+        ['indexItems', 'an array of 2–4 pointers to other pages in the running head, e.g. "Sport 12"'],
+        ['portraitName', 'the name under the small portrait beside the article, empty if the text has no author'],
+        ['modules', 'everything else that stands on this page — see "The rest of the page"'],
       ],
-      required: ['publication', 'publicationLine', 'photoCaption'],
+      required: ['publication', 'publicationLine', 'photoCaption', 'photoSubject'],
     },
     chat: {
       fields: [
@@ -125,6 +138,9 @@
         ['bubbleTimes', 'an array with one short time per message, e.g. "14:28"'],
         ['statusLine', 'the small line under the contact name, e.g. "online"'],
         ['dateLabel', 'the grey date pill above the first message, e.g. "Today" or "Friday"'],
+        ['photoSubject', 'the picture subject of a photo one of them sends in the chat, empty if nobody sends one'],
+        ['photoAfter', 'after which message the photo is sent, as a number (1 = after the first message)'],
+        ['modules', 'a link somebody shares in the chat — see "The rest of the page"'],
       ],
       required: ['appName', 'contactName', 'bubbleTimes'],
     },
@@ -146,7 +162,7 @@
   function chromeSpec(material) {
     const d = layoutFor(material);
     const key = d.kind === 'print' ? 'print' : d.kind;
-    return Object.assign({ kind: key, label: d.label, medium: d.medium }, CHROME_SPECS[key]);
+    return Object.assign({ kind: key, label: d.label, medium: d.medium, subjects: photo.subjectHints(), modules: moduleHints(key), shapes: SHAPE_KEYS, slots: MEDIUM_SLOTS[key] || ['below'] }, CHROME_SPECS[key]);
   }
 
   /**
@@ -177,6 +193,629 @@
       deviceTime: '', contactName: meta.byline || '', bubbleTimes: list(material.content.paragraphs).map(() => ''), statusLine: '',
       publication: site, publicationLine: [meta.dateline, meta.location].filter(Boolean).join(' · '),
       sectionLabel: meta.section || '', photoCaption: '', captionCredit: '', pageLabel: meta.dateline || '',
+      // A picture always exists, even without Claude: the subject is read out
+      // of the text itself. A subject is not a text — nothing is invented here.
+      photoSubject: photo.subjectFor(title + ' ' + list(material.content && material.content.paragraphs).join(' ').slice(0, 1200), 'city'),
+      sidebarSubjects: [], weatherNote: '', indexItems: [], portraitName: meta.byline || '',
+      attachmentSubject: '', signatureLines: [], photoAfter: '', modules: [],
+    };
+  }
+
+  /* ------------------------------------------------------------------ */
+  /* The other things on the page (concept §37)                           */
+  /* ------------------------------------------------------------------ */
+
+  /*
+   * A real page is never one text alone. Around it stands whatever that
+   * medium lives on: advertisements, a poll, the most-read list, a sign-up
+   * box, the small ads, the weather, a promoted post, a cookie banner. Which
+   * of them a page shows is not something this file can know — it depends on
+   * the medium and on the publication. So the app keeps a catalogue of the
+   * things that CAN stand there, and Claude picks the ones that really would.
+   *
+   * Every module takes the same shape of data, so a new one costs one entry:
+   *   { type, slot, label, heading, lines: [], items: [], cta, meta, subject }
+   * and draws itself into a column of width `w`, returning its height.
+   *
+   * `slots` are the places a medium offers:
+   *   top     — above the article (banner, breaking bar, consent)
+   *   inline  — between the paragraphs of the text
+   *   rail    — the column beside the text
+   *   column  — the foot of the last column of a printed page
+   *   below   — under the article, before the footer
+   */
+  const MODULES = {
+    ad_banner: {
+      hint: 'a wide banner advertisement — brand, a line of copy, a button',
+      slots: ['top', 'inline', 'below'], media: ['page', 'thread', 'mail'],
+      draw(b, x, y, w, mod, S) {
+        const h = Math.max(96, Math.min(140, w * 0.14));
+        b.rect(x, y, w, h, { fill: '#EEF1F5', radius: 6, stroke: LINE });
+        b.text(x + 10, y + 16, 'ADVERTISEMENT', S.ui(8.5, 700), { color: '#94A3B8', letterSpacing: 1.2 });
+        b.rect(x + 18, y + 26, h - 44, h - 44, { fill: S.accent, radius: 8 });
+        b.text(x + 18 + (h - 44) / 2, y + 26 + (h - 44) / 2 + 7, initial(mod.label || mod.heading), S.title(20, 800), { color: '#FFFFFF', align: 'center' });
+        b.text(x + h - 8, y + 48, clipText(mod.heading || '', 52), S.title(17, 700), { color: INK });
+        b.text(x + h - 8, y + 70, clipText(mod.lines[0] || '', 66), S.ui(12.5), { color: '#475569' });
+        if (mod.cta) {
+          const f = S.ui(12, 700);
+          const cw = approxMeasure(mod.cta, f) + 34;
+          b.rect(x + w - cw - 20, y + h / 2 - 17, cw, 34, { fill: S.accent, radius: 17 });
+          b.text(x + w - cw / 2 - 20, y + h / 2 + 5, mod.cta, f, { color: '#FFFFFF', align: 'center' });
+        }
+        return h;
+      },
+    },
+    ad_box: {
+      hint: 'a square advertisement with a picture — the box in a column or between two sections',
+      slots: ['rail', 'inline', 'below'], media: ['page', 'thread'],
+      draw(b, x, y, w, mod, S) {
+        const picH = Math.round(w * 0.62);
+        const h = picH + 96;
+        b.rect(x, y, w, h, { fill: '#F8FAFC', radius: 8, stroke: LINE });
+        b.text(x + 12, y + 18, 'ADVERTISEMENT', S.ui(8.5, 700), { color: '#94A3B8', letterSpacing: 1.2 });
+        b.photo(x + 10, y + 26, w - 20, picH, { seed: photo.hashOf(mod.heading || 'ad'), subject: mod.subject, colour: true, frame: false });
+        b.text(x + 12, y + picH + 50, clipText(mod.heading || '', 34), S.title(14, 700), { color: INK });
+        b.text(x + 12, y + picH + 68, clipText(mod.lines[0] || mod.label || '', 40), S.ui(11.5), { color: MUTED });
+        if (mod.cta) {
+          const f = S.ui(11, 700);
+          const cw = approxMeasure(mod.cta, f) + 26;
+          b.rect(x + 12, y + picH + 78, cw, 26, { fill: S.accent, radius: 13 });
+          b.text(x + 12 + cw / 2, y + picH + 95, mod.cta, f, { color: '#FFFFFF', align: 'center' });
+        }
+        return h + 12;
+      },
+    },
+    ad_skyscraper: {
+      hint: 'the tall advertisement a site keeps in the column beside the text',
+      slots: ['rail'], media: ['page', 'thread'],
+      draw(b, x, y, w, mod, S) {
+        const h = Math.max(420, Math.min(620, w * 2.2));
+        b.rect(x, y, w, h, { fill: '#F8FAFC', radius: 8, stroke: LINE });
+        b.photo(x + 10, y + 24, w - 20, h * 0.5, { seed: photo.hashOf(mod.heading || 'sky'), subject: mod.subject, colour: true, frame: false });
+        b.text(x + 12, y + 16, 'ADVERTISEMENT', S.ui(8.5, 700), { color: '#94A3B8', letterSpacing: 1.2 });
+        const end = b.para(x + 12, y + h * 0.5 + 48, clipText(mod.heading || '', 52), S.title(15, 700), w - 24, { color: INK, lineHeight: 20 });
+        b.para(x + 12, end + 8, clipText(mod.lines[0] || '', 70), S.ui(11.5), w - 24, { color: MUTED, lineHeight: 16 });
+        if (mod.cta) {
+          const f = S.ui(11.5, 700);
+          const cw = approxMeasure(mod.cta, f) + 30;
+          b.rect(x + 12, y + h - 52, cw, 30, { fill: S.accent, radius: 15 });
+          b.text(x + 12 + cw / 2, y + h - 32, mod.cta, f, { color: '#FFFFFF', align: 'center' });
+        }
+        b.text(x + w / 2, y + h - 10, clipText(mod.label || '', 30), S.ui(9), { color: '#94A3B8', align: 'center' });
+        return h + 12;
+      },
+    },
+    sponsored: {
+      hint: 'a promoted post that looks like an article but is paid for — "Sponsored by …"',
+      slots: ['inline', 'below', 'rail'], media: ['page', 'thread'],
+      draw(b, x, y, w, mod, S) {
+        const picW = Math.min(180, w * 0.34), h = Math.max(120, picW * 0.72);
+        b.rect(x, y, w, h, { fill: '#FFFDF5', radius: 8, stroke: '#EADFC0' });
+        b.photo(x + 1, y + 1, picW, h - 2, { seed: photo.hashOf(mod.heading || 'sp'), subject: mod.subject, colour: true, frame: false });
+        const tx = x + picW + 18, tw = w - picW - 36;
+        b.text(tx, y + 24, upper('Sponsored' + (mod.label ? ' · ' + mod.label : '')), S.ui(9.5, 800), { color: '#A16207', letterSpacing: 1 });
+        const end = b.para(tx, y + 48, clipText(mod.heading || '', 90), S.title(16, 700), tw, { color: INK, lineHeight: 21 });
+        b.para(tx, end + 6, clipText(mod.lines[0] || '', 110), S.ui(12), tw, { color: '#57534E', lineHeight: 17 });
+        return h + 12;
+      },
+    },
+    teaser: {
+      hint: 'another article of the same publication — a different story, with its own headline, picture and author',
+      slots: ['below', 'rail', 'column'], media: ['page', 'print', 'thread'],
+      draw(b, x, y, w, mod, S) {
+        if (S.print) {
+          // a paper sets its second story in its own type, between rules
+          b.line(x, y + 6, x + w, y + 6, { color: '#78716C', width: 2 });
+          let iy = y + 18;
+          if (mod.label) { b.text(x, iy + 12, upper(mod.label), { family: SANS, size: 9.5, weight: 700 }, { color: S.accent, letterSpacing: 1.2 }); iy += 18; }
+          iy = b.para(x, iy + 22, clipText(mod.heading || '', 90), { family: SERIF, size: 21, weight: 700 }, w, { color: INK, lineHeight: 25 }) + 4;
+          if (mod.subject) {
+            const ph = Math.round(w * 0.42);
+            b.photo(x, iy + 8, w, ph, { seed: photo.hashOf(mod.heading || 't'), subject: mod.subject, colour: true, print: true });
+            iy += ph + 16;
+          }
+          if (mod.lines[0]) iy = b.para(x, iy + 16, clipText(mod.lines[0], 160), { family: SERIF, size: 12.5 }, w, { color: '#44403C', lineHeight: 17 });
+          if (mod.meta) { b.text(x, iy + 18, upper(mod.meta), { family: SANS, size: 9, weight: 700 }, { color: '#78716C', letterSpacing: 1 }); iy += 16; }
+          return iy - y + 14;
+        }
+        const picW = Math.min(180, w * 0.36), h = Math.max(128, picW * 0.78);
+        b.rect(x, y, w, h, { fill: '#FFFFFF', radius: 10, stroke: LINE });
+        b.photo(x + 1, y + 1, picW, h - 2, { seed: photo.hashOf(mod.heading || 't'), subject: mod.subject, colour: true, frame: false });
+        const tx = x + picW + 18, tw = w - picW - 36;
+        if (mod.label) b.text(tx, y + 24, upper(mod.label), S.ui(10, 800), { color: S.accent, letterSpacing: 1 });
+        const end = b.para(tx, y + 48, clipText(mod.heading || '', 90), S.title(18, 700), tw, { color: INK, lineHeight: 23 });
+        if (mod.lines[0]) b.para(tx, end + 6, clipText(mod.lines[0], 120), S.ui(12.5), tw, { color: '#475569', lineHeight: 18 });
+        b.text(tx, y + h - 16, [mod.meta, mod.cta].filter(Boolean).join('  ·  '), S.ui(11), { color: MUTED });
+        return h + 14;
+      },
+    },
+    list: {
+      hint: 'a list of other headlines — "Most read", "More from this site", "Related threads"',
+      slots: ['rail', 'below'], media: ['page', 'print', 'thread', 'mail'],
+      draw(b, x, y, w, mod, S) {
+        const items = mod.items.slice(0, 5);
+        b.rect(x, y, w, 4, { fill: S.accent });
+        b.text(x, y + 30, upper(mod.heading || mod.label || ''), S.ui(11.5, 800), { color: INK, letterSpacing: 1 });
+        let iy = y + 48;
+        items.forEach((it, i) => {
+          b.text(x, iy + 14, String(i + 1), S.title(15, 800), { color: S.accent });
+          const end = b.para(x + 26, iy + 12, clipText(String(it), 70), S.ui(12.5, 600), w - 30, { color: INK, lineHeight: 17 });
+          iy = end + 14;
+          if (i < items.length - 1) { b.line(x, iy - 4, x + w, iy - 4, { color: LINE }); iy += 8; }
+        });
+        if (mod.meta) { b.text(x, iy + 14, mod.meta, S.ui(11), { color: MUTED }); iy += 20; }
+        return iy - y + 14;
+      },
+    },
+    poll: {
+      hint: 'a reader poll — a question, two to four answers with bars, a number of votes',
+      slots: ['rail', 'inline', 'below'], media: ['page', 'thread'],
+      draw(b, x, y, w, mod, S) {
+        const mark = b.blocks.length;
+        const items = mod.items.slice(0, 4);
+        b.text(x + 16, y + 26, upper(mod.label || 'Reader poll'), S.ui(10, 800), { color: S.accent, letterSpacing: 1 });
+        let iy = b.para(x + 16, y + 48, mod.heading || '', S.title(15, 700), w - 32, { color: INK, lineHeight: 20 }) + 8;
+        const shares = items.map((_, i) => 0.62 - i * 0.16);
+        items.forEach((it, i) => {
+          b.rect(x + 16, iy, w - 32, 26, { fill: '#EEF2F6', radius: 13 });
+          b.rect(x + 16, iy, Math.max(30, (w - 32) * Math.min(0.78, Math.max(0.08, shares[i]))), 26, { fill: i === 0 ? S.accent : '#CBD5E1', radius: 13 });
+          b.text(x + 28, iy + 18, clipText(String(it), 34), S.ui(12, 600), { color: i === 0 ? '#FFFFFF' : '#334155' });
+          b.text(x + w - 26, iy + 18, Math.round(Math.max(8, shares[i] * 100)) + '%', S.ui(11, 700), { color: '#475569', align: 'right' });
+          iy += 34;
+        });
+        b.text(x + 16, iy + 14, mod.meta || '', S.ui(11), { color: MUTED });
+        const h = iy + 26 - y;
+        b.blocks.splice(mark, 0, { type: 'rect', x, y, w, h, fill: '#FFFFFF', radius: 10, stroke: LINE });
+        return h + 12;
+      },
+    },
+    newsletter: {
+      hint: 'a sign-up box for the newsletter of this publication',
+      slots: ['rail', 'inline', 'below'], media: ['page', 'thread', 'mail'],
+      draw(b, x, y, w, mod, S) {
+        const mark = b.blocks.length;
+        b.rect(x + 18, y + 20, 24, 24, { fill: S.accent, radius: 6 });
+        let iy = b.para(x + 18, y + 64, mod.heading || '', S.title(15, 700), w - 36, { color: INK, lineHeight: 20 });
+        if (mod.lines[0]) iy = b.para(x + 18, iy + 8, clipText(mod.lines[0], 70), S.ui(11.5), w - 36, { color: MUTED, lineHeight: 16 });
+        b.rect(x + 18, iy + 12, w - 36, 30, { fill: '#FFFFFF', radius: 6, stroke: LINE });
+        b.text(x + 28, iy + 32, clipText(mod.meta || 'your@email', 26), S.ui(11.5), { color: '#94A3B8' });
+        const f = S.ui(11.5, 700);
+        const cw = approxMeasure(mod.cta || 'Sign up', f) + 26;
+        b.rect(x + w - cw - 24, iy + 16, cw, 22, { fill: S.accent, radius: 11 });
+        b.text(x + w - cw / 2 - 24, iy + 32, mod.cta || 'Sign up', f, { color: '#FFFFFF', align: 'center' });
+        const h = iy + 56 - y;
+        b.blocks.splice(mark, 0, { type: 'rect', x, y, w, h, fill: SOFT, radius: 10, stroke: LINE });
+        return h + 12;
+      },
+    },
+    comments: {
+      hint: 'what readers wrote under the article — two or three short reactions with names',
+      slots: ['below'], media: ['page', 'thread'],
+      draw(b, x, y, w, mod, S) {
+        b.text(x, y + 14, mod.heading || 'Comments', S.title(15, 800), { color: INK });
+        b.rect(x + w - 128, y - 6, 128, 30, { fill: SOFT, radius: 15, stroke: LINE });
+        b.text(x + w - 64, y + 14, mod.cta || 'Add a comment', S.ui(11.5, 600), { color: '#475569', align: 'center' });
+        let iy = y + 40;
+        mod.items.slice(0, 3).forEach((it, i) => {
+          const parts = String(it).split('|');
+          const who = (parts.length > 1 ? parts[0] : 'reader_' + (i + 1)).trim();
+          const said = (parts.length > 1 ? parts.slice(1).join('|') : parts[0]).trim();
+          avatar(b, x + 16, iy + 12, 16, upper(who.slice(0, 2)), S.accent, who);
+          b.text(x + 44, iy + 10, who, S.ui(12.5, 700), { color: INK });
+          b.text(x + 44 + approxMeasure(who, S.ui(12.5, 700)) + 12, iy + 10, String(2 + i * 3) + 'h', S.ui(11), { color: MUTED });
+          const end = b.para(x + 44, iy + 30, said, S.ui(13), w - 70, { color: '#334155', lineHeight: 19 });
+          b.icon('heart', x + 44, end + 4, 15, { color: MUTED, weight: 1.6 });
+          b.text(x + 66, end + 16, String(3 + i * 7), S.ui(11), { color: MUTED });
+          b.text(x + 96, end + 16, 'Reply', S.ui(11, 600), { color: MUTED });
+          iy = end + 42;
+        });
+        return iy - y + 10;
+      },
+    },
+    fact_box: {
+      hint: 'a box with the facts at a glance — three or four short points',
+      slots: ['rail', 'inline', 'column', 'below'], media: ['page', 'print', 'mail'],
+      draw(b, x, y, w, mod, S) {
+        const mark = b.blocks.length;
+        b.text(x + 18, y + 30, upper(mod.heading || mod.label || 'At a glance'), S.ui(11, 800), { color: INK, letterSpacing: 1 });
+        let iy = y + 46;
+        mod.items.slice(0, 5).forEach((it) => {
+          b.circle(x + 24, iy + 8, 3, { fill: S.accent });
+          iy = b.para(x + 36, iy + 12, clipText(String(it), 90), S.ui(12), w - 54, { color: '#334155', lineHeight: 17 }) + 8;
+        });
+        const h = iy - y + 8;
+        b.blocks.splice(mark, 0,
+          { type: 'rect', x, y, w, h, fill: '#F4F6F8', radius: 8, stroke: LINE },
+          { type: 'rect', x, y, w: 4, h, fill: S.accent, radius: 2 });
+        return h + 12;
+      },
+    },
+    results: {
+      hint: 'a small table of results or figures — scores, prices, a league table',
+      slots: ['rail', 'column', 'below'], media: ['page', 'print'],
+      draw(b, x, y, w, mod, S) {
+        const rows = mod.items.slice(0, 5);
+        const h = 46 + rows.length * 24 + 12;
+        b.rect(x, y, w, h, { fill: '#FFFFFF', radius: 6, stroke: LINE });
+        b.rect(x, y, w, 26, { fill: S.accent, radius: 6 });
+        b.text(x + 12, y + 18, upper(mod.heading || mod.label || ''), S.ui(10.5, 800), { color: '#FFFFFF', letterSpacing: 1 });
+        rows.forEach((row, i) => {
+          const parts = String(row).split('|');
+          const left = (parts[0] || '').trim(), right = (parts[1] || '').trim();
+          b.text(x + 12, y + 46 + i * 24, clipText(left, 28), S.ui(12), { color: INK });
+          b.text(x + w - 12, y + 46 + i * 24, right, S.ui(12, 700), { color: INK, align: 'right' });
+          if (i < rows.length - 1) b.line(x + 10, y + 52 + i * 24, x + w - 10, y + 52 + i * 24, { color: LINE });
+        });
+        return h + 12;
+      },
+    },
+    weather: {
+      hint: 'the weather — today and the next days, with temperatures',
+      slots: ['rail', 'top', 'column', 'head'], media: ['page', 'print'],
+      draw(b, x, y, w, mod, S) {
+        const days = mod.items.slice(0, 4);
+        const h = 104;
+        b.rect(x, y, w, h, { fill: '#EAF1F7', radius: 8, stroke: '#CBDCE8' });
+        b.text(x + 14, y + 24, upper(mod.heading || 'Weather'), S.ui(10.5, 800), { color: '#3B6E96', letterSpacing: 1 });
+        b.text(x + 14, y + 56, clipText(mod.meta || '', 18), S.title(22, 800), { color: '#1E4E79' });
+        const cw = (w - 28) / Math.max(1, days.length);
+        days.forEach((dd, i) => {
+          const parts = String(dd).split('|');
+          b.text(x + 14 + i * cw + cw / 2, y + 78, clipText((parts[0] || '').trim(), 8), S.ui(10.5, 700), { color: '#3B6E96', align: 'center' });
+          b.circle(x + 14 + i * cw + cw / 2, y + 90, 5, { fill: i === 0 ? '#F5B942' : '#B9CBD8' });
+          b.text(x + 14 + i * cw + cw / 2, y + 100, clipText((parts[1] || '').trim(), 8), S.ui(10), { color: MUTED, align: 'center' });
+        });
+        return h + 12;
+      },
+    },
+    classifieds: {
+      hint: 'the small ads a paper prints — short lines, one after another',
+      slots: ['column', 'below'], media: ['print'],
+      draw(b, x, y, w, mod, S) {
+        let iy = y + 34;
+        b.text(x, y + 16, upper(mod.heading || 'Classified'), S.ui(10, 800), { color: INK, letterSpacing: 1.4 });
+        b.line(x, y + 22, x + w, y + 22, { color: '#78716C', width: 1 });
+        mod.items.slice(0, 6).forEach((it) => {
+          const end = b.para(x, iy + 12, clipText(String(it), 80), { family: SERIF, size: 10.5 }, w, { color: '#44403C', lineHeight: 14 });
+          iy = end + 8;
+          b.line(x, iy - 2, x + w, iy - 2, { color: '#D6D3D1' });
+        });
+        return iy - y + 8;
+      },
+    },
+    letters: {
+      hint: 'letters to the editor — a short opinion with a name and a place',
+      slots: ['column', 'below'], media: ['print'],
+      draw(b, x, y, w, mod, S) {
+        b.text(x, y + 16, upper(mod.heading || 'Letters'), { family: SERIF, size: 12, weight: 700 }, { color: INK, letterSpacing: 1.2 });
+        b.line(x, y + 24, x + w, y + 24, { color: '#78716C', width: 2 });
+        let iy = y + 34;
+        mod.items.slice(0, 3).forEach((it) => {
+          const parts = String(it).split('|');
+          const end = b.para(x, iy + 14, clipText((parts[0] || '').trim(), 160), { family: SERIF, size: 11 }, w, { color: '#44403C', lineHeight: 15 });
+          b.text(x, end + 16, clipText((parts[1] || '').trim(), 40), { family: SANS, size: 9.5, weight: 700 }, { color: '#78716C', letterSpacing: 0.6 });
+          iy = end + 28;
+        });
+        return iy - y + 8;
+      },
+    },
+    listings: {
+      hint: 'a programme or a list of events with times',
+      slots: ['rail', 'column', 'below'], media: ['page', 'print'],
+      draw(b, x, y, w, mod, S) {
+        b.text(x, y + 18, upper(mod.heading || 'Today'), S.ui(10.5, 800), { color: INK, letterSpacing: 1 });
+        let iy = y + 30;
+        mod.items.slice(0, 5).forEach((it) => {
+          const parts = String(it).split('|');
+          b.text(x, iy + 16, clipText((parts[0] || '').trim(), 8), S.ui(11, 700), { color: S.accent });
+          const end = b.para(x + 44, iy + 16, clipText((parts[1] || '').trim(), 60), S.ui(11.5), w - 48, { color: '#334155', lineHeight: 15 });
+          iy = Math.max(iy + 26, end + 8);
+          b.line(x, iy - 4, x + w, iy - 4, { color: LINE });
+        });
+        return iy - y + 10;
+      },
+    },
+    paywall: {
+      hint: 'the strip that says the rest costs money — subscribe to read on',
+      slots: ['inline', 'below'], media: ['page'],
+      draw(b, x, y, w, mod, S) {
+        const h = 116;
+        b.rect(x, y, w, h, { fill: '#FFF7ED', radius: 10, stroke: '#FED7AA' });
+        b.text(x + 20, y + 34, clipText(mod.heading || '', 60), S.title(17, 700), { color: '#7C2D12' });
+        b.text(x + 20, y + 58, clipText(mod.lines[0] || '', 90), S.ui(12.5), { color: '#9A3412' });
+        const f = S.ui(12, 700);
+        const cw = approxMeasure(mod.cta || 'Subscribe', f) + 36;
+        b.rect(x + 20, y + 74, cw, 30, { fill: '#C2410C', radius: 15 });
+        b.text(x + 20 + cw / 2, y + 94, mod.cta || 'Subscribe', f, { color: '#FFFFFF', align: 'center' });
+        b.text(x + cw + 36, y + 94, mod.meta || '', S.ui(11.5), { color: '#9A3412' });
+        return h + 12;
+      },
+    },
+    app_promo: {
+      hint: 'the bar that asks the reader to install the app',
+      slots: ['top', 'below'], media: ['page', 'thread'],
+      draw(b, x, y, w, mod, S) {
+        const h = 62;
+        b.rect(x, y, w, h, { fill: '#0F172A', radius: 8 });
+        b.rect(x + 14, y + 13, 36, 36, { fill: S.accent, radius: 9 });
+        b.text(x + 32, y + 38, initial(mod.label || mod.heading), S.title(17, 800), { color: '#FFFFFF', align: 'center' });
+        b.text(x + 62, y + 28, clipText(mod.heading || '', 46), S.ui(13, 700), { color: '#FFFFFF' });
+        b.text(x + 62, y + 46, clipText(mod.lines[0] || '', 54), S.ui(11), { color: '#94A3B8' });
+        const f = S.ui(11.5, 700);
+        const cw = approxMeasure(mod.cta || 'Open', f) + 28;
+        b.rect(x + w - cw - 16, y + 16, cw, 30, { fill: '#FFFFFF', radius: 15 });
+        b.text(x + w - cw / 2 - 16, y + 36, mod.cta || 'Open', f, { color: '#0F172A', align: 'center' });
+        return h + 12;
+      },
+    },
+    cookie: {
+      hint: 'the consent banner about cookies, with accept and settings',
+      slots: ['top', 'below'], media: ['page', 'thread'],
+      draw(b, x, y, w, mod, S) {
+        const h = 74;
+        b.rect(x, y, w, h, { fill: '#F1F5F9', radius: 8, stroke: '#CBD5E1' });
+        const end = b.para(x + 18, y + 28, clipText(mod.heading || mod.lines[0] || '', 150), S.ui(11.5), w - 260, { color: '#334155', lineHeight: 16 });
+        const f = S.ui(11.5, 700);
+        const cw = approxMeasure(mod.cta || 'Accept all', f) + 30;
+        b.rect(x + w - cw - 18, y + h / 2 - 15, cw, 30, { fill: S.accent, radius: 6 });
+        b.text(x + w - cw / 2 - 18, y + h / 2 + 5, mod.cta || 'Accept all', f, { color: '#FFFFFF', align: 'center' });
+        b.rect(x + w - cw - 132, y + h / 2 - 15, 104, 30, { fill: '#FFFFFF', radius: 6, stroke: '#CBD5E1' });
+        b.text(x + w - cw - 80, y + h / 2 + 5, clipText(mod.meta || 'Settings', 12), f, { color: '#475569', align: 'center' });
+        return Math.max(h, end - y + 20) + 12;
+      },
+    },
+    breaking: {
+      hint: 'the red strip with the latest line — breaking news, live',
+      slots: ['top'], media: ['page'],
+      draw(b, x, y, w, mod, S) {
+        const h = 40;
+        b.rect(x, y, w, h, { fill: '#B91C1C', radius: 4 });
+        const f = S.ui(11, 800);
+        const lw = approxMeasure(upper(mod.label || 'Live'), f) + 22;
+        b.rect(x + 10, y + 9, lw, 22, { fill: '#FFFFFF', radius: 3 });
+        b.text(x + 10 + lw / 2, y + 24, upper(mod.label || 'Live'), f, { color: '#B91C1C', align: 'center' });
+        b.text(x + lw + 26, y + 25, clipText(mod.heading || '', 96), S.ui(12.5, 600), { color: '#FFFFFF' });
+        b.text(x + w - 14, y + 25, mod.meta || '', S.ui(11), { color: '#FECACA', align: 'right' });
+        return h + 12;
+      },
+    },
+    link_preview: {
+      hint: 'a link somebody shared, shown as a card with a picture and the address',
+      slots: ['inline', 'below'], media: ['chat', 'mail', 'thread'],
+      draw(b, x, y, w, mod, S) {
+        const picH = Math.round(w * 0.42);
+        const h = picH + 74;
+        b.rect(x, y, w, h, { fill: '#FFFFFF', radius: 8, stroke: LINE });
+        b.photo(x + 1, y + 1, w - 2, picH, { seed: photo.hashOf(mod.heading || 'link'), subject: mod.subject, colour: true, frame: false });
+        b.text(x + 12, y + picH + 24, clipText(mod.heading || '', 40), S.ui(12.5, 700), { color: INK });
+        b.text(x + 12, y + picH + 42, clipText(mod.lines[0] || '', 46), S.ui(11), { color: MUTED });
+        b.text(x + 12, y + picH + 60, clipText(upper(mod.meta || ''), 34), S.ui(9.5, 700), { color: '#94A3B8', letterSpacing: 0.8 });
+        return h + 12;
+      },
+    },
+    profile: {
+      hint: 'the box about the author — portrait, name, one line about them',
+      slots: ['rail', 'below'], media: ['page', 'print', 'thread'],
+      draw(b, x, y, w, mod, S) {
+        const h = 104;
+        b.rect(x, y, w, h, { fill: SOFT, radius: 10, stroke: LINE });
+        avatar(b, x + 48, y + 52, 28, upper(String(mod.heading || '').slice(0, 2)), S.accent, mod.heading);
+        b.text(x + 88, y + 44, clipText(mod.heading || '', 28), S.ui(14, 700), { color: INK });
+        b.para(x + 88, y + 64, clipText(mod.lines[0] || '', 90), S.ui(11.5), w - 104, { color: MUTED, lineHeight: 16 });
+        if (mod.cta) {
+          const f = S.ui(11, 700);
+          const cw = approxMeasure(mod.cta, f) + 24;
+          b.rect(x + w - cw - 16, y + 16, cw, 24, { fill: S.accent, radius: 12 });
+          b.text(x + w - cw / 2 - 16, y + 32, mod.cta, f, { color: '#FFFFFF', align: 'center' });
+        }
+        return h + 12;
+      },
+    },
+    tags: {
+      hint: 'the tags or topics this text is filed under',
+      slots: ['rail', 'below'], media: ['page', 'thread'],
+      draw(b, x, y, w, mod, S) {
+        b.text(x, y + 16, upper(mod.heading || 'Topics'), S.ui(10.5, 800), { color: MUTED, letterSpacing: 1 });
+        let tx = x, ty = y + 40;
+        mod.items.slice(0, 8).forEach((t) => {
+          const f = S.ui(12);
+          const tw = approxMeasure('#' + t, f) + 24;
+          if (tx + tw > x + w) { tx = x; ty += 34; }
+          b.pill(tx, ty, tw, 26, '#' + t, f, { fill: '#F1F5F9', color: S.accent, stroke: LINE });
+          tx += tw + 8;
+        });
+        return ty + 26 - y + 14;
+      },
+    },
+    quote_box: {
+      hint: 'a sentence from the piece, set large in a box — the pull quote',
+      slots: ['column', 'inline', 'rail'], media: ['print', 'page'],
+      draw(b, x, y, w, mod, S) {
+        const qf = { family: SERIF, size: 17, style: 'italic' };
+        b.line(x, y + 6, x + w, y + 6, { color: S.accent, width: 3 });
+        const end = b.para(x + 16, y + 48, clipText(mod.heading || mod.lines[0] || '', 160), qf, w - 32, { color: S.accent, lineHeight: 24 });
+        b.text(x + 16, end + 18, upper(mod.meta || mod.label || ''), { family: SANS, size: 9, weight: 700 }, { color: '#B45309', letterSpacing: 1.2 });
+        b.line(x, end + 30, x + w, end + 30, { color: '#C7C2B5' });
+        return end + 40 - y;
+      },
+    },
+    event: {
+      hint: 'an event with a date — a concert, a match, a meeting',
+      slots: ['rail', 'column', 'below'], media: ['page', 'print'],
+      draw(b, x, y, w, mod, S) {
+        const h = 96;
+        b.rect(x, y, w, h, { fill: '#FFFFFF', radius: 8, stroke: LINE });
+        b.rect(x + 14, y + 16, 62, 64, { fill: S.accent, radius: 6 });
+        const parts = String(mod.meta || '').split('|');
+        b.text(x + 45, y + 44, clipText((parts[0] || '').trim(), 3), S.title(22, 800), { color: '#FFFFFF', align: 'center' });
+        b.text(x + 45, y + 66, upper(clipText((parts[1] || '').trim(), 4)), S.ui(11, 700), { color: '#FFFFFF', align: 'center' });
+        const end = b.para(x + 90, y + 40, clipText(mod.heading || '', 60), S.title(15, 700), w - 110, { color: INK, lineHeight: 20 });
+        b.text(x + 90, end + 16, clipText(mod.lines[0] || '', 52), S.ui(11.5), { color: MUTED });
+        return h + 12;
+      },
+    },
+  };
+
+  /*
+   * The catalogue above is a starting point, not a fence. A page can show
+   * something nobody thought of here — a horoscope, a live table, a box of
+   * small ads, a picture gallery, a warning strip. So a module whose type the
+   * app does not know is not thrown away: it is drawn in the shape that fits
+   * what it carries. Claude may name the shape; otherwise it is read off the
+   * fields (two-part items become a table, a picture and a headline become a
+   * card, a lonely sentence becomes a note).
+   */
+  const SHAPES = {
+    card(b, x, y, w, mod, S) {
+      const picW = Math.min(180, w * 0.36), h = Math.max(120, picW * 0.78);
+      b.rect(x, y, w, h, { fill: '#FFFFFF', radius: 10, stroke: LINE });
+      if (mod.subject) b.photo(x + 1, y + 1, picW, h - 2, { seed: photo.hashOf(mod.heading || 'c'), subject: mod.subject, colour: true, frame: false });
+      const tx = x + (mod.subject ? picW + 18 : 18), tw = w - (mod.subject ? picW : 0) - 36;
+      if (mod.label) b.text(tx, y + 24, upper(mod.label), S.ui(10, 800), { color: S.accent, letterSpacing: 1 });
+      const end = b.para(tx, y + 48, clipText(mod.heading || '', 90), S.title(17, 700), tw, { color: INK, lineHeight: 22 });
+      if (mod.lines[0]) b.para(tx, end + 6, clipText(mod.lines[0], 120), S.ui(12.5), tw, { color: '#475569', lineHeight: 18 });
+      if (mod.meta) b.text(tx, y + h - 16, mod.meta, S.ui(11), { color: MUTED });
+      return h + 14;
+    },
+    list(b, x, y, w, mod, S) { return MODULES.list.draw(b, x, y, w, mod, S); },
+    table(b, x, y, w, mod, S) { return MODULES.results.draw(b, x, y, w, mod, S); },
+    box(b, x, y, w, mod, S) { return MODULES.fact_box.draw(b, x, y, w, mod, S); },
+    banner(b, x, y, w, mod, S) { return MODULES.ad_banner.draw(b, x, y, w, mod, S); },
+    quote(b, x, y, w, mod, S) { return MODULES.quote_box.draw(b, x, y, w, mod, S); },
+    strip(b, x, y, w, mod, S) {
+      const h = 44;
+      b.rect(x, y, w, h, { fill: SOFT, radius: 6, stroke: LINE });
+      if (mod.label) {
+        const f = S.ui(10, 800);
+        const lw = approxMeasure(upper(mod.label), f) + 20;
+        b.rect(x + 10, y + 11, lw, 22, { fill: S.accent, radius: 3 });
+        b.text(x + 10 + lw / 2, y + 26, upper(mod.label), f, { color: '#FFFFFF', align: 'center' });
+      }
+      b.text(x + (mod.label ? approxMeasure(upper(mod.label), S.ui(10, 800)) + 42 : 16), y + 27, clipText(mod.heading || mod.lines[0] || '', 96), S.ui(12.5, 600), { color: INK });
+      if (mod.meta) b.text(x + w - 14, y + 27, mod.meta, S.ui(11), { color: MUTED, align: 'right' });
+      return h + 12;
+    },
+    picture(b, x, y, w, mod, S) {
+      const ph = Math.round(w * 0.6);
+      b.photo(x, y, w, ph, { seed: photo.hashOf(mod.heading || 'pic'), subject: mod.subject, colour: true, frame: false });
+      let iy = ph + y + 8;
+      if (mod.heading) iy = b.para(x, iy + 12, clipText(mod.heading, 90), S.ui(12), w, { color: MUTED, lineHeight: 16 });
+      if (mod.meta) { b.text(x + w, iy + 14, mod.meta, S.ui(10.5), { color: '#94A3B8', align: 'right' }); iy += 14; }
+      return iy - y + 12;
+    },
+    note(b, x, y, w, mod, S) {
+      const mark = b.blocks.length;
+      if (mod.label) b.text(x + 18, y + 26, upper(mod.label), S.ui(10, 800), { color: S.accent, letterSpacing: 1 });
+      let iy = mod.heading ? b.para(x + 18, y + (mod.label ? 52 : 34), clipText(mod.heading, 120), S.title(15, 700), w - 36, { color: INK, lineHeight: 20 }) : y + 20;
+      for (const line of mod.lines.slice(0, 2)) iy = b.para(x + 18, iy + 10, clipText(line, 200), S.ui(12), w - 36, { color: '#475569', lineHeight: 17 });
+      for (const item of mod.items.slice(0, 4)) {
+        b.circle(x + 24, iy + 12, 3, { fill: S.accent });
+        iy = b.para(x + 36, iy + 16, clipText(String(item).replace('|', ' — '), 90), S.ui(12), w - 54, { color: '#334155', lineHeight: 17 });
+      }
+      if (mod.cta) {
+        const f = S.ui(11.5, 700);
+        const cw = approxMeasure(mod.cta, f) + 28;
+        b.rect(x + 18, iy + 14, cw, 28, { fill: S.accent, radius: 14 });
+        b.text(x + 18 + cw / 2, iy + 33, mod.cta, f, { color: '#FFFFFF', align: 'center' });
+        iy += 34;
+      }
+      if (mod.meta) { b.text(x + 18, iy + 20, mod.meta, S.ui(11), { color: MUTED }); iy += 16; }
+      const h = iy - y + 20;
+      b.blocks.splice(mark, 0, { type: 'rect', x, y, w, h, fill: '#FFFFFF', radius: 10, stroke: LINE });
+      return h + 12;
+    },
+  };
+
+  const SHAPE_KEYS = Object.keys(SHAPES);
+
+  /** The shape a module the app does not know is drawn in. */
+  function shapeOf(mod) {
+    if (SHAPES[mod.shape]) return mod.shape;
+    if (mod.items && mod.items.length) return mod.items.some(i => String(i).includes('|')) ? 'table' : 'list';
+    if (mod.subject && mod.heading) return 'card';
+    if (mod.subject) return 'picture';
+    if (mod.cta && !(mod.items || []).length && (mod.lines || []).length <= 1) return 'banner';
+    return 'note';
+  }
+
+  /** How one module is drawn: its own hand if the app knows it, else its shape. */
+  function moduleRenderer(mod) {
+    const def = MODULES[mod && mod.type];
+    if (def) return def.draw;
+    return SHAPES[shapeOf(mod || {})];
+  }
+
+  const MODULE_KEYS = Object.keys(MODULES);
+
+  /** The catalogue for the prompt: what can stand around a text of this medium. */
+  function moduleHints(mediumKey) {
+    return MODULE_KEYS.filter(k => MODULES[k].media.includes(mediumKey))
+      .map(k => `${k} [${MODULES[k].slots.join('/')}] — ${MODULES[k].hint}`);
+  }
+
+  /** The places a medium offers, in the order a page is built. */
+  const MEDIUM_SLOTS = {
+    page: ['top', 'inline', 'rail', 'below'],
+    print: ['head', 'column', 'below'],
+    thread: ['top', 'inline', 'rail', 'below'],
+    mail: ['inline', 'below'],
+    chat: ['inline'],
+  };
+
+  /**
+   * Which modules belong in this slot of this medium. A kind the app knows
+   * brings its own places; a kind Claude invented goes where Claude put it,
+   * and otherwise where that medium keeps the things that are not the text.
+   */
+  function modulesFor(chrome, mediumKey, slot) {
+    const offered = MEDIUM_SLOTS[mediumKey] || ['below'];
+    return list(chrome.modules).filter((mod) => {
+      if (!mod || typeof mod !== 'object') return false;
+      const def = MODULES[mod.type];
+      const wanted = String(mod.slot || '').trim();
+      if (def) {
+        if (!def.media.includes(mediumKey)) return false;
+        const places = def.slots.filter(sl => offered.includes(sl));
+        if (!places.length) return false;
+        return places.includes(wanted) ? wanted === slot : places[0] === slot;
+      }
+      return offered.includes(wanted) ? wanted === slot : slot === (offered.includes('below') ? 'below' : offered[0]);
+    });
+  }
+
+  /**
+   * Draw the modules of one slot, one under the other, and return the y below
+   * them. `limit` caps how much room they may take, so furniture never pushes
+   * the text off the page.
+   */
+  function placeModules(b, mods, x, y, w, S, opts) {
+    const o = opts || {};
+    let cy = y;
+    let n = 0;
+    for (const mod of mods) {
+      const render = moduleRenderer(mod);
+      // what does not fit here is not lost: the caller can put it elsewhere
+      if (!render || n >= (o.max || 4) || (o.until && cy > o.until)) { if (o.leftovers) o.leftovers.push(mod); continue; }
+      const before = b.blocks.length;
+      const h = render(b, x, cy, w, mod, S) || 0;
+      if (o.until && cy + h > o.until + (o.slack || 0)) {
+        b.blocks.length = before;
+        if (o.leftovers) o.leftovers.push(mod);
+        continue;
+      }
+      cy += h;
+      n += 1;
+    }
+    return cy;
+  }
+
+  /** The style a module is drawn in, taken from the design of the medium. */
+  function moduleStyle(d) {
+    return {
+      accent: d.accent || '#2563EB',
+      ui: (size, weight) => ({ family: d.ui || SANS, size, weight: weight || 400 }),
+      title: (size, weight) => ({ family: d.title || SANS, size, weight: weight || 700 }),
+      body: (size, weight) => ({ family: d.body || SERIF, size, weight: weight || 400 }),
     };
   }
 
@@ -241,6 +880,7 @@
     const api = {
       y: 0,
       blocks,
+      subject: 'city',   // what a picture shows when nothing else says
       rect(x, y, w, h, o) { blocks.push(Object.assign({ type: 'rect', x, y, w, h, fill: '#FFFFFF' }, o || {})); return api; },
       line(x1, y1, x2, y2, o) { blocks.push(Object.assign({ type: 'line', x1, y1, x2, y2, color: '#E2E8F0', width: 1 }, o || {})); return api; },
       circle(x, y, r, o) { blocks.push(Object.assign({ type: 'circle', x, y, r, fill: '#CBD5E1' }, o || {})); return api; },
@@ -258,7 +898,17 @@
       icon(name, x, y, size, o) { blocks.push(Object.assign({ type: 'icon', name, x, y, size }, o || {})); return api; },
       wall(x, y, w, h, o) { blocks.push(Object.assign({ type: 'wallpaper', x, y, w, h }, o || {})); return api; },
       grad(x, y, w, h, stops, o) { blocks.push(Object.assign({ type: 'gradient', x, y, w, h, stops }, o || {})); return api; },
-      photo(x, y, w, h, o) { blocks.push(Object.assign({ type: 'photo', x, y, w, h, seed: 7 }, o || {})); return api; },
+      /**
+       * A picture. Its subject must be one the engine can draw; where a call
+       * names none (or names one Claude invented), the subject the material
+       * itself suggests is used, so a picture is never an empty box.
+       */
+      photo(x, y, w, h, o) {
+        const spec = Object.assign({ type: 'photo', x, y, w, h, seed: 7 }, o || {});
+        if (!photo.isSubject(spec.subject)) spec.subject = photo.isSubject(api.subject) ? api.subject : 'city';
+        blocks.push(spec);
+        return api;
+      },
       /** A filled polygon, e.g. the tail of a chat bubble or a vote arrow. */
       poly(points, o) { blocks.push(Object.assign({ type: 'poly', points, fill: '#FFFFFF' }, o || {})); return api; },
       pill(x, y, w, h, str, font, o) {
@@ -315,7 +965,18 @@
     return 88;
   }
 
-  function avatar(b, x, y, r, initials, accent) {
+  /**
+   * The round picture next to a name. A real profile shows a face, not two
+   * letters — so a portrait is drawn, seeded by the name, and the initials
+   * only stand in when there is no name to seed one with.
+   */
+  function avatar(b, x, y, r, initials, accent, name) {
+    const who = String(name || '').trim();
+    if (who) {
+      b.photo(x - r, y - r, r * 2, r * 2, { subject: 'portrait', seed: photo.hashOf(who), round: true, frame: false });
+      b.circle(x, y, r, { fill: 'none', stroke: 'rgba(255,255,255,.7)' });
+      return;
+    }
     b.circle(x, y, r, { fill: accent });
     b.text(x, y + r * 0.35, initials, { family: SANS, size: r, weight: 700 }, { color: '#FFFFFF', align: 'center' });
   }
@@ -381,9 +1042,18 @@
   }
 
   /* --- page: blog, news site, magazine, review, story … ---------------- */
+
+  /** What the material itself is about — the subject a picture falls back to. */
+  function autoSubject(m) {
+    const c = (m && m.content) || {};
+    const text = [c.title || '', (c.paragraphs || []).join(' '), (c.lines || []).map(l => l.text).join(' ')].join(' ').slice(0, 1500);
+    return photo.subjectFor(text, 'city');
+  }
+
   function pageModel(m, chrome, d, measure) {
     const W = 1040;
     const b = builder(W, measure);
+    b.subject = autoSubject(m);
     const meta = m.content.meta || {};
     const hasSide = d.sidebar && list(chrome.sidebarItems).length;
     const PAD = 56;
@@ -424,6 +1094,11 @@
     });
     y += 40;
     b.line(0, y, W, y, { color: '#CBD5E1' });
+    const S = moduleStyle(d);
+    // what the site puts above everything: a consent banner, a live strip,
+    // the app nag, the leaderboard advertisement
+    const topMods = modulesFor(chrome, 'page', 'top');
+    if (topMods.length) y = placeModules(b, topMods, PAD, y + 20, W - 2 * PAD, S, { max: 2 }) + 4;
     const articleTop = y;
     y += 34;
 
@@ -446,7 +1121,7 @@
 
     // byline with avatar, and the small save/share icons on the right
     y += 30;
-    avatar(b, PAD + 19, y + 4, 19, chrome.authorInitials || initial(meta.byline), d.accent);
+    avatar(b, PAD + 19, y + 4, 19, chrome.authorInitials || initial(meta.byline), d.accent, meta.byline);
     b.text(PAD + 50, y, meta.byline || '', ui(14, 700), { color: INK });
     b.text(PAD + 50, y + 19, chrome.metaLine || meta.dateline || '', ui(12), { color: MUTED });
     b.icon('share', PAD + colW - 30, y - 8, 20, { color: MUTED, weight: 1.7 });
@@ -458,7 +1133,7 @@
     // the lead picture with its caption
     if (d.kicker || d.sidebar) {
       const ph = Math.round(colW * 0.46);
-      b.photo(PAD, y, colW, ph, { seed: 11, colour: true, tint: d.breaking ? 'cool' : 'warm' });
+      b.photo(PAD, y, colW, ph, { seed: photo.hashOf(m.content.title || 'lead'), subject: chrome.photoSubject, colour: true });
       y += ph + 18;
       if (chrome.photoCaption) {
         y = b.para(PAD, y, chrome.photoCaption, ui(12), colW - 110, { color: MUTED, lineHeight: 17 });
@@ -467,9 +1142,15 @@
       }
     }
 
-    // the text itself
+    // the text itself, with whatever the site pushes between the paragraphs
     const bodyFont = { family: d.body, size: 17 };
     const paragraphs = m.content.paragraphs || [];
+    const inlineMods = modulesFor(chrome, 'page', 'inline').slice(0, 2);
+    // between the paragraphs when there is room, otherwise straight after the
+    // text — an advertisement the page carries never simply disappears
+    const breakAt = paragraphs.length >= 4
+      ? inlineMods.map((_, i) => Math.round((paragraphs.length * (i + 1)) / (inlineMods.length + 1)))
+      : inlineMods.map(() => paragraphs.length);
     paragraphs.forEach((p, i) => {
       const heading = p.length < 60 && !/[.!?]$/.test(p.trim());
       if (heading) {
@@ -479,6 +1160,8 @@
       } else {
         y = b.para(PAD, y, p, bodyFont, colW, { color: INK, role: 'body', lineHeight: 27 }) + 18;
       }
+      const here = inlineMods.filter((_, k) => breakAt[k] === i + 1);
+      if (here.length) y = placeModules(b, here, PAD, y + 10, colW, S, { max: 2 }) + 14;
     });
 
     if (meta.pullQuote) {
@@ -503,11 +1186,17 @@
     // the author box under the text
     if (meta.byline) {
       b.rect(PAD, y, colW, 92, { fill: SOFT, radius: 12, stroke: LINE });
-      avatar(b, PAD + 46, y + 46, 24, chrome.authorInitials || initial(meta.byline), d.accent);
+      avatar(b, PAD + 46, y + 46, 24, chrome.authorInitials || initial(meta.byline), d.accent, meta.byline);
       b.text(PAD + 84, y + 40, meta.byline || '', ui(14, 700), { color: INK });
       b.text(PAD + 84, y + 60, chrome.metaLine || meta.dateline || '', ui(12), { color: MUTED });
       y += 112;
     }
+
+    // everything the site stacks under the article: other stories, the
+    // comments, a promoted post, the advertisement before the footer — which
+    // of them, and in which order, is what the page itself says (concept §37)
+    const belowMods = modulesFor(chrome, 'page', 'below');
+    if (belowMods.length) y = placeModules(b, belowMods, PAD, y + 20, colW, S, { max: 4 }) + 10;
 
     // the column beside the text: most-read list with thumbnails, then the
     // modules a site stacks under it. It is built down to the foot of the
@@ -523,68 +1212,34 @@
       sy += 46;
       list(chrome.sidebarItems).slice(0, 6).forEach((it, i) => {
         if (i >= 4 && sy + 80 > target) return;
-        b.photo(sx, sy, 74, 56, { seed: 30 + i * 7, colour: true, tint: i % 2 ? 'green' : 'dusk' });
+        b.photo(sx, sy, 74, 56, { seed: photo.hashOf(String(it)), subject: list(chrome.sidebarSubjects)[i] || photo.subjectFor(String(it), 'city'), colour: true });
         b.text(sx + 86, sy + 2, String(i + 1), { family: d.title, size: 15, weight: 800 }, { color: d.accent });
         const end = b.para(sx + 86, sy + 20, it, ui(13, 600), sw - 86, { color: INK, lineHeight: 18 });
         sy = Math.max(sy + 70, end + 18);
         b.line(sx, sy - 10, sx + sw, sy - 10, { color: LINE });
       });
       sy += 14;
-      // What a site stacks beside an article: its tags, a sign-up box and the
-      // advertisement slots. They are laid down to the foot of the text, and
-      // only as long as they still fit, so neither column is left half empty.
-      const tags = list(meta.tags).slice(0, 6);
-      const tagBox = (yy) => {
-        b.text(sx, yy + 16, upper(chrome.sectionLabel || ''), ui(11, 800), { color: MUTED, letterSpacing: 1 });
-        let tx = sx, ty = yy + 40;
-        for (const t of tags) {
-          const f = ui(12);
-          const w = approxMeasure('#' + t, f) + 24;
-          if (tx + w > sx + sw) { tx = sx; ty += 34; }
-          b.pill(tx, ty, w, 26, '#' + t, f, { fill: '#F1F5F9', color: d.accent, stroke: LINE });
-          tx += w + 8;
-        }
+      // What a site stacks beside the article: first what this page says it
+      // stacks (poll, sign-up, the tall advertisement, another story …), then
+      // — if the text runs longer than all of it — the slots a rail keeps
+      // filled, down to the foot of the text. A rail never ends in a hole.
+      sy = placeModules(b, modulesFor(chrome, 'page', 'rail'), sx, sy, sw, S, { max: 6, until: target, slack: 90 });
+      // a display advertisement is a picture with a label, not a grey box
+      const AD_SUBJECTS = ['sea', 'mountain', 'food', 'transport', 'market', 'still', 'city', 'park', 'desk', 'sport'];
+      let adNo = 0;
+      const adBox = (yy, hh) => {
+        const pick = AD_SUBJECTS[(photo.hashOf(String(chrome.siteName || 'ad')) + adNo++) % AD_SUBJECTS.length];
+        b.rect(sx, yy, sw, hh, { fill: '#F8FAFC', radius: 10, stroke: LINE });
+        b.photo(sx + 10, yy + 10, sw - 20, Math.max(24, hh - 52), { seed: photo.hashOf(pick + adNo), subject: pick, colour: true, frame: false });
+        b.text(sx + sw / 2, yy + hh - 16, 'ADVERTISEMENT', ui(9.5, 700), { color: '#94A3B8', align: 'center', letterSpacing: 1.4 });
       };
-      const signUp = (yy) => {
-        b.rect(sx, yy, sw, 150, { fill: SOFT, radius: 10, stroke: LINE });
-        b.rect(sx + 18, yy + 20, 26, 26, { fill: d.accent, radius: 6 });
-        b.text(sx + 18, yy + 72, upper(site), ui(11, 800), { color: INK, letterSpacing: 1 });
-        b.rect(sx + 18, yy + 86, sw - 36, 30, { fill: '#FFFFFF', radius: 6, stroke: LINE });
-        b.rect(sx + 18, yy + 124, 96, 14, { fill: d.accent, radius: 7 });
-      };
-      const adBox = (yy) => {
-        b.rect(sx, yy, sw, 200, { fill: '#F1F5F9', radius: 10, stroke: LINE });
-        b.rect(sx + 18, yy + 18, sw - 36, 96, { fill: '#E2E8F0', radius: 6 });
-        b.circle(sx + sw / 2, yy + 66, 18, { fill: '#CBD5E1' });
-        [0, 1, 2].forEach(i => b.rect(sx + 18, yy + 130 + i * 16, (sw - 36) * (i === 2 ? 0.55 : 1), 8, { fill: '#DDE3EA', radius: 4 }));
-      };
-      const skyscraper = (yy) => {
-        b.rect(sx, yy, sw, 600, { fill: '#F8FAFC', radius: 10, stroke: LINE });
-        b.rect(sx + 16, yy + 16, sw - 32, 300, { fill: '#E2E8F0', radius: 6 });
-        b.circle(sx + sw / 2, yy + 166, 26, { fill: '#CBD5E1' });
-        [0, 1, 2, 3].forEach(i => b.rect(sx + 16, yy + 340 + i * 18, (sw - 32) * (i === 3 ? 0.6 : 1), 9, { fill: '#DDE3EA', radius: 4 }));
-        b.rect(sx + 16, yy + 470, 120, 30, { fill: '#CBD5E1', radius: 15 });
-        b.text(sx + sw / 2, yy + 566, 'ADVERTISEMENT', ui(10, 700), { color: '#94A3B8', align: 'center', letterSpacing: 1.4 });
-      };
-      const place = (draw, h) => {
-        if (!h || sy + h > target + 40) return false;
-        draw(sy); sy += h + 20; return true;
-      };
-      place(tagBox, tags.length ? 40 + Math.ceil(tags.length / 3) * 34 : 0);
-      place(signUp, 150);
       for (let i = 0; i < 24 && target - sy > 140; i++) {
-        if (!place(target - sy >= 620 ? skyscraper : adBox, target - sy >= 620 ? 600 : 200)) break;
+        const hh = target - sy >= 620 ? 600 : 200;
+        if (sy + hh > target + 40) break;
+        adBox(sy, hh); sy += hh + 20;
       }
-      // whatever is left over at the foot of the rail is closed with a slot of
-      // exactly that height — a rail does not end in a hole
       const rest = target - sy;
-      if (rest > 80) {
-        b.rect(sx, sy, sw, rest, { fill: '#F1F5F9', radius: 10, stroke: LINE });
-        b.rect(sx + 18, sy + 18, sw - 36, Math.max(24, rest - 74), { fill: '#E2E8F0', radius: 6 });
-        b.circle(sx + sw / 2, sy + 18 + Math.max(24, rest - 74) / 2, Math.min(18, rest / 6), { fill: '#CBD5E1' });
-        b.text(sx + sw / 2, sy + rest - 18, 'ADVERTISEMENT', ui(10, 700), { color: '#94A3B8', align: 'center', letterSpacing: 1.4 });
-        sy += rest;
-      }
+      if (rest > 80) { adBox(sy, rest); sy += rest; }
       sideBottom = sy - 20;
     }
 
@@ -612,6 +1267,7 @@
   function mailModel(m, chrome, d, measure) {
     const W = 1040;
     const b = builder(W, measure);
+    b.subject = autoSubject(m);
     const meta = m.content.meta || {};
     const SIDE = 220, PAD = 34;
     const ui = (size, weight) => ({ family: d.ui, size, weight: weight || 400 });
@@ -661,7 +1317,7 @@
     });
     if (list(chrome.labelChips).length) y += 34;
     y += 14;
-    avatar(b, x + 21, y + 4, 21, chrome.authorInitials || initial(meta.from), d.accent);
+    avatar(b, x + 21, y + 4, 21, chrome.authorInitials || initial(meta.from), d.accent, meta.from);
     b.text(x + 54, y, meta.from || '', ui(14, 700), { color: INK });
     b.text(x + 54, y + 20, chrome.metaLine || meta.sent || '', ui(12), { color: MUTED });
     b.icon('reply', x + colW - 30, y - 8, 19, { color: MUTED, weight: 1.7 });
@@ -677,14 +1333,37 @@
       for (const l of String(meta.signature).split('\n')) { b.text(x, y, l, ui(13), { color: MUTED }); y += 20; }
       y += 10;
     }
-    if (chrome.attachmentName) {
-      b.rect(x, y, 300, 64, { fill: '#FFFFFF', radius: 10, stroke: '#CBD5E1' });
-      b.rect(x + 12, y + 12, 40, 40, { fill: '#E7F0FE', radius: 8 });
-      b.icon('clip', x + 22, y + 22, 20, { color: d.accent, weight: 1.8 });
-      b.text(x + 64, y + 28, clipText(chrome.attachmentName, 26), ui(13, 600), { color: INK });
-      b.text(x + 64, y + 46, chrome.attachmentMeta || '', ui(11.5), { color: MUTED });
-      y += 84;
+    if (list(chrome.signatureLines).length && !meta.signature) {
+      b.line(x, y + 4, x + 200, y + 4, { color: LINE });
+      y += 26;
+      for (const l of list(chrome.signatureLines).slice(0, 3)) { b.text(x, y, l, ui(13), { color: MUTED }); y += 20; }
+      y += 10;
     }
+    if (chrome.attachmentName) {
+      // a picture attachment is shown as a picture, the way a mail client does
+      const isPicture = photo.isSubject(chrome.attachmentSubject);
+      if (isPicture) {
+        b.text(x, y + 2, '1 attachment', ui(11.5, 700), { color: MUTED, letterSpacing: 0.6 });
+        y += 18;
+        b.rect(x, y, 320, 232, { fill: '#FFFFFF', radius: 12, stroke: '#CBD5E1' });
+        b.photo(x + 8, y + 8, 304, 176, { seed: photo.hashOf(chrome.attachmentName), subject: chrome.attachmentSubject, colour: true, frame: false });
+        b.text(x + 14, y + 208, clipText(chrome.attachmentName, 28), ui(12.5, 600), { color: INK });
+        b.text(x + 14, y + 224, chrome.attachmentMeta || '', ui(11), { color: MUTED });
+        b.icon('down', x + 290, y + 200, 18, { color: MUTED, weight: 1.7 });
+        y += 254;
+      } else {
+        b.rect(x, y, 300, 64, { fill: '#FFFFFF', radius: 10, stroke: '#CBD5E1' });
+        b.rect(x + 12, y + 12, 40, 40, { fill: '#E7F0FE', radius: 8 });
+        b.icon('clip', x + 22, y + 22, 20, { color: d.accent, weight: 1.8 });
+        b.text(x + 64, y + 28, clipText(chrome.attachmentName, 26), ui(13, 600), { color: INK });
+        b.text(x + 64, y + 46, chrome.attachmentMeta || '', ui(11.5), { color: MUTED });
+        y += 84;
+      }
+    }
+    // what else a message carries: a banner of the sender, a link card, a box
+    const S = moduleStyle(d);
+    const mailMods = modulesFor(chrome, 'mail', 'inline').concat(modulesFor(chrome, 'mail', 'below'));
+    if (mailMods.length) y = placeModules(b, mailMods, x, y + 8, Math.min(colW, 520), S, { max: 3 }) + 6;
     // the quoted message underneath, as mail programs fold it away
     b.rect(x, y + 6, 34, 20, { fill: '#E7EBF0', radius: 10 });
     b.icon('dots', x + 7, y + 8, 17, { color: '#64748B', weight: 1.7 });
@@ -708,6 +1387,7 @@
   function threadModel(m, chrome, d, measure) {
     const W = 1040;
     const b = builder(W, measure);
+    b.subject = autoSubject(m);
     const meta = m.content.meta || {};
     const PAD = 48;
     const ui = (size, weight) => ({ family: d.ui, size, weight: weight || 400 });
@@ -726,6 +1406,9 @@
     b.rect(0, y, W, 3000, { fill: '#EEF1F5' });
     b.line(0, y, W, y, { color: '#CBD5E1' });
     y += 26;
+    const S = moduleStyle(d);
+    const topMods = modulesFor(chrome, 'thread', 'top');
+    if (topMods.length) y = placeModules(b, topMods, PAD, y, W - 2 * PAD, S, { max: 1 }) + 6;
 
     // the thread column, with the board box beside it
     const SIDE = 286;
@@ -759,7 +1442,7 @@
       b.text(left + 23, cardTop + 54, String(votes[i] || ''), ui(12, 700), { color: i === 0 ? d.accent : '#475569', align: 'center' });
       b.icon('down', left + 14, cardTop + 62, 18, { fill: '#CBD5E1', stroke: false });
       const tx = left + rail;
-      avatar(b, tx + 14, cardTop + 26, 14, String(authors[i] || '').slice(0, 2).toUpperCase(), AV[i % AV.length]);
+      avatar(b, tx + 14, cardTop + 26, 14, String(authors[i] || '').slice(0, 2).toUpperCase(), AV[i % AV.length], authors[i]);
       const nameF = ui(13, 700);
       b.text(tx + 36, cardTop + 31, authors[i] || '', nameF, { color: INK });
       let mx = tx + 36 + approxMeasure(authors[i] || '', nameF) + 10;
@@ -770,7 +1453,14 @@
         mx += w + 10;
       }
       b.text(mx, cardTop + 31, stamps[i] || '', ui(11.5), { color: MUTED });
-      const end = b.para(tx + 36, cardTop + 56, p, { family: d.body, size: 15 }, inner, { color: '#1E293B', role: 'body', lineHeight: 24 });
+      let end = b.para(tx + 36, cardTop + 56, p, { family: d.body, size: 15 }, inner, { color: '#1E293B', role: 'body', lineHeight: 24 });
+      // the picture the first post shares, as a forum shows it under the text
+      if (i === 0 && photo.isSubject(chrome.photoSubject)) {
+        const pw = Math.min(inner, 420), ph = Math.round(pw * 0.58);
+        b.photo(tx + 36, end + 10, pw, ph, { seed: photo.hashOf(String(chrome.siteName || '') + p.slice(0, 20)), subject: chrome.photoSubject, colour: true, frame: false });
+        b.rect(tx + 36, end + 10, pw, ph, { fill: 'none', radius: 8, stroke: LINE });
+        end += ph + 16;
+      }
       b.icon('comment', tx + 36, end + 12, 17, { color: '#94A3B8', weight: 1.7 });
       b.text(tx + 60, end + 25, postMeta[i] || '', ui(11.5), { color: MUTED });
       b.icon('share', tx + 60 + approxMeasure(postMeta[i] || '', ui(11.5)) + 22, end + 12, 17, { color: '#94A3B8', weight: 1.7 });
@@ -780,6 +1470,9 @@
       b.blocks.splice(mark, 0, ...under);
       y = cardTop + h + 14;
     });
+    // a promoted post between the replies, the way a board shows one
+    const inlineMods = modulesFor(chrome, 'thread', 'inline');
+    if (inlineMods.length) y = placeModules(b, inlineMods, PAD, y + 4, MAIN, S, { max: 1 }) + 6;
     // the reply box at the end of the thread
     b.rect(PAD, y + 6, MAIN, 54, { fill: '#FFFFFF', radius: 10, stroke: LINE });
     b.circle(PAD + 30, y + 33, 14, { fill: '#CBD5E1' });
@@ -802,7 +1495,12 @@
     b.line(bx + 18, iy + 4, bx + SIDE - 18, iy + 4, { color: LINE });
     list(chrome.boardStats).slice(0, 3).forEach((st, i) => b.text(bx + 18 + i * 92, iy + 28, st, ui(12, 700), { color: INK }));
     box.h = Math.max(150, iy + 44 - by);
-    y = Math.max(y, by + box.h + 20);
+    // whatever else the board keeps in its column: other threads, the rules,
+    // the advertisement — down to the foot of the thread
+    const railEnd = placeModules(b, modulesFor(chrome, 'thread', 'rail'), bx, by + box.h + 18, SIDE, S, { max: 4, until: y - 40, slack: 120 });
+    y = Math.max(y, railEnd + 10, by + box.h + 20);
+    const belowThread = modulesFor(chrome, 'thread', 'below');
+    if (belowThread.length) y = placeModules(b, belowThread, PAD, y + 10, MAIN, S, { max: 3 }) + 6;
     b.text(PAD, y + 12, chrome.footerNote || '', ui(11.5), { color: MUTED });
     return finish(b, W, y + 36);
   }
@@ -811,6 +1509,7 @@
   function chatModel(m, chrome, d, measure) {
     const W = 560;
     const b = builder(W, measure);
+    b.subject = autoSubject(m);
     const ui = (size, weight) => ({ family: d.ui, size, weight: weight || 400 });
     const HEAD = '#075E54', BAR = '#054A42', MINE = '#DCF8C6', THEIRS = '#FFFFFF', TICK = '#34B7F1';
     b.rect(0, 0, W, 4000, { fill: '#ECE5DD' });
@@ -826,7 +1525,7 @@
     // chat header: back arrow, contact, call icons
     b.rect(0, y, W, 60, { fill: HEAD });
     b.icon('back', 12, y + 20, 21, { color: '#FFFFFF', weight: 2.1 });
-    avatar(b, 52, y + 30, 18, chrome.authorInitials || initial(chrome.contactName), '#B7C4C0');
+    avatar(b, 52, y + 30, 18, chrome.authorInitials || initial(chrome.contactName), '#B7C4C0', chrome.contactName);
     b.text(80, y + 27, chrome.contactName || '', ui(15.5, 700), { color: '#FFFFFF' });
     b.text(80, y + 45, chrome.statusLine || '', ui(11.5), { color: '#BFD8D2' });
     b.icon('video', W - 112, y + 20, 21, { color: '#FFFFFF', weight: 1.8 });
@@ -868,7 +1567,25 @@
       b.text(bx + bw - (mine ? 26 : 12), y + bh - 10, times[i] || '', ui(10.5), { color: '#8696A0', align: 'right' });
       if (mine) b.icon('ticks', bx + bw - 24, y + bh - 20, 15, { color: TICK, weight: 1.5 });
       y += bh + 10;
+      // a picture somebody sends in the middle of the conversation
+      if (photo.isSubject(chrome.photoSubject) && i + 1 === Math.max(1, Math.min(list(m.content.paragraphs).length, Number(chrome.photoAfter) || 1))) {
+        const pw = 236, ph = 186, px = mine ? 18 : W - 18 - pw, myPic = !mine;
+        b.rect(px, y, pw, ph + 22, { fill: myPic ? MINE : THEIRS, radius: 9, shadow: 'soft' });
+        b.photo(px + 5, y + 5, pw - 10, ph - 4, { seed: photo.hashOf(String(chrome.contactName || '') + i), subject: chrome.photoSubject, colour: true, frame: false });
+        b.text(px + pw - (myPic ? 26 : 12), y + ph + 12, times[i] || '', ui(10.5), { color: '#8696A0', align: 'right' });
+        if (myPic) b.icon('ticks', px + pw - 24, y + ph + 2, 15, { color: TICK, weight: 1.5 });
+        y += ph + 32;
+      }
     });
+    // a link somebody drops into the conversation, as a card with a preview
+    const chatMods = modulesFor(chrome, 'chat', 'inline');
+    if (chatMods.length) {
+      const S = moduleStyle(d);
+      const cw = 262;
+      const before = y;
+      y = placeModules(b, chatMods, W - 18 - cw, y + 2, cw, S, { max: 1 });
+      if (y > before) y += 6;
+    }
     y += 12;
     wall.h = y - wallTop;
 
@@ -962,6 +1679,7 @@
   function pressModel(m, chrome, d, measure) {
     const W = 1080;
     const b = builder(W, measure);
+    b.subject = autoSubject(m);
     const meta = m.content.meta || {};
     const P = PAGE_PAD, M = 48;
     const pageW = W - 2 * P, inner = pageW - 2 * M;
@@ -983,6 +1701,23 @@
     b.text(R, y, String(chrome.publicationLine || ''), { family: SERIF, size: 11 }, { color: '#57534E', align: 'right' });
     y += 10;
     b.line(L, y, R, y, { color: '#78716C', width: 1 });
+    // the strip a paper prints under its running head: weather and pointers
+    if (chrome.weatherNote || list(chrome.indexItems).length) {
+      const f = { family: SANS, size: 10 };
+      if (chrome.weatherNote) {
+        b.icon('star', L, y + 6, 12, { fill: '#B45309', stroke: false });
+        b.text(L + 18, y + 16, String(chrome.weatherNote), f, { color: '#57534E' });
+      }
+      let ix = R;
+      list(chrome.indexItems).slice(0, 4).reverse().forEach((it) => {
+        const w = measure(String(it), f) + 8;
+        b.text(ix, y + 16, String(it), f, { color: '#78716C', align: 'right' });
+        ix -= w + 14;
+        b.text(ix + 6, y + 16, '·', f, { color: '#A8A29E', align: 'right' });
+      });
+      y += 24;
+      b.line(L, y, R, y, { color: '#D6D3D1', width: 1 });
+    }
     y += 30;
 
     // the editorial line: small caps between rules, as papers set their standing heads
@@ -1017,7 +1752,18 @@
       y += 16 + lines.length * 24 + 6;
     }
     const byline = [meta.byline ? 'By ' + meta.byline : '', meta.location].filter(Boolean).join('  ·  ');
-    if (byline) { b.text(L, y + 14, byline.toUpperCase(), { family: SANS, size: 10, weight: 700 }, { color: '#57534E', letterSpacing: 1 }); y += 20; }
+    if (byline) {
+      // a comment page prints the writer's face next to the byline
+      const who = String(chrome.portraitName || meta.byline || '').trim();
+      if (who && d.photo === false) {
+        b.photo(L, y - 2, 46, 46, { subject: 'portrait', seed: photo.hashOf(who), round: true, frame: false, print: true });
+        b.text(L + 58, y + 14, byline.toUpperCase(), { family: SANS, size: 10, weight: 700 }, { color: '#57534E', letterSpacing: 1 });
+        y += 50;
+      } else {
+        b.text(L, y + 14, byline.toUpperCase(), { family: SANS, size: 10, weight: 700 }, { color: '#57534E', letterSpacing: 1 });
+        y += 20;
+      }
+    }
     y += 10;
 
     // press photo with a caption bar, spanning the first columns
@@ -1025,7 +1771,7 @@
     if (d.photo !== false) {
       const photoW = cols >= 3 ? colW * 2 + gutter : inner;
       const photoH = Math.round(photoW * 0.44);
-      b.photo(L, y, photoW, photoH, { seed: (m.content.title || '').length, colour: d.photoColour !== false });
+      b.photo(L, y, photoW, photoH, { seed: photo.hashOf(m.content.title || 'lead'), subject: chrome.photoSubject, colour: d.photoColour !== false, print: true });
       let cy = y + photoH + 12;
       const capFont = { family: SANS, size: 11.5 };
       const capLines = wrap(chrome.photoCaption || '', capFont, photoW - 120, measure);
@@ -1052,8 +1798,16 @@
     for (const p of paras) bodyLines += wrap(p, font, colW - indent, measure).length;
     const quoteH = qLines.length ? 44 + qLines.length * 24 + 46 : 0;
     const useQuote = quoteH > 0 && bodyLines >= cols * MIN_COL_LINES;
+    // What else stands on this page — the other story, the small ads, the
+    // results, the letters — is kept free at the foot of the last column
+    // before the text is poured, so the page still comes out even.
+    const S = moduleStyle(Object.assign({}, d, { accent: accent, ui: SANS, title: SERIF, body: SERIF }));
+    S.print = true;
+    const colMods = modulesFor(chrome, 'print', 'column');
+    const colRoom = Math.max(0, bodyLines - cols * MIN_COL_LINES) * lh;
+    const colH = colMods.length ? Math.min(colRoom, 340) : 0;
     const reserve = [];
-    for (let c = 0; c < cols; c++) reserve.push(useQuote && c === cols - 1 ? quoteH : 0);
+    for (let c = 0; c < cols; c++) reserve.push(c === cols - 1 ? (useQuote ? quoteH : 0) + colH : 0);
     const flow = flowUneven(paras, font, colW, cols, measure, lh, tops, indent, reserve);
     for (const l of flow.placed) {
       const x = L + l.col * (colW + gutter);
@@ -1071,13 +1825,20 @@
     const lastLines = flow.placed.filter(l => l.col === lastCol);
     const lastY = lastLines.length ? Math.max(...lastLines.map(l => l.y + lh)) : tops[lastCol];
     const hole = bodyBottom - lastY;
+    const colLeft = [];
+    if (colH > 0) {
+      const gx = L + lastCol * (colW + gutter);
+      const gy = bodyBottom - colH + 10;
+      b.line(gx, gy - 6, gx + colW, gy - 6, { color: '#78716C', width: 2 });
+      placeModules(b, colMods, gx, gy + 6, colW, S, { max: 2, until: bodyBottom - 10, slack: 20, leftovers: colLeft });
+    }
     if (useQuote) {
-      const gx = L + lastCol * (colW + gutter), gy = bodyBottom - quoteH + 16;
+      const gx = L + lastCol * (colW + gutter), gy = bodyBottom - colH - quoteH + 16;
       b.line(gx, gy, gx + colW, gy, { color: accent, width: 3 });
       qLines.forEach((l, i) => b.text(gx + 18, gy + 44 + i * 24, l, qFont, { color: accent }));
       b.text(gx + 18, gy + 44 + qLines.length * 24 + 18, upper(chrome.publication || ''), { family: SANS, size: 9, weight: 700 }, { color: warm, letterSpacing: 1.2 });
       b.line(gx, gy + 44 + qLines.length * 24 + 30, gx + colW, gy + 44 + qLines.length * 24 + 30, { color: '#C7C2B5' });
-    } else if (hole > 150) {
+    } else if (hole > 150 && colH === 0) {
       const gx = L + lastCol * (colW + gutter), gy = lastY + 22, gh = hole - 34;
       const quote = (m.content.meta || {}).pullQuote || '';
       const qFont = { family: SERIF, size: 17, style: 'italic' };
@@ -1099,6 +1860,24 @@
       b.line(x, tops[c] + 2, x, bodyBottom - 8, { color: '#D6D3D1' });
     }
     y = bodyBottom + 16;
+    // the foot of the page: another story, the listings, the small ads
+    // what did not fit in the column foot is not lost: it moves to the strip
+    // under the article, where a paper puts it just as readily
+    const belowMods = modulesFor(chrome, 'print', 'below').concat(colH > 0 ? colLeft : colMods);
+    if (belowMods.length) {
+      b.line(L, y, R, y, { color: '#78716C', width: 2 });
+      const half = (inner - gutter) / 2;
+      let cy = y + 18, cx = L, colTops = [y + 18, y + 18];
+      belowMods.slice(0, 4).forEach((mod, i) => {
+        const side = i % 2;
+        cx = L + side * (half + gutter);
+        const render = moduleRenderer(mod);
+        if (!render) return;
+        colTops[side] = colTops[side] + (render(b, cx, colTops[side], half, mod, S) || 0);
+        cy = Math.max(colTops[0], colTops[1]);
+      });
+      y = cy + 10;
+    }
     b.line(L, y, R, y, { color: '#A8A29E' });
     b.text(L, y + 18, String(chrome.footerNote || ''), { family: SERIF, size: 10, style: 'italic' }, { color: '#78716C' });
     b.text(R, y + 18, String(chrome.publication || ''), { family: SANS, size: 10, weight: 700 }, { color: '#78716C', align: 'right', letterSpacing: 1 });
@@ -1132,6 +1911,7 @@
   function bookModel(m, chrome, d, measure) {
     const W = 720;
     const b = builder(W, measure);
+    b.subject = autoSubject(m);
     const P = PAGE_PAD, M = 92, GUT = 116;
     const L = P + GUT, R = W - P - M;
     const inner = R - L;
@@ -1179,6 +1959,7 @@
   function notebookModel(m, chrome, d, measure) {
     const W = 780;
     const b = builder(W, measure);
+    b.subject = autoSubject(m);
     const P = PAGE_PAD, M = 86;
     const L = P + M, R = W - P - 42;
     const inner = R - L;
@@ -1206,7 +1987,19 @@
       });
       n += 1;
     });
-    const bottom = rule(n + 1) + 10;
+    // a picture stuck into the diary, slightly askew, with tape over the corners
+    let bottom = rule(n + 1) + 10;
+    if (photo.isSubject(chrome.photoSubject)) {
+      const pw = Math.min(260, inner * 0.6), ph = Math.round(pw * 0.78);
+      const px = L + (inner - pw) / 2, py = bottom + 12;
+      b.rect(px - 10, py - 10, pw + 20, ph + 44, { fill: '#FFFDF8', shadow: 'soft' });
+      b.photo(px, py, pw, ph, { subject: chrome.photoSubject, seed: photo.hashOf(m.content.title || 'diary'), colour: true, frame: false });
+      if (chrome.photoCaption) b.text(px + pw / 2, py + ph + 26, clipText(chrome.photoCaption, 34), { family: HAND, size: 17 }, { color: '#475569', align: 'center' });
+      // two strips of tape, across the corners of the print
+      b.poly([[px - 26, py + 2], [px + 6, py - 26], [px + 26, py - 8], [px - 8, py + 22]], { fill: 'rgba(214,222,232,.7)' });
+      b.poly([[px + pw - 22, py + ph + 36], [px + pw + 10, py + ph + 8], [px + pw + 28, py + ph + 26], [px + pw - 4, py + ph + 54]], { fill: 'rgba(214,222,232,.7)' });
+      bottom = py + ph + 56;
+    }
 
     // the ruling, the red margin and the punched holes go under the writing
     const under = [];
@@ -1222,6 +2015,7 @@
   function sheetModel(m, chrome, d, measure) {
     const W = 840;
     const b = builder(W, measure);
+    b.subject = autoSubject(m);
     const meta = m.content.meta || {};
     const P = PAGE_PAD, M = 64;
     const L = P + M, R = W - P - M;
@@ -1246,8 +2040,27 @@
     if (meta.standfirst) y = b.para(L, y + 26, meta.standfirst, { family: SANS, size: 13, style: 'italic' }, inner, { color: '#57534E', lineHeight: 20 }) - 4;
     y += 28;
     const font = { family: SANS, size: 14 };
-    for (const p of m.content.paragraphs || []) y = b.para(L, y, p, font, inner, { color: '#1C1917', role: 'body', lineHeight: 22 }) + 16;
+    // a report or an information sheet carries a figure: the picture with a
+    // numbered caption, set beside the text the way a handout prints one
+    const paras = m.content.paragraphs || [];
+    const figureAt = photo.isSubject(chrome.photoSubject) && paras.length >= 3 ? 1 : -1;
+    paras.forEach((p, i) => {
+      y = b.para(L, y, p, font, inner, { color: '#1C1917', role: 'body', lineHeight: 22 }) + 16;
+      if (i === figureAt) {
+        const fw = Math.min(inner, 460), fh = Math.round(fw * 0.5);
+        const fx = L + (inner - fw) / 2;
+        b.rect(fx - 8, y - 2, fw + 16, fh + 46, { fill: '#F5F3EE', radius: 4 });
+        b.photo(fx, y + 6, fw, fh, { subject: chrome.photoSubject, seed: photo.hashOf(m.content.title || 'fig'), colour: true, print: true });
+        b.text(fx, y + fh + 26, 'Fig. 1  ' + clipText(chrome.photoCaption || '', 70), { family: SANS, size: 10.5, weight: 600 }, { color: '#57534E' });
+        if (chrome.captionCredit) b.text(fx + fw, y + fh + 26, chrome.captionCredit, { family: SANS, size: 9.5, style: 'italic' }, { color: '#A8A29E', align: 'right' });
+        y += fh + 58;
+      }
+    });
     y += 8;
+    // what else the sheet carries: a box of facts, a note, a figure table
+    const S = moduleStyle({ accent, ui: SANS, title: SANS, body: SANS });
+    const sheetMods = modulesFor(chrome, 'print', 'column').concat(modulesFor(chrome, 'print', 'below'));
+    if (sheetMods.length) y = placeModules(b, sheetMods, L, y + 6, inner, S, { max: 2 }) + 6;
     b.line(L, y, R, y, { color: '#D6D3D1' });
     b.text(L, y + 22, String(chrome.footerNote || ''), { family: SANS, size: 10 }, { color: '#78716C' });
     if (chrome.pageLabel) {
@@ -1383,6 +2196,7 @@
         if (x.y > model.height + 2 || x.y < 0) problems.push('text outside the picture at y=' + Math.round(x.y));
       } else if (x.type === 'rect' || x.type === 'photo' || x.type === 'wallpaper' || x.type === 'gradient') {
         if (!(x.w > 0) || !(x.h > 0)) problems.push('block without size');
+        if (x.type === 'photo' && !photo.isSubject(x.subject)) problems.push('picture without a subject that can be drawn: ' + x.subject);
       } else if (x.type === 'icon') {
         if (!ICONS[x.name]) problems.push('unknown icon: ' + x.name);
         if (!(x.size > 0)) problems.push('icon without size: ' + x.name);
@@ -1499,49 +2313,16 @@
     green: ['#A9C0A2', '#C6CBAA', '#6F7C62'],
   };
 
-  /** A photograph: muted tones, a horizon, silhouettes, halftone dots. */
+  /**
+   * A photograph. The picture itself is drawn by the picture engine
+   * (`photo.js`) from its subject — a portrait, a street, a classroom — so a
+   * screenshot shows what a screenshot shows: a picture, not a grey box.
+   */
   function drawPhoto(ctx, b) {
-    const r = rng(b.seed || 7);
-    const col = b.colour !== false;
-    ctx.save();
-    ctx.beginPath(); ctx.rect(b.x, b.y, b.w, b.h); ctx.clip();
-    const t = TINTS[b.tint] || TINTS.cool;
-    const g = ctx.createLinearGradient(b.x, b.y, b.x, b.y + b.h);
-    if (col) { g.addColorStop(0, t[0]); g.addColorStop(0.55, t[1]); g.addColorStop(1, t[2]); }
-    else { g.addColorStop(0, '#C8CBD0'); g.addColorStop(0.62, '#9AA0A8'); g.addColorStop(1, '#6F757D'); }
-    ctx.fillStyle = g; ctx.fillRect(b.x, b.y, b.w, b.h);
-    const horizon = b.y + b.h * (0.66 + r() * 0.08);
-    // a soft light behind the skyline
-    ctx.fillStyle = col ? '#E8D9B5' : '#C3C7CC';
-    ctx.beginPath(); ctx.arc(b.x + b.w * (0.2 + r() * 0.55), horizon - b.h * 0.42, b.h * 0.13, 0, Math.PI * 2); ctx.fill();
-    // skyline: blocks of different heights, some with lit windows
-    let bx = b.x - b.w * 0.02;
-    while (bx < b.x + b.w) {
-      const bw = b.w * (0.05 + r() * 0.09);
-      const bh = b.h * (0.12 + r() * 0.42);
-      ctx.fillStyle = col ? (r() > 0.5 ? '#6B6257' : '#565E63') : (r() > 0.5 ? '#5A6069' : '#4A5058');
-      ctx.fillRect(bx, horizon - bh, bw, bh);
-      ctx.fillStyle = 'rgba(220,225,230,.25)';
-      for (let wy = horizon - bh + 6; wy < horizon - 6; wy += 10) for (let wx = bx + 4; wx < bx + bw - 5; wx += 9) if (r() > 0.55) ctx.fillRect(wx, wy, 4, 5);
-      bx += bw + b.w * 0.012;
-    }
-    // ground with a lighter path
-    ctx.fillStyle = col ? t[2] : '#6E747C'; ctx.fillRect(b.x, horizon, b.w, b.y + b.h - horizon);
-    ctx.fillStyle = 'rgba(200,205,212,.28)';
-    ctx.beginPath();
-    ctx.moveTo(b.x + b.w * 0.3, b.y + b.h); ctx.lineTo(b.x + b.w * 0.46, horizon);
-    ctx.lineTo(b.x + b.w * 0.56, horizon); ctx.lineTo(b.x + b.w * 0.8, b.y + b.h);
-    ctx.closePath(); ctx.fill();
-    // halftone
-    ctx.save();
-    ctx.beginPath(); ctx.rect(b.x, b.y, b.w, b.h); ctx.clip();
-    ctx.fillStyle = col ? 'rgba(30,30,30,.07)' : 'rgba(30,30,30,.12)';
-    for (let yy = b.y; yy < b.y + b.h; yy += 3) for (let xx = b.x + (yy % 6 === 0 ? 0 : 1.5); xx < b.x + b.w; xx += 3) {
-      ctx.beginPath(); ctx.arc(xx, yy, 0.7, 0, Math.PI * 2); ctx.fill();
-    }
-    ctx.restore();
-    ctx.restore();
-    ctx.strokeStyle = 'rgba(0,0,0,.25)'; ctx.lineWidth = 1; ctx.strokeRect(b.x + .5, b.y + .5, b.w - 1, b.h - 1);
+    photo.draw(ctx, Object.assign({}, b, {
+      subject: photo.isSubject(b.subject) ? b.subject : photo.subjectFor('', 'city'),
+      halftone: b.halftone !== false && b.print === true,
+    }));
   }
 
   /** One icon, filled or stroked, in the given box. */
@@ -1619,8 +2400,9 @@
         roundRect(ctx, b.x, b.y, b.w, b.h, b.radius || 0);
         if (b.shadow === 'soft') { ctx.shadowColor = 'rgba(15,23,42,.12)'; ctx.shadowBlur = 4; ctx.shadowOffsetY = 1; }
         else if (b.shadow) { ctx.shadowColor = 'rgba(0,0,0,.35)'; ctx.shadowBlur = 26; ctx.shadowOffsetY = 10; }
-        ctx.fillStyle = b.fill || '#FFFFFF';
-        ctx.fill();
+        // "none" is a frame without a filling — drawn over a picture, a fill
+        // would paint the picture out with whatever colour came last
+        if (b.fill !== 'none') { ctx.fillStyle = b.fill || '#FFFFFF'; ctx.fill(); }
         ctx.shadowColor = 'transparent'; ctx.shadowBlur = 0; ctx.shadowOffsetY = 0;
         if (b.stroke) { ctx.strokeStyle = b.stroke; ctx.lineWidth = 1; ctx.stroke(); }
       } else if (b.type === 'line') {
@@ -1630,7 +2412,8 @@
       } else if (b.type === 'circle') {
         ctx.beginPath();
         ctx.arc(b.x, b.y, b.r, 0, Math.PI * 2);
-        ctx.fillStyle = b.fill; ctx.fill();
+        if (b.fill && b.fill !== 'none') { ctx.fillStyle = b.fill; ctx.fill(); }
+        if (b.stroke) { ctx.strokeStyle = b.stroke; ctx.lineWidth = b.width || 1.5; ctx.stroke(); }
       } else if (b.type === 'poly') {
         ctx.beginPath();
         (b.points || []).forEach(([px, py], i) => (i ? ctx.lineTo(px, py) : ctx.moveTo(px, py)));
@@ -1710,5 +2493,7 @@
     };
   }
 
-  return { LAYOUTS, CHROME_SPECS, ICONS, MAX_SIDE, layoutFor, chromeSpec, fallbackChrome, buildModel, fitModel, canvasScale, drawPhoto, drawIcon, bodyText, chromeText, validate, proportions, draw, canvasMeasure, approxMeasure, wrap, fontString };
+  return { LAYOUTS, CHROME_SPECS, ICONS, MAX_SIDE,
+    SUBJECTS: photo.SUBJECTS, isSubject: photo.isSubject, subjectFor: photo.subjectFor, subjectHints: photo.subjectHints, hashOf: photo.hashOf, layoutFor, chromeSpec, fallbackChrome, buildModel, fitModel, canvasScale, drawPhoto, drawIcon, bodyText, chromeText, validate, proportions, draw,
+    MODULES, MODULE_KEYS, SHAPES, SHAPE_KEYS, MEDIUM_SLOTS, shapeOf, moduleRenderer, moduleHints, modulesFor, placeModules, moduleStyle, canvasMeasure, approxMeasure, wrap, fontString };
 });

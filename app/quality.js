@@ -806,6 +806,23 @@
         const problems = mock.validate(model);
         return finding(this, problems.length ? 'fail' : 'pass', problems.length ? problems.join('; ') : `${model.label}: ${model.width} × ${model.height} px, ${model.blocks.length} elements.`);
       } },
+    { id: 'layout.furniture', group: 'layout', kind: 'deterministic', title: 'The medium shows more than the text alone', needsLayout: true, blocking: false,
+      check(ctx) {
+        const spec = mock.chromeSpec({ settings: ctx.state, content: ctx.content });
+        const raw = ((ctx.layout && ctx.layout.chrome) || {}).modules;
+        const mods = Array.isArray(raw) ? raw.filter(x => x && typeof x === 'object') : [];
+        const slots = mock.MEDIUM_SLOTS[spec.kind] || [];
+        if (!slots.length) return finding(this, 'pass', `${spec.label} carries nothing besides the message itself — as it should.`);
+        const placed = slots.map(sl => mock.modulesFor({ modules: mods }, spec.kind, sl).length);
+        const used = placed.filter(n => n > 0).length;
+        const invented = mods.filter(x => x && !mock.MODULES[x.type]).map(x => x.type);
+        const want = spec.kind === 'chat' ? 1 : 2;
+        const detail = mods.length
+          ? `${mods.length} element(s) beside the text in ${used} of ${slots.length} place(s): ${mods.map(x => x.type).join(', ')}.`
+            + (invented.length ? ` Own kinds: ${invented.join(', ')}.` : '')
+          : 'Nothing but the text itself stands in the picture.';
+        return finding(this, mods.length >= want ? 'pass' : 'warn', detail, { measured: { modules: mods.length, slots: used, invented: invented.length } });
+      } },
     { id: 'layout.proportions', group: 'layout', kind: 'deterministic', title: 'The picture is in proportion', needsLayout: true, blocking: false,
       check(ctx) {
         const model = layoutModel({ settings: ctx.state, content: ctx.content, layout: ctx.layout });
@@ -834,6 +851,16 @@
     const src = raw && typeof raw === 'object' ? raw : {};
     for (const [key] of spec.fields) {
       const v = src[key];
+      // the things standing around the text: a fixed shape per entry, and only
+      // the kinds the app can really draw (concept §37)
+      if (key === 'modules') { out[key] = normalizeModules(v); continue; }
+      // a picture subject is a key of the picture engine, not free text: an
+      // invented one would leave a blank box, so it is dropped here
+      if (/Subjects?$/.test(key)) {
+        out[key] = Array.isArray(v) ? v.map(x => String(x).trim().toLowerCase()).filter(mock.isSubject)
+          : (mock.isSubject(String(v || '').trim().toLowerCase()) ? String(v).trim().toLowerCase() : '');
+        continue;
+      }
       if (Array.isArray(v)) {
         out[key] = v.map(x => (x && typeof x === 'object')
           ? { label: String(x.label || x.title || '').trim(), count: String(x.count === undefined || x.count === null ? '' : x.count).trim() }
@@ -845,6 +872,38 @@
       } else out[key] = '';
     }
     return out;
+  }
+
+  /**
+   * The modules around the text. Every entry is squeezed into one shape, so a
+   * drawing function never meets a surprise: a known type, a known slot, short
+   * strings, and at most eight items. Anything else is dropped rather than
+   * drawn — an invented kind of box would be an empty hole on the page.
+   */
+  function normalizeModules(raw) {
+    const text = (v, n) => String(v == null ? '' : v).replace(/\s+/g, ' ').trim().slice(0, n);
+    return (Array.isArray(raw) ? raw : []).slice(0, 14).map((m) => {
+      if (!m || typeof m !== 'object' || Array.isArray(m)) return null;
+      const type = text(m.type, 40).toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
+      if (!type) return null;
+      const def = mock.MODULES[type];
+      const slot = text(m.slot, 20).toLowerCase();
+      const shape = text(m.shape, 20).toLowerCase();
+      return {
+        type,
+        // a kind the app knows keeps to its own places; an invented one keeps
+        // the place and the shape Claude gave it (concept §37)
+        slot: def ? (def.slots.includes(slot) ? slot : def.slots[0]) : slot,
+        shape: mock.SHAPE_KEYS.indexOf(shape) >= 0 ? shape : '',
+        label: text(m.label, 40),
+        heading: text(m.heading, 200),
+        lines: (Array.isArray(m.lines) ? m.lines : [m.lines]).filter(x => x != null && typeof x !== 'object').map(x => text(x, 240)).filter(Boolean).slice(0, 4),
+        items: (Array.isArray(m.items) ? m.items : []).filter(x => x != null && typeof x !== 'object').map(x => text(x, 160)).filter(Boolean).slice(0, 8),
+        cta: text(m.cta, 30),
+        meta: text(m.meta, 60),
+        subject: mock.isSubject(text(m.subject, 30).toLowerCase()) ? text(m.subject, 30).toLowerCase() : '',
+      };
+    }).filter(Boolean);
   }
 
   /** Claude's interface data over what the material itself already tells us. */

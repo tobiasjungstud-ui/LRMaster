@@ -456,6 +456,63 @@ console.log('\nAudit: hostile and extreme content');
 const HOSTILE = 'A & B <tag> "q" \'s\' </w:t> ]]> <script>alert(1)</script> émoji 🎬 RTL مرحبا';
 const LONG_WORD = 'Donaudampfschifffahrtsgesellschaftskapitaensmuetzenhalter'.repeat(2);
 
+test('2.4 R3', 'the medium is furnished: pictures with subjects, and whatever else that page carries', () => {
+  const FULL = [
+    { type: 'cookie', slot: 'top', heading: 'We use cookies on this site.', cta: 'Accept all', meta: 'Settings', lines: [], items: [], subject: '', shape: '' },
+    { type: 'ad_banner', slot: 'inline', label: 'Brand', heading: 'An advertisement headline', lines: ['One line of copy.'], items: [], cta: 'Buy', meta: '', subject: '', shape: '' },
+    { type: 'poll', slot: 'rail', heading: 'A question for readers?', items: ['One', 'Two', 'Three'], lines: [], cta: '', meta: '204 votes', subject: '', shape: '' },
+    { type: 'ad_skyscraper', slot: 'rail', label: 'Brand', heading: 'A tall advertisement', lines: ['Copy.'], items: [], cta: 'Go', meta: '', subject: 'sea', shape: '' },
+    { type: 'teaser', slot: 'below', label: 'Section', heading: 'Another story on this site', lines: ['Its own sentence.'], items: [], cta: '3 min', meta: 'Today', subject: 'transport', shape: '' },
+    { type: 'comments', slot: 'below', heading: '12 comments', items: ['reader_one|A reaction.'], lines: [], cta: 'Add', meta: '', subject: '', shape: '' },
+    { type: 'classifieds', slot: 'below', heading: 'Classified', items: ['Piano lessons, town centre.'], lines: [], cta: '', meta: '', subject: '', shape: '' },
+    { type: 'letters', slot: 'below', heading: 'Letters', items: ['A short opinion.|R. Albrecht'], lines: [], cta: '', meta: '', subject: '', shape: '' },
+    { type: 'link_preview', slot: 'inline', heading: 'A shared link', lines: ['What it is.'], items: [], cta: '', meta: 'site.example', subject: 'building', shape: '' },
+    { type: 'weather', slot: 'rail', heading: 'Weather', items: ['Mon|14°', 'Tue|11°'], lines: [], cta: '', meta: '14°C', subject: '', shape: '' },
+    { type: 'an_invented_kind', slot: 'below', shape: 'note', heading: 'Something nobody planned for', lines: ['It is drawn all the same.'], items: [], cta: '', meta: '', subject: '' },
+    { type: 'another_invented_kind', slot: 'rail', heading: 'A gallery', lines: [], items: [], cta: '', meta: '', subject: 'market', shape: '' },
+  ];
+  for (const textType of core.TEXT_TYPES) {
+    for (const layoutMedium of ['screen', 'paper']) {
+      const m = goodMaterial({ textType, layoutMedium, authenticLayout: true }, 'reading');
+      m.layout.chrome = Object.assign({}, m.layout.chrome, { modules: FULL });
+      const model = quality.layoutModel(m);
+      const where = textType + '/' + layoutMedium;
+      assert.deepEqual(mock.validate(model), [], where + ': the furnished picture cannot be drawn');
+      // the furniture never becomes the text of the material
+      const body = quality.normalizeForSearch(mock.bodyText(model));
+      assert.equal(body, quality.normalizeForSearch(m.content.paragraphs.join(' ')), where + ': the picture no longer shows exactly the generated text');
+      for (const mod of FULL) {
+        if (!mod.heading) continue;
+        const drawn = model.blocks.filter(x => x.type === 'text' && x.text.indexOf(mod.heading.slice(0, 18)) === 0);
+        for (const d of drawn) assert.notEqual(d.role, 'body', where + ': "' + mod.type + '" is drawn as if it were the material');
+      }
+      // every picture shows a subject the engine can draw
+      for (const pic of model.blocks.filter(x => x.type === 'photo')) {
+        assert.ok(mock.isSubject(pic.subject), where + ': a picture without a subject');
+      }
+      const p = mock.proportions(model);
+      assert.ok(p.balance >= 0.6, where + ': the furniture throws the columns out of balance (' + p.balance.toFixed(2) + ')');
+    }
+  }
+  // a kind nobody planned for is drawn, not dropped
+  const blog = goodMaterial({ textType: 'Blog Post', layoutMedium: 'screen', authenticLayout: true }, 'reading');
+  blog.layout.chrome = Object.assign({}, blog.layout.chrome, { modules: FULL });
+  const drawn = quality.layoutModel(blog).blocks.filter(x => x.type === 'text').map(x => x.text);
+  assert.ok(drawn.some(t => t.indexOf('Something nobody planned for') === 0), 'an invented kind never reaches the picture');
+  // and each kind keeps to the places its medium has
+  for (const kind of Object.keys(mock.MEDIUM_SLOTS)) {
+    for (const slot of mock.MEDIUM_SLOTS[kind]) {
+      for (const mod of mock.modulesFor({ modules: FULL }, kind, slot)) {
+        const def = mock.MODULES[mod.type];
+        if (def) assert.ok(def.media.includes(kind), mod.type + ' stands in a medium it does not belong to: ' + kind);
+      }
+    }
+  }
+  const everywhere = Object.keys(mock.MEDIUM_SLOTS).map(kind =>
+    mock.MEDIUM_SLOTS[kind].reduce((n, slot) => n + mock.modulesFor({ modules: FULL }, kind, slot).length, 0));
+  assert.ok(everywhere.every(n => n > 0), 'a medium receives nothing at all beside its text: ' + everywhere.join('/'));
+});
+
 test('2.4 R3', 'every picture is in proportion: no column is left nearly empty, whatever the text is like', () => {
   const words = 'the quick brown fox jumps over a lazy dog while students argue about trust and gossip in class today'.split(' ');
   const body = (n, per) => {

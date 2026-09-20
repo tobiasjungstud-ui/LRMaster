@@ -690,6 +690,17 @@
       '## Text\n' + 'Title: ' + content.title + '\n' + contentAsText(content, state),
       '## Details the text already carries\n' + Object.keys(meta).map(k => `- ${k}: ${Array.isArray(meta[k]) ? meta[k].join(', ') : meta[k]}`).join('\n'),
       '## What the interface has to show\n' + spec.fields.map(f => `- "${f[0]}": ${f[1]}`).join('\n'),
+      '## The pictures\nThe app draws every picture itself, so a picture is not described but chosen: name the subject with one of these keys.\n'
+        + (spec.subjects || []).map(h => '- ' + h).join('\n')
+        + '\nPick the subject that a picture editor would really put next to this text — a person the text is about gets "portrait", a place gets that place. A field that asks for several subjects gets one key per entry, in the same order.',
+      ['## The rest of the page',
+        'A real page is never one text alone. Around it stands whatever that medium lives on: advertisements, a poll, the most-read list, a sign-up box, the small ads, the weather, a promoted post, a consent banner, the comments. Decide what THIS publication would really show around THIS text and write it into "modules".',
+        'These are the kinds you can use, with the places they can stand:',
+        (spec.modules || []).map(h => '- ' + h).join('\n'),
+        'Each entry is one object: {"type": "one key from the list", "slot": "one of its places", "label": "small line above, e.g. a brand or a section", "heading": "the headline or question", "lines": ["one or two sentences"], "items": ["short entries, for lists, answers, results, letters — use \'left | right\' where two parts belong together"], "cta": "the text on the button", "meta": "the small line, e.g. a date, a number of votes, an address", "subject": "the picture subject where the kind shows a picture"}.',
+        'These kinds are a starting point, not a fence. If this page would show something that is not in the list — a horoscope, a league table, a picture gallery, a traffic warning, a recipe of the day, a list of small ads, anything — then write it anyway: give it your own "type" (a short name), put it in one of the places above, and say what it looks like with "shape": ' + (spec.shapes || []).join(', ') + '. The app draws it in that shape.',
+        'Choose 4 to 8 of them, the ones that page really has. Advertisements are for products and services of that world and have nothing to do with the text. Every other headline, comment, poll or list is about a DIFFERENT subject than this text — that is the point: a reader sees several things on a page, and only one of them is this article. Names, prices, dates and places stay in the same world as the text.',
+      ].join('\n\n'),
       '## Rules\n'
         + '- Everything must fit this one text: the same world, the same place, the same time. A reader must believe the screenshot is real.\n'
         + '- Do NOT repeat, summarise or continue the text. Nothing you write may be a sentence of the text.\n'

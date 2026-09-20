@@ -1584,6 +1584,87 @@
       const broken = env.mock.validate({ width: 10, height: 10, blocks: [{ type: 'text', x: 0, y: 900, text: 'x' }] });
       return ok(good.status === 'pass' && broken.length >= 2, `${good.status}; broken model reports ${broken.length} problems`);
     } });
+  add({ id: 'S37.pictures', section: 37, title: 'Das Medium zeigt echte Bilder: Aufmacher, Porträts statt Initialen, Vorschaubilder – gezeichnet aus einem Motiv, das Claude wählt und die App prüft', kind: 'function',
+    check(env) {
+      const problems = [];
+      const photo = env.mock;
+      if (!(photo.SUBJECTS || []).length) return 'the picture engine knows no subjects';
+      // the catalogue of motifs reaches Claude, and only a motif from it counts
+      const m = layoutMaterial(env, { textType: 'Blog Post', layoutMedium: 'screen' });
+      const spec = env.mock.chromeSpec(m);
+      const prompt = env.prompts.buildLayoutPrompt(m.settings, m.plan, m.content, spec);
+      for (const key of ['portrait', 'classroom', 'city']) if (!prompt.includes(key + ' —')) problems.push('the subject "' + key + '" is not offered to Claude');
+      const cleaned = env.quality.normalizeChrome({ photoSubject: 'a photo of a dog', sidebarSubjects: ['sport', 'invented'] }, spec);
+      if (cleaned.photoSubject) problems.push('an invented subject is passed on to the drawing');
+      if (cleaned.sidebarSubjects.join() !== 'sport') problems.push('invented subjects are not filtered out of a list');
+      // a picture exists even without Claude, and it fits the text
+      const fallback = env.mock.fallbackChrome(m);
+      if (!env.mock.isSubject(fallback.photoSubject)) problems.push('without Claude the picture has no subject');
+      const school = env.mock.subjectFor('The teacher gave the class homework about the lesson at school.', 'city');
+      const sport = env.mock.subjectFor('The team lost the match after a late goal in training.', 'city');
+      if (school === sport) problems.push('the subject does not follow the text');
+      // every medium that shows pictures really has them, and every picture can be drawn
+      const counts = {};
+      for (const textType of env.core.TEXT_TYPES) {
+        for (const layoutMedium of ['screen', 'paper']) {
+          const mm = layoutMaterial(env, { textType, layoutMedium });
+          const model = env.quality.layoutModel(mm);
+          const pics = model.blocks.filter(x => x.type === 'photo');
+          counts[textType + '/' + layoutMedium] = pics.length;
+          for (const pic of pics) if (!env.mock.isSubject(pic.subject)) problems.push(textType + '/' + layoutMedium + ': a picture without a subject');
+        }
+      }
+      const withPictures = Object.values(counts).filter(n => n > 0).length;
+      if (withPictures < 14) problems.push('only ' + withPictures + ' of ' + Object.keys(counts).length + ' pictures of a medium show anything');
+      // a name gets a face, not two letters
+      const blog = env.quality.layoutModel(layoutMaterial(env, { textType: 'Blog Post', layoutMedium: 'screen' }));
+      if (!blog.blocks.some(x => x.type === 'photo' && x.subject === 'portrait' && x.round)) problems.push('the author has no portrait next to their name');
+      return ok(!problems.length, problems.slice(0, 3).join(' | '));
+    } });
+
+  add({ id: 'S37.modules', section: 37, title: 'Um den Text steht, was auf so einer Seite wirklich steht: Werbung, Umfrage, Meistgelesen, Anmeldekasten, Kleinanzeigen – Claude wählt aus dem Katalog und darf Eigenes ergänzen', kind: 'function',
+    check(env) {
+      const problems = [];
+      const kinds = env.mock.MODULE_KEYS || [];
+      if (kinds.length < 12) problems.push('the catalogue of things beside the text is too thin: ' + kinds.length);
+      if (!kinds.includes('ad_banner') || !kinds.includes('poll') || !kinds.includes('teaser')) problems.push('the catalogue misses the obvious kinds');
+      const m = layoutMaterial(env, { textType: 'Blog Post', layoutMedium: 'screen' });
+      const spec = env.mock.chromeSpec(m);
+      const prompt = env.prompts.buildLayoutPrompt(m.settings, m.plan, m.content, spec);
+      for (const k of ['ad_banner', 'poll', 'teaser']) if (!prompt.includes(k + ' [')) problems.push('the kind "' + k + '" is not offered to Claude');
+      if (!/not a fence/.test(prompt) || !/"shape"/.test(prompt)) problems.push('Claude is not told it may add kinds of its own');
+      // what Claude sends comes back in one shape, and an invented kind survives
+      const cleaned = env.quality.normalizeChrome({ modules: [
+        { type: 'ad_banner', heading: 'x'.repeat(400), lines: 'one line', items: [{ bad: 1 }], cta: 'Go', slot: 'nowhere' },
+        { type: 'Horoscope', slot: 'rail', shape: 'note', heading: 'Stars today', lines: ['Leo: say sorry.'] },
+        { type: 'league table', slot: 'below', items: ['City 2 | 1 Rovers'] },
+        'junk', null, 42,
+      ] }, spec);
+      if (cleaned.modules.length !== 3) return 'the module list is not cleaned up: ' + JSON.stringify(cleaned.modules.map(x => x.type));
+      const [banner, horoscope, table] = cleaned.modules;
+      if (banner.heading.length > 200 || banner.items.length) problems.push('a module is not clamped to its shape');
+      if (banner.slot !== 'top') problems.push('an impossible place is not corrected');
+      if (horoscope.type !== 'horoscope' || horoscope.shape !== 'note') problems.push('a kind of Claude\'s own is thrown away');
+      if (env.mock.shapeOf(table) !== 'table') problems.push('the shape of an invented kind is not read off its content');
+      // and they really stand in the picture, in their places, as chrome not as text
+      const withMods = layoutMaterial(env, { textType: 'Blog Post', layoutMedium: 'screen' });
+      withMods.layout.chrome = Object.assign({}, withMods.layout.chrome, { modules: cleaned.modules.concat([
+        { type: 'sponsored', slot: 'below', heading: 'A promoted headline', lines: ['A line.'], items: [], cta: '', meta: '', subject: 'city', label: 'Brand', shape: '' },
+      ]) });
+      const model = env.quality.layoutModel(withMods);
+      const problemsDraw = env.mock.validate(model);
+      if (problemsDraw.length) problems.push('a picture with modules cannot be drawn: ' + problemsDraw[0]);
+      const text = model.blocks.filter(x => x.type === 'text');
+      if (!text.some(x => x.text.indexOf('Stars today') === 0)) problems.push('an invented module is not drawn');
+      if (text.some(x => x.role === 'body' && /Stars today|promoted headline/.test(x.text))) problems.push('a module is drawn as if it were the text of the material');
+      // the rule that watches it
+      const f = layoutFind(env, 'layout.furniture', { textType: 'Blog Post', layoutMedium: 'screen' });
+      const bare = layoutFind(env, 'layout.furniture', { textType: 'Blog Post', layoutMedium: 'screen' }, (c) => { c.modules = []; });
+      if (!f || f.status !== 'pass') problems.push('a page full of modules does not pass the check');
+      if (!bare || bare.status !== 'warn') problems.push('a page with nothing beside the text is not noticed');
+      return ok(!problems.length, problems.slice(0, 3).join(' | '));
+    } });
+
   add({ id: 'S37.rule_proportions', section: 37, title: 'Kontrolle: das Bild ist proportioniert – die Spalten tragen gleich viel, keine bleibt fast leer, und die Seite endet kurz nach dem Text', kind: 'rule', ruleId: 'layout.proportions',
     extra(env) {
       const problems = [];

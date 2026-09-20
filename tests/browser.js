@@ -216,6 +216,78 @@ const SETTINGS = (extra) => `(() => {
     await page.close();
   }
 
+  console.log('\nBrowser audit: the pictures are pictures (2.4)');
+  {
+    const { page, errors } = await open({});
+    // every subject is drawn, and measured on the canvas: a picture has many
+    // tones and a structure, a grey placeholder has neither
+    const measured = await page.evaluate(() => {
+      const { mock } = window.LR;
+      const out = [];
+      for (const subject of mock.SUBJECTS) {
+        const canvas = document.createElement('canvas');
+        canvas.width = 260; canvas.height = 170;
+        const ctx = canvas.getContext('2d');
+        mock.draw(ctx, { width: 260, height: 170, blocks: [{ type: 'photo', x: 0, y: 0, w: 260, h: 170, subject, seed: 12, colour: true }] });
+        const d = ctx.getImageData(0, 0, 260, 170).data;
+        const tones = new Set();
+        let sum = 0, sum2 = 0, n = 0, topSum = 0, topN = 0, botSum = 0, botN = 0;
+        for (let i = 0; i < d.length; i += 4) {
+          const lum = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
+          tones.add((d[i] >> 4) * 256 + (d[i + 1] >> 4) * 16 + (d[i + 2] >> 4));
+          sum += lum; sum2 += lum * lum; n++;
+          const row = Math.floor((i / 4) / 260);
+          if (row < 60) { topSum += lum; topN++; } else if (row > 110) { botSum += lum; botN++; }
+        }
+        const mean = sum / n;
+        out.push({ subject, tones: tones.size, sd: Math.sqrt(sum2 / n - mean * mean), split: Math.abs(topSum / topN - botSum / botN) });
+      }
+      return out;
+    });
+    const flat = measured.filter(x => x.tones < 14 || x.sd < 9);
+    check('every subject is drawn as a picture, not as a grey box', flat.length === 0,
+      flat.map(x => `${x.subject}: ${x.tones} tones, sd ${x.sd.toFixed(1)}`).join(' | '));
+    const structureless = measured.filter(x => x.split < 3 && x.subject !== 'sky');
+    check('the pictures have a composition, not one wash of colour', structureless.length <= 1,
+      structureless.map(x => `${x.subject}: ${x.split.toFixed(1)}`).join(' | '));
+    // two people are not the same person, and the same name always is
+    const faces = await page.evaluate(() => {
+      const { mock } = window.LR;
+      const shot = (seed) => {
+        const canvas = document.createElement('canvas');
+        canvas.width = 80; canvas.height = 80;
+        const ctx = canvas.getContext('2d');
+        mock.draw(ctx, { width: 80, height: 80, blocks: [{ type: 'photo', x: 0, y: 0, w: 80, h: 80, subject: 'portrait', seed, round: true }] });
+        return Array.from(ctx.getImageData(0, 0, 80, 80).data);
+      };
+      const diff = (a, b) => a.reduce((n, v, i) => n + (Math.abs(v - b[i]) > 18 ? 1 : 0), 0) / a.length;
+      const mia = shot(mock.hashOf('Mia Carter')), sam = shot(mock.hashOf('Sam Fenn')), miaAgain = shot(mock.hashOf('Mia Carter'));
+      return { different: diff(mia, sam), same: diff(mia, miaAgain) };
+    });
+    check('two names give two different faces', faces.different > 0.02, JSON.stringify(faces));
+    check('the same name always gives the same face', faces.same === 0, JSON.stringify(faces));
+    // the whole medium, drawn: the lead picture is not empty
+    const lead = await page.evaluate(() => {
+      const { mock, fixture, quality } = window.LR;
+      const m = fixture.material({ textType: 'Blog Post', layoutMedium: 'screen', authenticLayout: true }, 'reading');
+      const model = quality.layoutModel(m);
+      const pic = model.blocks.filter(b => b.type === 'photo').sort((a, b) => b.w * b.h - a.w * a.h)[0];
+      if (!pic) return { none: true };
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.round(pic.w); canvas.height = Math.round(pic.h);
+      const ctx = canvas.getContext('2d');
+      ctx.translate(-pic.x, -pic.y);
+      mock.draw(ctx, model);
+      const d = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+      const tones = new Set();
+      for (let i = 0; i < d.length; i += 4) tones.add((d[i] >> 4) * 256 + (d[i + 1] >> 4) * 16 + (d[i + 2] >> 4));
+      return { subject: pic.subject, tones: tones.size, w: canvas.width, h: canvas.height };
+    });
+    check('the lead picture of a page really shows something', !lead.none && lead.tones >= 14, JSON.stringify(lead));
+    check('drawing the pictures raises no page error', errors.length === 0, errors[0]);
+    await page.close();
+  }
+
   console.log('\nBrowser audit: hostile text in the interface (2.10)');
   {
     const { page, errors } = await open({ scenario: 'xss' });
