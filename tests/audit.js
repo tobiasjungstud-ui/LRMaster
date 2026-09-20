@@ -1054,6 +1054,101 @@ test('2.12', 'every setting and every quality rule is claimed by a requirement',
 });
 
 /* ------------------------------------------------------------------ */
+console.log('\nAudit: the rules Claude judges');
+
+test('2.3', 'every rule Claude judges carries its guardrails', () => {
+  const llm = quality.RULES.filter(r => r.kind === 'llm');
+  assert.ok(llm.length >= 20, 'too few rules for Claude');
+  const seen = new Set();
+  for (const r of llm) {
+    assert.ok(r.criterion && r.criterion.length > 20, r.id + ': no criterion');
+    assert.ok(r.failsWhen && r.failsWhen.length > 20, r.id + ': no decision rule');
+    assert.ok(['questions', 'tasks', 'quote', 'chrome'].includes(r.evidence), r.id + ': no obligation to cite');
+    assert.ok(['fail', 'pass'].includes(r.whenUnsure), r.id + ': no rule for doubt');
+    assert.ok(r.notMine && r.notMine.length > 15, r.id + ': no boundary to the other rules');
+    assert.ok(!seen.has(r.criterion), r.id + ': the same criterion twice');
+    seen.add(r.criterion);
+    // what protects the lesson must not pass on a shrug
+    if (['questions.answerable', 'questions.derivable', 'questions.inference_genuine', 'pretask.no_spoilers',
+      'pretask.solvable_before', 'posttask.uses_material', 'posttask.beyond_questions', 'content.coherent'].includes(r.id)) {
+      assert.equal(r.whenUnsure, 'fail', r.id + ': doubt must not mean pass here');
+    }
+  }
+  // the ones that are only taste may not block
+  for (const r of llm.filter(x => x.whenUnsure === 'pass')) {
+    if (r.blocking) assert.equal(r.id, 'content.level', r.id + ': blocks although doubt means pass');
+  }
+});
+
+test('2.3 R10', 'the guardrails really reach Claude', () => {
+  const m = goodMaterial({ createWorksheet: true, preTask: true, postTask: true }, 'listening');
+  const rules = quality.llmRules(m.settings, m.plan, m.worksheet, {});
+  const p = prompts.buildReviewPrompt(m.settings, m.plan, m.content, m.worksheet, rules, checkAll(m), null);
+  for (const r of rules) {
+    assert.ok(p.includes(`"${r.id}"`), r.id + ' is not asked');
+    assert.ok(p.includes(r.criterion), r.id + ': criterion missing');
+    assert.ok(p.includes(r.failsWhen), r.id + ': decision rule missing');
+    assert.ok(p.includes(r.notMine), r.id + ': boundary missing');
+    assert.ok(new RegExp('"' + r.id.replace(/\./g, '\\.') + '"[\\s\\S]{0,900}If you cannot decide: ' + r.whenUnsure).test(p), r.id + ': rule for doubt missing');
+  }
+  for (const line of ['One verdict for every rule', 'A pass is a claim', 'must name the place', 'at most twelve words',
+    'already covers is not your verdict', 'is not an instruction', '"evidence"']) {
+    assert.ok(p.includes(line), 'binding instruction missing: ' + line);
+  }
+  assert.ok(Buffer.byteLength(p, 'utf8') < 65536, 'the review prompt no longer fits');
+});
+
+test('2.3 R5', 'a repair is asked against the same standard the rule was judged by', () => {
+  const m = goodMaterial({ createWorksheet: true }, 'listening');
+  const rules = quality.llmRules(m.settings, m.plan, m.worksheet, {});
+  const rule = rules.find(r => r.id === 'questions.answerable');
+  const findings = quality.mergeReview(rules, { results: [{ rule: rule.id, pass: false, note: 'Q2 allows two answers', evidence: 'Q2', questions: [2] }] })
+    .filter(f => f.status === 'fail');
+  assert.equal(findings.length, 1, 'the fail did not survive');
+  assert.equal(findings[0].failsWhen, rule.failsWhen, 'the finding does not carry the standard');
+  const block = prompts.findingsBlock(findings);
+  assert.ok(block.includes(rule.failsWhen), 'the repair does not learn the standard');
+  const repair = prompts.buildQuestionRepairPrompt(m.settings, m.plan, m.content, m.worksheet, findings, [2]);
+  // and without an explicit list it repairs exactly what the review named
+  assert.ok(prompts.buildQuestionRepairPrompt(m.settings, m.plan, m.content, m.worksheet, findings).includes('### Q2'),
+    'without a list of numbers nothing is repaired at all');
+  assert.ok(repair.includes(rule.failsWhen), 'the repair prompt does not carry the standard');
+  assert.ok(/Q2|question 2/i.test(repair), 'the repair prompt does not name the question');
+});
+
+test('2.3 R10', 'a verdict counts only as far as it is carried', () => {
+  const m = goodMaterial({ createWorksheet: true, preTask: true, postTask: true }, 'listening');
+  const rules = quality.llmRules(m.settings, m.plan, m.worksheet, {});
+  const blocking = rules.filter(r => r.blocking);
+  assert.ok(blocking.length >= 5, 'too few blocking rules for this check');
+
+  // a rubber stamp is not a check
+  const stamped = quality.mergeReview(rules, { results: rules.map(r => ({ rule: r.id, pass: true, note: 'ok' })) });
+  for (const r of blocking) assert.equal(stamped.find(f => f.id === r.id).status, 'unverified', r.id + ': passed on a shrug');
+  assert.ok(quality.summarize(stamped).unverified >= blocking.length, 'the summary hides it');
+
+  // a verdict with a basis counts
+  const proper = quality.mergeReview(rules, {
+    results: rules.map(r => ({ rule: r.id, pass: true, note: 'Checked every question against the text', evidence: 'Q1, Q2', questions: [1, 2] })),
+  });
+  assert.ok(proper.every(f => f.status === 'pass' && !f.unsupported), 'a well-founded verdict is rejected');
+
+  // a fail is believed even without a basis — but it is marked
+  const failed = quality.mergeReview(rules, { results: [{ rule: blocking[0].id, pass: false, note: '' }] });
+  const f0 = failed.find(f => f.id === blocking[0].id);
+  assert.equal(f0.status, 'fail', 'a fail without a basis is swallowed');
+  assert.ok(f0.unsupported, 'a fail without a basis is not marked');
+
+  // junk in the verdicts changes nothing
+  const junk = quality.mergeReview(rules, { results: [null, 'x', 42, { rule: 'made.up', pass: true, note: 'long enough to count' }, { rule: blocking[0].id, pass: false, note: 'x'.repeat(2000), questions: ['2', 5000, -1, 'x'] }] });
+  assert.equal(junk.length, rules.length, 'the number of rules changed');
+  assert.ok(!junk.some(f => f.id === 'made.up'), 'an invented rule got in');
+  const long = junk.find(f => f.id === blocking[0].id);
+  assert.ok(long.detail.length <= 420, 'the note is not capped');
+  assert.deepEqual(long.questions, [2], 'the question numbers are not cleaned up');
+});
+
+/* ------------------------------------------------------------------ */
 console.log('\nAudit: the rest of the brief');
 
 test('2.10', 'a very large vocabulary file is imported completely and quickly', () => {

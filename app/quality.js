@@ -489,10 +489,10 @@
           return finding(this, problems.length ? 'warn' : 'pass', problems.length ? `Words above ${plan.band} in the instructions — ` + problems.join('; ') + '.' : `Instructions stay within ${plan.band}.`, mark(problems));
         } }),
     ].concat(isPre ? [
-      { id: 'pretask.no_spoilers', group: 'pretask', phase: 'pre', kind: 'llm', title: 'Pre-task does not give away answers', needsWorksheet: true, needsPhase: true, criterion: 'no pre-task anticipates any answer of the comprehension questions or states information that the material is supposed to deliver', blocking: true },
-      { id: 'pretask.solvable_before', group: 'pretask', phase: 'pre', kind: 'llm', title: 'Pre-task is solvable without the material', needsWorksheet: true, needsPhase: true, criterion: 'every pre-task can be carried out before the audio/text is known, from the students\' own knowledge, opinions and the words given in the task', blocking: true },
-      { id: 'pretask.social_fits', group: 'pretask', phase: 'pre', kind: 'llm', title: 'Social form and working mode fit the task', needsWorksheet: true, needsPhase: true, criterion: 'each pre-task really needs its social form (partner/group/plenary tasks give every person something to do and a reason to exchange) and oral tasks ask for speaking rather than writing', blocking: false },
-      { id: 'pretask.confrontation', group: 'pretask', phase: 'pre', kind: 'llm', title: 'Confrontation task really confronts', needsWorksheet: true, needsType: 'confrontation', criterion: 'the confrontation task states a claim, dilemma or contradiction that can honestly be argued both ways, makes students take a position and creates curiosity about the material without answering itself', blocking: false },
+      { id: 'pretask.no_spoilers', group: 'pretask', phase: 'pre', kind: 'llm', title: 'Pre-task does not give away answers', needsWorksheet: true, needsPhase: true, criterion: 'no pre-task anticipates any answer of the comprehension questions or states information that the material is supposed to deliver', failsWhen: 'a pre-task states, names or strongly implies something a comprehension question asks for', evidence: 'tasks', whenUnsure: 'fail', notMine: 'the number, social form, mode and time of the tasks — already measured', blocking: true },
+      { id: 'pretask.solvable_before', group: 'pretask', phase: 'pre', kind: 'llm', title: 'Pre-task is solvable without the material', needsWorksheet: true, needsPhase: true, criterion: 'every pre-task can be carried out before the audio/text is known, from the students\' own knowledge, opinions and the words given in the task', failsWhen: 'a pre-task cannot be carried out without already knowing the material', evidence: 'tasks', whenUnsure: 'fail', notMine: 'whether the task uses the target vocabulary — already measured', blocking: true },
+      { id: 'pretask.social_fits', group: 'pretask', phase: 'pre', kind: 'llm', title: 'Social form and working mode fit the task', needsWorksheet: true, needsPhase: true, criterion: 'each pre-task really needs its social form (partner/group/plenary tasks give every person something to do and a reason to exchange) and oral tasks ask for speaking rather than writing', failsWhen: 'a partner, group or plenary task gives only one person something to do, or an oral task really asks for writing', evidence: 'tasks', whenUnsure: 'pass', notMine: 'which social form was planned — already measured', blocking: false },
+      { id: 'pretask.confrontation', group: 'pretask', phase: 'pre', kind: 'llm', title: 'Confrontation task really confronts', needsWorksheet: true, needsType: 'confrontation', criterion: 'the confrontation task states a claim, dilemma or contradiction that can honestly be argued both ways, makes students take a position and creates curiosity about the material without answering itself', failsWhen: 'the claim has an obvious right answer, cannot be argued without the material, or asks for knowledge instead of a position', evidence: 'tasks', whenUnsure: 'pass', notMine: 'whether a confrontation task exists at all — already measured', blocking: false },
     ] : [
       { id: 'posttask.product', group: 'posttask', phase: 'post', kind: 'deterministic', title: 'Every post-task names what it starts from and what is produced', needsWorksheet: true, needsPhase: true, blocking: false,
         check(ctx) {
@@ -503,10 +503,10 @@
           return finding(this, status, (noProduct.length ? 'No product named at ' + noProduct.join(', ') + '. ' : '') + (noRef.length ? 'No reference to the material at ' + noRef.join(', ') + '.' : '') || 'Every task names its starting point and its product.',
             { postTasks: noProduct.concat(noRef).map(x => Number(/(\d+)/.exec(x)[1])), tasks: noProduct.concat(noRef).map(x => Number(/(\d+)/.exec(x)[1])) });
         } },
-      { id: 'posttask.uses_material', group: 'posttask', phase: 'post', kind: 'llm', title: 'Post-task builds on the material', needsWorksheet: true, needsPhase: true, criterion: 'every post-task starts from something concrete in the audio/text (a statement, a decision, an attitude, a number) and could not be given in the same form without that material', blocking: true },
-      { id: 'posttask.beyond_questions', group: 'posttask', phase: 'post', kind: 'llm', title: 'Post-task goes beyond the comprehension questions', needsWorksheet: true, needsPhase: true, criterion: 'no post-task can be solved by repeating an answer of the comprehension questions or a higher-order task; each one asks the students to produce something of their own (a position, a product, a transfer, a mediation)', blocking: true },
-      { id: 'posttask.social_fits', group: 'posttask', phase: 'post', kind: 'llm', title: 'Social form and working mode fit the task', needsWorksheet: true, needsPhase: true, criterion: 'each post-task really needs its social form (partner/group/plenary tasks give every person something to do and a reason to exchange) and oral tasks ask for speaking rather than writing', blocking: false },
-      { id: 'posttask.mediation', group: 'posttask', phase: 'post', kind: 'llm', title: 'Mediation task names addressee and purpose', needsWorksheet: true, needsType: 'mediation', criterion: 'the mediation task names who the information is for and what that person needs it for, and asks the students to select rather than to translate everything', blocking: false },
+      { id: 'posttask.uses_material', group: 'posttask', phase: 'post', kind: 'llm', title: 'Post-task builds on the material', needsWorksheet: true, needsPhase: true, criterion: 'every post-task starts from something concrete in the audio/text (a statement, a decision, an attitude, a number) and could not be given in the same form without that material', failsWhen: 'the task would work word for word with any other text on the topic', evidence: 'tasks', whenUnsure: 'fail', notMine: 'whether a reference and a product are named — already measured', blocking: true },
+      { id: 'posttask.beyond_questions', group: 'posttask', phase: 'post', kind: 'llm', title: 'Post-task goes beyond the comprehension questions', needsWorksheet: true, needsPhase: true, criterion: 'no post-task can be solved by repeating an answer of the comprehension questions or a higher-order task; each one asks the students to produce something of their own (a position, a product, a transfer, a mediation)', failsWhen: 'the task is done by repeating an answer of the comprehension questions or of a higher-order task', evidence: 'tasks', whenUnsure: 'fail', notMine: 'the type of the task — already measured', blocking: true },
+      { id: 'posttask.social_fits', group: 'posttask', phase: 'post', kind: 'llm', title: 'Social form and working mode fit the task', needsWorksheet: true, needsPhase: true, criterion: 'each post-task really needs its social form (partner/group/plenary tasks give every person something to do and a reason to exchange) and oral tasks ask for speaking rather than writing', failsWhen: 'a partner, group or plenary task gives only one person something to do, or an oral task really asks for writing', evidence: 'tasks', whenUnsure: 'pass', notMine: 'which social form was planned — already measured', blocking: false },
+      { id: 'posttask.mediation', group: 'posttask', phase: 'post', kind: 'llm', title: 'Mediation task names addressee and purpose', needsWorksheet: true, needsType: 'mediation', criterion: 'the mediation task names who the information is for and what that person needs it for, and asks the students to select rather than to translate everything', failsWhen: 'the mediation task names no addressee or no purpose, or asks the students to translate everything instead of selecting', evidence: 'tasks', whenUnsure: 'pass', notMine: 'whether a mediation task exists at all — already measured', blocking: false },
     ]);
   }
 
@@ -515,12 +515,15 @@
   function preTaskText(p) { return [p.title, p.prompt, (p.items || []).join(' '), (p.vocabUsed || []).join(' ')].filter(Boolean).join(' '); }
 
   function finding(rule, status, detail, extra) {
-    return Object.assign({ id: rule.id, group: rule.group, title: rule.title, kind: rule.kind, blocking: !!rule.blocking, status, detail: detail || '' }, extra || {});
+    const base = { id: rule.id, group: rule.group, title: rule.title, kind: rule.kind, blocking: !!rule.blocking, status, detail: detail || '' };
+    // a rule Claude judges carries its standard, so a repair prompt can quote it
+    if (rule.failsWhen) base.failsWhen = rule.failsWhen;
+    return Object.assign(base, extra || {});
   }
 
   const RULES = [
     // Content
-    { id: 'content.topic_unit', group: 'content', kind: 'llm', title: 'Topic fits the unit', criterion: 'the theme of the material fits the textbook unit and the intended topic', blocking: false },
+    { id: 'content.topic_unit', group: 'content', kind: 'llm', title: 'Topic fits the unit', criterion: 'the theme of the material fits the textbook unit and the intended topic', failsWhen: 'the material could be about any topic and never touches the unit\'s theme, or it contradicts the intended topic', evidence: 'quote', whenUnsure: 'pass', notMine: 'whether the target words appear at all and how long the text is — both are already measured', blocking: false },
     { id: 'content.vocab_used', group: 'content', kind: 'deterministic', title: 'Target vocabulary used sensibly', blocking: true,
       check(ctx) {
         const { plan, state, content } = ctx;
@@ -531,10 +534,10 @@
         const ok = m.found.length >= required;
         return finding(this, ok ? 'pass' : 'fail', `${m.found.length} of ${plan.vocabulary.length} target items found (required: ${required}).` + (m.missing.length && (manual || !ok) ? ' Missing: ' + m.missing.slice(0, 12).join(', ') : ''), { found: m.found, missing: m.missing });
       } },
-    { id: 'content.vocab_natural', group: 'content', kind: 'llm', title: 'Vocabulary integrated naturally', criterion: 'target words are integrated naturally and not forced into the text', blocking: false },
-    { id: 'content.coherent', group: 'content', kind: 'llm', title: 'Text is coherent', criterion: 'the text/conversation is coherent and logically consistent', blocking: true },
-    { id: 'content.natural', group: 'content', kind: 'llm', title: 'Conversation/text sounds natural', criterion: 'the language sounds natural for the format and the naturalness setting', blocking: false },
-    { id: 'content.level', group: 'content', kind: 'llm', title: 'Language matches the CEFR level', criterion: 'the language stays at the configured CEFR level (not clearly above or below)', blocking: true },
+    { id: 'content.vocab_natural', group: 'content', kind: 'llm', title: 'Vocabulary integrated naturally', criterion: 'target words are integrated naturally and not forced into the text', failsWhen: 'a target word sits in a sentence that exists only to place it, in a collocation nobody uses, or is explained like a glossary entry', evidence: 'quote', whenUnsure: 'pass', notMine: 'whether the words appear at all — that is already measured', blocking: false },
+    { id: 'content.coherent', group: 'content', kind: 'llm', title: 'Text is coherent', criterion: 'the text/conversation is coherent and logically consistent', failsWhen: 'facts, names, numbers or the order of events contradict each other, somebody knows something they cannot know, or a pronoun has no antecedent', evidence: 'quote', whenUnsure: 'fail', notMine: 'language level and naturalness — those are their own rules', blocking: true },
+    { id: 'content.natural', group: 'content', kind: 'llm', title: 'Conversation/text sounds natural', criterion: 'the language sounds natural for the format and the naturalness setting', failsWhen: 'the text reads like an exercise instead of the real format: a dialogue without reactions, a blog post without a voice, no discourse markers although naturalness is set high', evidence: 'quote', whenUnsure: 'pass', notMine: 'the CEFR level and the coherence of the content', blocking: false },
+    { id: 'content.level', group: 'content', kind: 'llm', title: 'Language matches the CEFR level', criterion: 'the language stays at the configured CEFR level (not clearly above or below)', failsWhen: 'single structures or words would stop a learner at this level even though the measured average fits, or the text stays far below the level in every sentence', evidence: 'quote', whenUnsure: 'pass', notMine: 'the measured band, sentence length and word frequencies — the meter reports those, judge only what it cannot see', blocking: true },
     { id: 'content.level_measured', group: 'content', kind: 'deterministic', title: 'Measured difficulty matches the CEFR level', blocking: false,
       check(ctx) {
         if (ctx.plan.levelMeter === false) return finding(this, 'pass', 'Level meter switched off.');
@@ -588,7 +591,7 @@
         const ok = missing.length === 0 && unknown.length === 0;
         return finding(this, ok ? 'pass' : 'fail', (missing.length ? 'Missing: ' + missing.join(', ') + '. ' : '') + (unknown.length ? 'Unexpected labels: ' + unknown.join(', ') : '') || 'All labels used.');
       } },
-    { id: 'listening.distinguishable', group: 'listening', kind: 'llm', title: 'Speakers are clearly distinguishable', only: 'listening', criterion: 'the speakers are clearly distinguishable by what they say, their role and their manner of speaking', blocking: false },
+    { id: 'listening.distinguishable', group: 'listening', kind: 'llm', title: 'Speakers are clearly distinguishable', only: 'listening', criterion: 'the speakers are clearly distinguishable by what they say, their role and their manner of speaking', failsWhen: 'swapping the speaker labels would change nothing: same register, same role, same knowledge', evidence: 'quote', whenUnsure: 'pass', notMine: 'the speaking shares and the number of turns — already measured', blocking: false },
     { id: 'listening.emotion_tags', group: 'listening', kind: 'deterministic', title: 'Emotion tags are distributed sensibly', only: 'listening', blocking: false,
       check(ctx) {
         const st = tagStats(ctx.content.lines);
@@ -610,16 +613,16 @@
         const status = dev <= 0.35 && cvDev <= 0.35 ? 'pass' : dev <= 0.6 && cvDev <= 0.5 ? 'warn' : 'fail';
         return finding(this, status, `Mean ${st.meanTurn.toFixed(1)} words/turn (target ≈ ${target}); variability ${st.turnCV.toFixed(2)} (target ≈ ${wantCV.toFixed(2)}); ${st.turns} turns.`);
       } },
-    { id: 'listening.no_artificial_switches', group: 'listening', kind: 'llm', title: 'No unnecessarily artificial speaker changes', only: 'listening', criterion: 'speaker changes are motivated by the conversation; there are no artificial switches', blocking: false },
+    { id: 'listening.no_artificial_switches', group: 'listening', kind: 'llm', title: 'No unnecessarily artificial speaker changes', only: 'listening', criterion: 'speaker changes are motivated by the conversation; there are no artificial switches', failsWhen: 'a speaker change has no reason in the conversation, e.g. one thought is cut in two or somebody answers a question nobody asked', evidence: 'quote', whenUnsure: 'pass', notMine: 'turn length and variability — already measured', blocking: false },
     // Questions
     { id: 'questions.count', group: 'questions', kind: 'deterministic', title: 'Number of questions matches', needsWorksheet: true, blocking: true,
       check(ctx) {
         const n = ctx.worksheet.questions.length;
         return finding(this, n === ctx.plan.questionCount ? 'pass' : 'fail', `${n} questions, ${ctx.plan.questionCount} planned.`);
       } },
-    { id: 'questions.answerable', group: 'questions', kind: 'llm', title: 'Every question is answerable unambiguously', needsWorksheet: true, criterion: 'every question has exactly one defensible answer', blocking: true },
-    { id: 'questions.derivable', group: 'questions', kind: 'llm', title: 'Correct answer follows from the material', needsWorksheet: true, criterion: 'each key answer can actually be derived from the material (and from the evidence quote given)', blocking: true },
-    { id: 'questions.distractors', group: 'questions', kind: 'llm', title: 'Distractors are plausible', needsWorksheet: true, criterion: 'distractors in closed formats are plausible but clearly wrong', blocking: false },
+    { id: 'questions.answerable', group: 'questions', kind: 'llm', title: 'Every question is answerable unambiguously', needsWorksheet: true, criterion: 'every question has exactly one defensible answer', failsWhen: 'a question has more than one defensible answer, or none at all, for a student who has understood the material', evidence: 'questions', whenUnsure: 'fail', notMine: 'whether the evidence quote exists in the material (measured) and whether the answer follows from it (questions.derivable)', blocking: true },
+    { id: 'questions.derivable', group: 'questions', kind: 'llm', title: 'Correct answer follows from the material', needsWorksheet: true, criterion: 'each key answer can actually be derived from the material (and from the evidence quote given)', failsWhen: 'the key answer needs knowledge from outside the material, or the evidence quote given does not support it', evidence: 'questions', whenUnsure: 'fail', notMine: 'ambiguity of the question itself — that is questions.answerable', blocking: true },
+    { id: 'questions.distractors', group: 'questions', kind: 'llm', title: 'Distractors are plausible', needsWorksheet: true, criterion: 'distractors in closed formats are plausible but clearly wrong', failsWhen: 'a distractor is also correct, or so absurd that it can be ruled out without reading the material', evidence: 'questions', whenUnsure: 'pass', notMine: 'the number of options and whether the answer is one of them — already measured', blocking: false },
     { id: 'questions.complete', group: 'questions', kind: 'deterministic', title: 'Every question can be used as it stands', needsWorksheet: true, blocking: true,
       check(ctx) {
         const bad = [], soft = [];
@@ -712,7 +715,7 @@
         }
         return finding(this, dupes.length ? 'warn' : 'pass', dupes.length ? 'Possible duplicates: ' + dupes.join(', ') : 'No duplicated evidence.', { questions: dupes.flatMap(d => d.replace(/Q/g, '').split('/').map(Number)) });
       } },
-    { id: 'questions.duplicates_llm', group: 'questions', kind: 'llm', title: 'No two questions test exactly the same information (review)', needsWorksheet: true, criterion: 'no two questions test exactly the same piece of information', blocking: false },
+    { id: 'questions.duplicates_llm', group: 'questions', kind: 'llm', title: 'No two questions test exactly the same information (review)', needsWorksheet: true, criterion: 'no two questions test exactly the same piece of information', failsWhen: 'two questions are answered by the same information, even when they quote different places', evidence: 'questions', whenUnsure: 'pass', notMine: 'questions that point at the same spot with the same skill — already measured', blocking: false },
     { id: 'questions.skill_distribution', group: 'questions', kind: 'deterministic', title: 'Skill distribution matches the settings', needsWorksheet: true, blocking: true,
       check(ctx) {
         const counts = {};
@@ -743,8 +746,8 @@
         const status = off.length ? 'warn' : 'pass';
         return finding(this, status, (off.length ? `Outside ${allowed.join('/')}: Q${off.join(', Q')}. ` : `All questions labelled ${allowed.join('/')}` + (ctx.plan.questionLevelLabel ? ` (${ctx.plan.questionLevelLabel})` : '') + '.') + (missing.length ? ` No band given for Q${missing.join(', Q')}.` : ''), { questions: off });
       } },
-    { id: 'questions.difficulty', group: 'questions', kind: 'llm', title: 'Difficulty matches the requested level', needsWorksheet: true, criterion: 'the questions, their options and the expected answers match the allowed question band(s) and the difficulty setting (not clearly easier or harder)', blocking: false },
-    { id: 'questions.inference_genuine', group: 'questions', kind: 'llm', title: 'Inference questions are genuinely inferential', needsWorksheet: true, criterion: 'questions labelled inference require reasoning beyond explicitly stated information and are not hidden detail questions', blocking: true },
+    { id: 'questions.difficulty', group: 'questions', kind: 'llm', title: 'Difficulty matches the requested level', needsWorksheet: true, criterion: 'the questions, their options and the expected answers match the allowed question band(s) and the difficulty setting (not clearly easier or harder)', failsWhen: 'the expected answer, the options or the question itself need language clearly above or below the allowed band', evidence: 'questions', whenUnsure: 'pass', notMine: 'the difficulty label on the question — already checked against the band', blocking: false },
+    { id: 'questions.inference_genuine', group: 'questions', kind: 'llm', title: 'Inference questions are genuinely inferential', needsWorksheet: true, criterion: 'questions labelled inference require reasoning beyond explicitly stated information and are not hidden detail questions', failsWhen: 'a question labelled inference can be answered by copying one sentence of the material', evidence: 'questions', whenUnsure: 'fail', notMine: 'the skill distribution over the whole worksheet — already measured', blocking: true },
     { id: 'questions.evidence', group: 'questions', kind: 'deterministic', title: 'Every question has verifiable evidence', needsWorksheet: true, blocking: false,
       check(ctx) {
         const mat = materialText(ctx.content, ctx.state.kind);
@@ -800,7 +803,7 @@
         return finding(this, problems.length ? 'fail' : 'pass', problems.length ? problems.join('; ') : `${model.label}: ${model.width} × ${model.height} px, ${model.blocks.length} elements.`);
       } },
     { id: 'layout.authentic', group: 'layout', kind: 'llm', title: 'The medium looks real and fits the text', needsLayout: true,
-      criterion: 'the interface around the text (address, site or app name, navigation, buttons, counts, times) is what that medium really looks like and fits this text: same world, names, places and dates agree, nothing contradicts the text', blocking: false },
+      criterion: 'the interface around the text (address, site or app name, navigation, buttons, counts, times) is what that medium really looks like and fits this text: same world, names, places and dates agree, nothing contradicts the text', failsWhen: 'the interface contradicts the text (other names, places, dates) or shows something this medium does not have', evidence: 'chrome', whenUnsure: 'pass', notMine: 'completeness of the interface fields and whether the picture shows the text unchanged — both are measured', blocking: false },
   ];
 
   /** Claude's interface data → the shape the picture is built from. */
@@ -883,13 +886,42 @@
     return applicableRules(state, plan, worksheet).filter(r => r.kind === 'llm' && (!r.needsLayout || has.layout));
   }
 
-  /** Merge Claude's review into findings. */
+  const EMPTY_NOTE = /^(ok(ay)?|fine|good|great|pass(ed)?|yes|no|none|n\/a|alles ok|passt|gut|in ordnung|no issues?|looks good|seems fine)[.!]?$/i;
+
+  /**
+   * Is the verdict carried by something? A rule asks for question or task
+   * numbers, or for a quote; a verdict that names neither is an opinion, and
+   * an opinion is not a check. Used to keep an unsupported "pass" on a
+   * blocking rule out of the report as a pass.
+   */
+  function verdictSupported(rule, note, evidence, questions) {
+    const text = (evidence + ' ' + note).trim();
+    if (!text || EMPTY_NOTE.test(note.trim())) return !!questions.length;
+    if (rule.evidence === 'questions' || rule.evidence === 'tasks') return questions.length > 0 || /\d/.test(text);
+    return text.split(/\s+/).filter(Boolean).length >= 4;
+  }
+
+  /**
+   * Merge Claude's review into findings. What comes back is an opinion, so it
+   * is taken only as far as it is usable: verdicts for rules that were never
+   * asked are dropped, a missing verdict stays "unverified", and a "pass" on
+   * a blocking rule without any basis is counted as unverified rather than as
+   * a check that was carried out.
+   */
   function mergeReview(rules, review) {
     const results = (review && Array.isArray(review.results)) ? review.results : [];
     return rules.map(r => {
-      const hit = results.find(x => x && String(x.rule) === r.id);
+      const hit = results.find(x => x && typeof x === 'object' && String(x.rule) === r.id);
       if (!hit) return finding(r, 'unverified', 'No verdict returned.');
-      return finding(r, hit.pass ? 'pass' : 'fail', String(hit.note || ''), { questions: Array.isArray(hit.questions) ? hit.questions.map(Number) : [] });
+      const note = String(hit.note == null ? '' : hit.note).slice(0, 400).trim();
+      const evidence = String(hit.evidence == null ? '' : hit.evidence).slice(0, 300).trim();
+      const questions = (Array.isArray(hit.questions) ? hit.questions : []).map(Number).filter(n => Number.isFinite(n) && n > 0 && n < 1000);
+      const supported = verdictSupported(r, note, evidence, questions);
+      const detail = [note, evidence && !note.includes(evidence) ? '„' + evidence + '“' : ''].filter(Boolean).join(' ');
+      if (hit.pass && !supported && r.blocking) {
+        return finding(r, 'unverified', (detail ? detail + ' — ' : '') + 'Zusage ohne Beleg: nicht als geprüft gewertet.', { questions, unsupported: true });
+      }
+      return finding(r, hit.pass ? 'pass' : 'fail', detail, { questions, unsupported: !supported });
     });
   }
 
@@ -998,7 +1030,7 @@
     repairable, repairPlan, problemScore, applyQuestionPatch, applyTaskPatch, applyPreTaskPatch, applyPostTaskPatch,
     changedQuestions, changedTasks, changedPreTasks, changedPostTasks, STRUCTURAL, applicableRules, runDeterministic,
     normalizePreTask, preTaskText, socialLabel, taskRules, normalizeChrome, mergeChrome, layoutModel, sharedRun,
-    runContentChecks, llmRules, mergeReview, blockingFailures, summarize,
+    runContentChecks, llmRules, mergeReview, verdictSupported, blockingFailures, summarize,
     chronologyReport, enforceChronology, normalizeGlossary, slimMeasurement,
   };
 });

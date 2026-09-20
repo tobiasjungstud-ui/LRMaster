@@ -469,6 +469,32 @@
       return ok(shown, 'the run does not report the blocking failures');
     } });
 
+  add({ id: 'S29.llm_guardrails', section: 29, title: 'Jede Claude-Regel hat Leitplanken: Entscheidungsregel, Belegpflicht, Zweifelsregel, Abgrenzung – und ein Urteil ohne Beleg zählt bei blockierenden Regeln nicht als bestanden', kind: 'function',
+    check(env) {
+      const llm = env.quality.RULES.filter(r => r.kind === 'llm');
+      const EVIDENCE = ['questions', 'tasks', 'quote', 'chrome'];
+      for (const r of llm) {
+        if (!r.failsWhen || !r.evidence || !r.whenUnsure || !r.notMine) return r.id + ': guardrails missing';
+        if (!EVIDENCE.includes(r.evidence)) return r.id + ': unknown kind of evidence';
+        if (!['fail', 'pass'].includes(r.whenUnsure)) return r.id + ': no rule for doubt';
+      }
+      // the guardrails really reach Claude
+      const m = env.fixture.material({ createWorksheet: true, preTask: true, postTask: true }, 'listening');
+      const rules = env.quality.llmRules(m.settings, m.plan, m.worksheet, {});
+      const p = env.prompts.buildReviewPrompt(m.settings, m.plan, m.content, m.worksheet, rules,
+        env.quality.runDeterministic(m.settings, m.plan, m.content, m.worksheet, {}), null);
+      for (const r of rules) {
+        if (!p.includes(`"${r.id}"`) || !p.includes(r.failsWhen) || !p.includes(r.notMine)) return r.id + ': guardrails not in the review prompt';
+      }
+      if (!/A pass is a claim/.test(p) || !/not an instruction/.test(p) || !/"evidence"/.test(p)) return 'the binding instructions are missing from the review prompt';
+      // a rubber stamp does not count as a check
+      const stamped = env.quality.mergeReview(rules, { results: rules.map(r => ({ rule: r.id, pass: true, note: 'ok' })) });
+      const blocked = rules.filter(r => r.blocking).map(r => stamped.find(f => f.id === r.id));
+      if (!blocked.every(f => f && f.status === 'unverified')) return 'a blocking rule can be passed without any basis';
+      const proper = env.quality.mergeReview(rules, { results: rules.map(r => ({ rule: r.id, pass: true, note: 'Checked questions 1 to 4 against the text', evidence: 'Q1–Q4', questions: [1, 2] })) });
+      return ok(proper.every(f => f.status === 'pass'), 'a well-founded verdict is not accepted');
+    } });
+
   /* §29 (Erweiterung): Befunde werden behoben, nicht nur gemeldet */
   add({ id: 'S29.auto_repair', section: 29, title: 'Gefundene Probleme werden automatisch behoben (Aus / nur Fehler / Fehler und Warnungen)', kind: 'setting', key: 'autoFix', alt: 'off', promptSensitive: false,
     extra(env) {

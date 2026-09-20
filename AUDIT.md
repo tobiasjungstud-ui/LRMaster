@@ -58,6 +58,8 @@ Jede Dimension mit Abnahmekriterium. Arbeite alle ab, keine auslassen.
 Anzahl, Formate (nur erlaubte), Chronologie (Reihenfolge = Textreihenfolge, auch nach Reparatur und Umsortierung), Evidenz (jede Antwort im Text belegbar, Zeilen-/Absatzverweis stimmt), Dubletten, Niveau A/B (Bänder wirklich unterschiedlich schwer), Skill-Mix, MC-Distraktoren (eindeutig falsch, aber plausibel), True/False ohne Verräter-Formulierung. **Kriterium:** Für jede Regel ein Positiv- *und* ein Negativfall; die Regel muss den Negativfall fangen.
 
 ### 2.3 Die Qualitätskontrolle selbst (hier ist der Kern)
+
+Für die Regeln, die **Claude** beurteilt, ist nicht das Urteil prüfbar, wohl aber seine Leitplanken. Jede muss mitführen und im Prompt ausschreiben: **Entscheidungsregel** (wann genau ist sie verletzt), **Belegpflicht** (Nummern oder Zitat), **Zweifelsregel** (im Zweifel durchfallen oder bestehen), **Abgrenzung** (was schon gemessen ist oder einer anderen Regel gehört). Prüfe ausserdem: Ein Freispruch ohne Beleg darf bei einer blockierenden Regel nicht als geprüft zählen, ein Urteil für eine nicht gestellte Regel darf nicht in den Bericht, und die Korrektur muss gegen dieselbe Entscheidungsregel arbeiten wie das Urteil.
 Eine Prüfung, die nie anschlägt, ist schlimmer als keine. Für **jede** Regel in `quality.js`:
 - Material bauen, das die Regel verletzt → Regel muss `fail`/`warn` liefern (kein falsches Negativ).
 - Sauberes Material → Regel muss `pass` liefern (kein falsches Positiv).

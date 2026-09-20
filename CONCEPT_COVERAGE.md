@@ -2,7 +2,7 @@
 
 Erzeugt von `npm run coverage`. Jede Zeile ist eine Anforderung aus `docs/Konzept_Listening_Reading_Creator.md`, gebunden an die Stelle im Code, die sie umsetzt, und das Ergebnis der automatischen Prüfung (`npm test`).
 
-**Ergebnis: 308 von 308 Anforderungen bestanden.**
+**Ergebnis: 309 von 309 Anforderungen bestanden.**
 
 Prüfarten: **setting** – Steuerelement vorhanden und Änderung des Werts verändert nachweislich den Prompt an Claude · **function** – Verhalten wird mit echten Eingaben ausgeführt und verglichen · **rule** – Qualitätsregel existiert als Messung oder Claude-Review-Kriterium · **render** – Ausgabe wird auf einer Fixture gerendert und inhaltlich geprüft · **ui** – Navigations-/Strukturelement existiert.
 
@@ -270,7 +270,7 @@ Prüfarten: **setting** – Steuerelement vorhanden und Änderung des Werts ver�
 | ✅ | `S28.teacher_rationale` | Teacher Version: Begründung für Inference-Fragen | render | render.js (renderStudentHTML / renderTeacherHTML) |
 | ✅ | `X.no_hardcoded_content` | Kontrolle: keine hartkodierten Textbausteine für Titel, Instruktion, Fragen, Pre-Tasks oder Themen | function | Funktion (siehe Check im Manifest) |
 
-## §29 Quality Check (34/34)
+## §29 Quality Check (35/35)
 
 | Status | ID | Anforderung | Art | Umsetzung |
 |---|---|---|---|---|
@@ -293,6 +293,7 @@ Prüfarten: **setting** – Steuerelement vorhanden und Änderung des Werts ver�
 | ✅ | `S29.questions.inference_genuine` | Quality Check – Questions: Inference-Fragen wirklich inferentiell | rule | Quality rule `questions.inference_genuine` (Claude-Review über buildReviewPrompt) |
 | ✅ | `S29.before_output` | Qualitätskontrolle läuft automatisch vor der Ausgabe (deterministisch + Claude-Review, Revision bei Fehlern) | function | Funktion (siehe Check im Manifest) |
 | ✅ | `S29.blocking_visible` | Nicht bestandene blockierende Prüfungen werden ausgewiesen – im Lauf, im Quality-Check, in der Lehrerversion und im Word-Export | function | Funktion (siehe Check im Manifest) |
+| ✅ | `S29.llm_guardrails` | Jede Claude-Regel hat Leitplanken: Entscheidungsregel, Belegpflicht, Zweifelsregel, Abgrenzung – und ein Urteil ohne Beleg zählt bei blockierenden Regeln nicht als bestanden | function | Funktion (siehe Check im Manifest) |
 | ✅ | `S29.auto_repair` | Gefundene Probleme werden automatisch behoben (Aus / nur Fehler / Fehler und Warnungen) | setting | Setting `autoFix` (core.SCHEMA → Control `[data-setting="autoFix"]` → prompts.js) |
 | ✅ | `S29.auto_repair_rounds` | Mehrere Korrekturrunden, bis die Prüfung sauber ist (max. einstellbar) | setting | Setting `autoFixRounds` (core.SCHEMA → Control `[data-setting="autoFixRounds"]` → prompts.js) |
 | ✅ | `S29.targeted_repair` | Beanstandete Fragen werden gezielt ersetzt, der Rest des Arbeitsblatts bleibt unverändert | function | Funktion (siehe Check im Manifest) |

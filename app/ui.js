@@ -1050,7 +1050,7 @@
         + '<ul>' + blocked.map(x => `<li>${esc(x.title)} – ${esc(x.detail)}</li>`).join('') + '</ul></div>';
     }
     if (m.level) html += `<h3>Schwierigkeitsmesser · Ziel ${esc(m.plan.cefr)}</h3>` + render.levelMeterHTML(m.level, m.plan.cefr);
-    const table = (list) => `<div class="table-wrap"><table class="qc-table"><tbody>` + list.map(x => `<tr class="qc-${x.status}${x.status === 'fail' && x.blocking ? ' qc-blocking' : ''}"><td class="qc-status">${x.status}${x.status === 'fail' && x.blocking ? ' · blockierend' : ''}</td><td>${esc(x.title)}<div class="muted small">${x.kind === 'llm' ? 'Claude-Review' : 'gemessen'}${x.questions && x.questions.length ? ' · Q' + x.questions.join(', Q') : ''}</div></td><td class="muted">${esc(x.detail)}</td></tr>`).join('') + '</tbody></table></div>';
+    const table = (list) => `<div class="table-wrap"><table class="qc-table"><tbody>` + list.map(x => `<tr class="qc-${x.status}${x.status === 'fail' && x.blocking ? ' qc-blocking' : ''}"><td class="qc-status">${x.status}${x.status === 'fail' && x.blocking ? ' · blockierend' : ''}</td><td>${esc(x.title)}<div class="muted small">${x.kind === 'llm' ? 'Claude-Review' + (x.unsupported ? ' · ohne Beleg' : '') : 'gemessen'}${x.questions && x.questions.length ? ' · Q' + x.questions.join(', Q') : ''}</div></td><td class="muted">${esc(x.detail)}</td></tr>`).join('') + '</tbody></table></div>';
     for (const [g, title] of [['content', 'Content'], ['listening', 'Listening']]) {
       const list = f.filter(x => x.group === g);
       if (list.length) html += `<h3>${title}</h3>` + table(list);

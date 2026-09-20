@@ -345,7 +345,7 @@
         html += `<p class="qc-blocked"><strong>${blocked.length} blocking check(s) failed</strong> — do not hand this material out unchanged: `
           + blocked.map(f => esc(f.title)).join('; ') + '.</p>';
       }
-      html += '<ul class="qc-list">' + (m.quality.findings || []).map(f => `<li class="qc-${f.status}${f.status === 'fail' && f.blocking ? ' qc-blocking' : ''}"><span class="qc-status">${f.status}${f.status === 'fail' && f.blocking ? ' · blocking' : ''}</span> ${f.variant ? `<span class="badge">Niveau ${esc(f.variant)}</span> ` : ''}${esc(f.title)}${f.detail ? ` — <span class="muted">${esc(f.detail)}</span>` : ''}</li>`).join('') + '</ul>';
+      html += '<ul class="qc-list">' + (m.quality.findings || []).map(f => `<li class="qc-${f.status}${f.status === 'fail' && f.blocking ? ' qc-blocking' : ''}"><span class="qc-status">${f.status}${f.status === 'fail' && f.blocking ? ' · blocking' : ''}${f.kind === 'llm' && f.unsupported ? ' · no evidence' : ''}</span> ${f.variant ? `<span class="badge">Niveau ${esc(f.variant)}</span> ` : ''}${esc(f.title)}${f.detail ? ` — <span class="muted">${esc(f.detail)}</span>` : ''}</li>`).join('') + '</ul>';
       html += repairListHTML(m.quality.repairs);
       html += '</section>';
     }
