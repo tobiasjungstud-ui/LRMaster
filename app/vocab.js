@@ -9,12 +9,14 @@
   'use strict';
 
   const UNIT_HEADING = /^\s*(unit|einheit|lektion|lesson|chapter|kapitel|module|topic)\s*([0-9]+[a-z]?)?\s*[:\-–—.]?\s*(.*)$/i;
+  /** A line or cell only counts as vocabulary if it carries a letter or digit. */
+  const HAS_WORD = /[0-9A-Za-zÀ-ÿ\u0100-\u024F\u0370-\uFFFF]/;
 
   function detectDelimiter(lines) {
     const candidates = ['\t', ';', ',', '|'];
     let best = null, bestScore = 0;
     for (const d of candidates) {
-      const counts = lines.filter(l => l.trim() && !UNIT_HEADING.test(l.trim())).map(l => l.split(d).length - 1);
+      const counts = lines.filter(l => HAS_WORD.test(l) && !UNIT_HEADING.test(l.trim())).map(l => l.split(d).length - 1);
       const withDelim = counts.filter(c => c > 0).length;
       const score = withDelim / Math.max(1, counts.length);
       if (score > bestScore) { bestScore = score; best = d; }
@@ -22,7 +24,7 @@
     if (bestScore < 0.5) {
       // Fall back to " - " / " – " separators typical for word lists.
       const dashRows = lines.filter(l => / [-–—] /.test(l)).length;
-      if (dashRows / Math.max(1, lines.filter(l => l.trim() && !UNIT_HEADING.test(l.trim())).length) >= 0.5) return 'dash';
+      if (dashRows / Math.max(1, lines.filter(l => HAS_WORD.test(l) && !UNIT_HEADING.test(l.trim())).length) >= 0.5) return 'dash';
       return null;
     }
     return best;
@@ -86,13 +88,17 @@
       return u;
     };
     let colMap = null;
+    let seenData = false;
     for (const raw of rows) {
       const cells = (raw || []).map(c => (c === null || c === undefined) ? '' : String(c).trim());
       if (cells.every(c => !c)) continue;
-      if (!colMap) {
+      // only the very first row can be the header: otherwise a line like
+      // "a word,Wort" in the middle of the list would be swallowed as one
+      if (!colMap && !seenData) {
         const hdr = detectHeader(cells);
-        if (hdr) { colMap = hdr; continue; }
+        if (hdr) { colMap = hdr; seenData = true; continue; }
       }
+      seenData = true;
       const nonEmpty = cells.filter(Boolean);
       // A unit heading row: a single cell (or first cell with rest empty) matching "Unit n …".
       if (nonEmpty.length === 1 || (cells[0] && cells.slice(1).every(c => !c))) {
@@ -105,7 +111,8 @@
           continue;
         }
         if (nonEmpty.length === 1 && !colMap) {
-          // Bare word without translation.
+          // Bare word without translation — but not a row of separators.
+          if (!HAS_WORD.test(nonEmpty[0])) { warnings.push('Zeile ohne Wort übersprungen: ' + nonEmpty[0]); continue; }
           (current || (current = ensureUnit())).words.push({ word: nonEmpty[0], translation: '', note: '' });
           continue;
         }
@@ -130,6 +137,8 @@
         if (!current) current = ensureUnit();
       }
       if (!entry.word) { warnings.push('Zeile ohne Vokabel übersprungen: ' + cells.join(' | ')); continue; }
+      // separator leftovers like "---" or ";;;" are not vocabulary
+      if (!HAS_WORD.test(entry.word)) { warnings.push('Zeile ohne Wort übersprungen: ' + cells.join(' | ')); continue; }
       current.words.push(entry);
     }
     // Deduplicate within a unit.

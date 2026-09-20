@@ -288,6 +288,9 @@ mark.vocab { background: var(--mark); color: inherit; border-radius: 3px; paddin
 .qc-pass .qc-status { color: var(--good); }
 .qc-warn .qc-status { color: var(--warn); }
 .qc-fail .qc-status { color: var(--bad); }
+.qc-blocked { border: 1px solid var(--bad); border-left-width: 4px; border-radius: 8px; padding: .6rem .8rem; margin: .6rem 0 1rem; background: color-mix(in srgb, var(--bad) 8%, transparent); }
+.qc-blocked ul { margin: .4rem 0 0; padding-left: 1.1rem; }
+.qc-blocking td, .qc-blocking .qc-status { font-weight: 700; }
 .qc-unverified .qc-status { color: var(--muted); }
 .qc-list { list-style: none; padding: 0; }
 .qc-list li { padding: .15rem 0; }

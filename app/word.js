@@ -827,17 +827,22 @@
     const s = quality.summarize(findings);
     const COLORS = { pass: '1B5E20', warn: '8A5A00', fail: 'A3282B', unverified: GREY };
     const c3 = cols(ctx.W, [0.11, 0.37, 0.52]);
+    const blocked = quality.blockingFailures(findings);
     return [
       SP(12),
       P('Quality check', { after: 3, keepNext: true, run: { font: WS.display, size: 12, bold: true, color: INK } }),
       P(`${s.pass} passed · ${s.warn} warnings · ${s.fail} failed · ${s.unverified} unverified`, { after: 6, run: { font: WS.body, size: 9, color: GREY } }),
+    ].concat(blocked.length ? [
+      P(`${blocked.length} blocking check(s) failed — do not hand this material out unchanged: ` + blocked.map(f => f.title).join('; ') + '.',
+        { after: 8, run: { font: WS.body, size: 9, bold: true, color: 'A3282B' } }),
+    ] : []).concat([
       TBL({ width: ctx.W, widthType: 'dxa', cols: c3, cellMargin: { top: 0.06, left: 0, bottom: 0.06, right: 0.15 }, borders: { insideH: hairline('EDF0F3') },
         rows: findings.map(f => ({ cells: [
           { text: f.status, props: { after: 0, run: { font: WS.body, size: 8.5, bold: true, caps: true, letterSpacing: 0.5, color: COLORS[f.status] || GREY } } },
           { text: f.title, props: { after: 0, run: { font: WS.body, size: 9, color: INK } } },
           { text: f.detail || '', props: { after: 0, run: { font: WS.body, size: 8.5, color: GREY } } },
         ] })) }),
-    ].concat(repairs.length ? [
+    ]).concat(repairs.length ? [
       P('Automatische Korrektur', { before: 10, after: 4, keepNext: true, run: { font: WS.display, size: 10, bold: true, color: INK } }),
       TBL({ width: ctx.W, widthType: 'dxa', cols: c3, cellMargin: { top: 0.06, left: 0, bottom: 0.06, right: 0.15 }, borders: { insideH: hairline('EDF0F3') },
         rows: repairs.map(r => ({ cells: [

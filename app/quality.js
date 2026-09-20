@@ -515,7 +515,7 @@
   function preTaskText(p) { return [p.title, p.prompt, (p.items || []).join(' '), (p.vocabUsed || []).join(' ')].filter(Boolean).join(' '); }
 
   function finding(rule, status, detail, extra) {
-    return Object.assign({ id: rule.id, group: rule.group, title: rule.title, kind: rule.kind, status, detail: detail || '' }, extra || {});
+    return Object.assign({ id: rule.id, group: rule.group, title: rule.title, kind: rule.kind, blocking: !!rule.blocking, status, detail: detail || '' }, extra || {});
   }
 
   const RULES = [
@@ -911,9 +911,14 @@
     return out;
   }
 
+  /**
+   * The failures that mean the material must not be handed out as it is.
+   * A finding carries the flag itself; for older stored materials the rule
+   * list is asked instead.
+   */
   function blockingFailures(findings) {
     const byId = Object.fromEntries(RULES.map(r => [r.id, r]));
-    return findings.filter(f => f.status === 'fail' && byId[f.id] && byId[f.id].blocking);
+    return (findings || []).filter(f => f.status === 'fail' && (f.blocking !== undefined ? f.blocking : !!(byId[f.id] && byId[f.id].blocking)));
   }
 
   function summarize(findings) {

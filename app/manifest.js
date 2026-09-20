@@ -450,6 +450,24 @@
       return ok(det.length >= 8 && llm.length >= 8 && blocking.length === 1 && blocking[0].id === 'questions.answerable' && llm.every(r => rp.includes('"' + r.id + '"')) && pipelineOk, 'quality pipeline incomplete');
     } });
 
+  add({ id: 'S29.blocking_visible', section: 29, title: 'Nicht bestandene blockierende Prüfungen werden ausgewiesen – im Lauf, im Quality-Check, in der Lehrerversion und im Word-Export', kind: 'function',
+    check(env) {
+      const m = env.fixture.material({ createWorksheet: true }, 'reading');
+      m.content.paragraphs = ['much too short'];
+      m.quality = { findings: env.quality.runContentChecks(m.settings, m.plan, m.content) };
+      const blocked = env.quality.blockingFailures(m.quality.findings);
+      if (!blocked.length) return 'a far too short text produces no blocking failure';
+      if (!m.quality.findings.every(f => typeof f.blocking === 'boolean')) return 'findings do not carry the blocking flag';
+      const html = env.render.renderTeacherHTML(m);
+      if (!/blocking check\(s\) failed/.test(html) || !/qc-blocking/.test(html)) return 'the teacher version does not show the blocking failures';
+      // an older stored material without the flag must still be judged
+      const older = m.quality.findings.map(f => { const c = Object.assign({}, f); delete c.blocking; return c; });
+      if (env.quality.blockingFailures(older).length !== blocked.length) return 'older findings are no longer recognised';
+      const src = env.pipelineSource || '';
+      const shown = !src || (/blockingFailures\(findingsAll\)/.test(src) && /blockierend/.test(src));
+      return ok(shown, 'the run does not report the blocking failures');
+    } });
+
   /* §29 (Erweiterung): Befunde werden behoben, nicht nur gemeldet */
   add({ id: 'S29.auto_repair', section: 29, title: 'Gefundene Probleme werden automatisch behoben (Aus / nur Fehler / Fehler und Warnungen)', kind: 'setting', key: 'autoFix', alt: 'off', promptSensitive: false,
     extra(env) {

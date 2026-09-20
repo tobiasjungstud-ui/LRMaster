@@ -55,11 +55,20 @@
     return e.message || String(e);
   }
 
-  /** One Claude call returning JSON. */
+  /**
+   * One Claude call returning JSON. Stop must work even when the call itself
+   * ignores the abort signal, so the wait always ends with the signal.
+   */
   async function askJSON(prompt, opts) {
     opts = opts || {};
     if (!caps.sample) throw { code: 'not_granted', message: 'sample unavailable' };
-    return caps.sample.json(prompt, { modelTier: opts.tier || 'default', cache: false, signal: opts.signal, onText: opts.onText });
+    const call = caps.sample.json(prompt, { modelTier: opts.tier || 'default', cache: false, signal: opts.signal, onText: opts.onText });
+    const signal = opts.signal;
+    if (!signal) return call;
+    if (signal.aborted) throw { code: 'cancelled', message: 'cancelled' };
+    return Promise.race([call, new Promise((_, reject) => {
+      signal.addEventListener('abort', () => reject({ code: 'cancelled', message: 'cancelled' }), { once: true });
+    })]);
   }
 
   /* ------------------------------------------------------------------ */
@@ -620,6 +629,9 @@
   }
 
   async function generate() {
+    // a second start while one run is still going would leave two runs writing
+    // into the same material and the stop button belonging to neither
+    if (app.running) { toast('Es läuft bereits eine Generierung.'); return; }
     const c = ctx();
     const state = core.clone(app.state);
     const errors = core.validateState(state, c);
@@ -763,14 +775,20 @@
       await store.put('materials', material);
       renderOutput(material);
       const open = quality.repairable(findingsAll, state.autoFix === 'off' ? 'all' : state.autoFix).length;
-      progress('done', open ? 'warn' : 'done', `${Math.round((Date.now() - t0) / 1000)} s · ${summaryText(findingsAll)}`);
+      // a blocking check that still fails means: do not hand this out as it is
+      const blocked = quality.blockingFailures(findingsAll);
+      progress('done', blocked.length ? 'fail' : open ? 'warn' : 'done',
+        `${Math.round((Date.now() - t0) / 1000)} s · ${summaryText(findingsAll)}` + (blocked.length ? ` · ${blocked.length} blockierend` : ''));
       const fixedCount = repairs.filter(r => r.accepted).length;
-      toast(fixedCount ? `Material erstellt · ${fixedCount} Korrekturrunde(n) angewendet.` : 'Material erstellt und gespeichert.');
+      toast(blocked.length
+        ? `Material erstellt, aber ${blocked.length} blockierende Prüfung(en) nicht bestanden – siehe Quality Check.`
+        : fixedCount ? `Material erstellt · ${fixedCount} Korrekturrunde(n) angewendet.` : 'Material erstellt und gespeichert.');
     } catch (e) {
       if (e && e.code === 'cancelled') { toast('Generierung abgebrochen.'); progress('done', 'warn', 'abgebrochen'); }
       else { console.error(e); toast('Fehler: ' + errorCopy(e)); progress('done', 'fail', errorCopy(e)); }
     } finally {
-      app.running = null; $('#btn-stop').hidden = true; renderPlanPreview();
+      // only the run that is actually the current one may clear the state
+      if (app.running === ctl) { app.running = null; $('#btn-stop').hidden = true; renderPlanPreview(); }
     }
   }
 
@@ -998,13 +1016,12 @@
       renderLayout(m);
     }));
     const canvas = $('#layout-canvas');
-    const model = mock.buildModel(m, m.layout.chrome, { measure: mock.canvasMeasure(canvas) });
-    const dpr = Math.min(2, window.devicePixelRatio || 1);
-    canvas.width = model.width * dpr; canvas.height = model.height * dpr;
-    canvas.style.width = model.width + 'px'; canvas.style.height = model.height + 'px';
+    // a very long text gives a very tall picture; browsers silently refuse a
+    // canvas that is too large, so the scale is capped to what they accept
     const paint = () => {
       const model2 = mock.buildModel(m, m.layout.chrome, { measure: mock.canvasMeasure(canvas) });
-      canvas.width = model2.width * dpr; canvas.height = model2.height * dpr;
+      const dpr = mock.canvasScale(model2, Math.min(2, window.devicePixelRatio || 1));
+      canvas.width = Math.round(model2.width * dpr); canvas.height = Math.round(model2.height * dpr);
       canvas.style.width = model2.width + 'px'; canvas.style.height = model2.height + 'px';
       const c2 = canvas.getContext('2d');
       c2.setTransform(1, 0, 0, 1, 0, 0);
@@ -1022,8 +1039,14 @@
     const f = m.quality.findings || [];
     const s = quality.summarize(f);
     let html = `<p class="stats">${s.pass} bestanden · ${s.warn} Warnungen · ${s.fail} nicht bestanden · ${s.unverified} nicht geprüft · ${Math.round((m.quality.durationMs || 0) / 1000)} s</p>`;
+    // blocking failures first, so nobody hands out material that did not pass them
+    const blocked = quality.blockingFailures(f);
+    if (blocked.length) {
+      html += `<div class="qc-blocked"><strong>${blocked.length} blockierende Prüfung(en) nicht bestanden.</strong> Dieses Material sollte so nicht eingesetzt werden:`
+        + '<ul>' + blocked.map(x => `<li>${esc(x.title)} – ${esc(x.detail)}</li>`).join('') + '</ul></div>';
+    }
     if (m.level) html += `<h3>Schwierigkeitsmesser · Ziel ${esc(m.plan.cefr)}</h3>` + render.levelMeterHTML(m.level, m.plan.cefr);
-    const table = (list) => `<div class="table-wrap"><table class="qc-table"><tbody>` + list.map(x => `<tr class="qc-${x.status}"><td class="qc-status">${x.status}</td><td>${esc(x.title)}<div class="muted small">${x.kind === 'llm' ? 'Claude-Review' : 'gemessen'}${x.questions && x.questions.length ? ' · Q' + x.questions.join(', Q') : ''}</div></td><td class="muted">${esc(x.detail)}</td></tr>`).join('') + '</tbody></table></div>';
+    const table = (list) => `<div class="table-wrap"><table class="qc-table"><tbody>` + list.map(x => `<tr class="qc-${x.status}${x.status === 'fail' && x.blocking ? ' qc-blocking' : ''}"><td class="qc-status">${x.status}${x.status === 'fail' && x.blocking ? ' · blockierend' : ''}</td><td>${esc(x.title)}<div class="muted small">${x.kind === 'llm' ? 'Claude-Review' : 'gemessen'}${x.questions && x.questions.length ? ' · Q' + x.questions.join(', Q') : ''}</div></td><td class="muted">${esc(x.detail)}</td></tr>`).join('') + '</tbody></table></div>';
     for (const [g, title] of [['content', 'Content'], ['listening', 'Listening']]) {
       const list = f.filter(x => x.group === g);
       if (list.length) html += `<h3>${title}</h3>` + table(list);

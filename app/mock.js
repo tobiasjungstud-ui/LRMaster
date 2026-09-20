@@ -174,7 +174,7 @@
       appName: site, mailboxItems: [], labelChips: [], attachmentName: '', attachmentMeta: '', postMeta: (meta.authors || []).map(() => ''),
       voteCounts: (meta.authors || []).map(() => ''), userBadges: (meta.authors || []).map(() => ''),
       boardInfo: '', boardStats: [], dateLabel: '',
-      deviceTime: '', contactName: meta.byline || '', bubbleTimes: (material.content.paragraphs || []).map(() => ''), statusLine: '',
+      deviceTime: '', contactName: meta.byline || '', bubbleTimes: list(material.content.paragraphs).map(() => ''), statusLine: '',
       publication: site, publicationLine: [meta.dateline, meta.location].filter(Boolean).join(' · '),
       sectionLabel: meta.section || '', photoCaption: '', captionCredit: '', pageLabel: meta.dateline || '',
     };
@@ -276,6 +276,9 @@
   /* Interface furniture                                                  */
   /* ------------------------------------------------------------------ */
 
+  /** Interface data from outside: only a real list is a list. */
+  function list(v) { return Array.isArray(v) ? v : []; }
+
   /** Shorten where an interface would truncate itself, e.g. in a browser tab. */
   function clipText(s, n) { s = String(s == null ? '' : s); return s.length > n ? s.slice(0, n - 1) + '…' : s; }
   function upper(s) { return String(s == null ? '' : s).toUpperCase(); }
@@ -319,7 +322,7 @@
 
   function actionRow(b, x, y, actions, font) {
     let cx = x;
-    for (const a of actions) {
+    for (const a of list(actions)) {
       const label = (a.label || '') + (a.count ? '  ' + a.count : '');
       const w = Math.max(70, approxMeasure(label, font) + 30);
       b.pill(cx, y, w, 30, label, font, {});
@@ -332,7 +335,7 @@
   const ACTION_ICONS = ['heart', 'comment', 'share', 'bookmark'];
   function iconActions(b, x, y, actions, font, accent) {
     let cx = x;
-    actions.slice(0, 4).forEach((a, i) => {
+    list(actions).slice(0, 4).forEach((a, i) => {
       const label = (a.label || '') + (a.count ? '  ' + a.count : '');
       const w = approxMeasure(label, font) + 52;
       b.rect(cx, y, w, 34, { fill: '#FFFFFF', radius: 17, stroke: '#CBD5E1' });
@@ -360,7 +363,8 @@
     const all = wrap(rest, font, colW - capW, measure);
     const beside = all.slice(0, 2);
     const used = beside.join(' ').split(' ').filter(Boolean).length;
-    b.text(x, y + font.size + lh, cap, capFont, { color: capColor, role: 'body', glue: true });
+    // glue only where the initial really opens the word: "T|he", not "A| text"
+    b.text(x, y + font.size + lh, cap, capFont, { color: capColor, role: 'body', glue: !/\s/.test(text.charAt(1)) });
     const put = (lx, ly, line, width, last) => {
       if (o.justify && !last) justifyLine(b, lx, ly, line, font, width, measure, { color: INK, role: 'body' });
       else b.text(lx, ly, line, font, { color: INK, role: 'body' });
@@ -381,7 +385,7 @@
     const W = 1040;
     const b = builder(W, measure);
     const meta = m.content.meta || {};
-    const hasSide = d.sidebar && (chrome.sidebarItems || []).length;
+    const hasSide = d.sidebar && list(chrome.sidebarItems).length;
     const PAD = 56;
     const colW = hasSide ? 604 : Math.min(720, W - 2 * PAD);
     const site = chrome.siteName || meta.publication || meta.blogName || '';
@@ -410,7 +414,7 @@
     b.rect(0, y, W, 40, { fill: '#FFFFFF' });
     b.line(0, y, W, y, { color: LINE });
     let nx = PAD;
-    (chrome.navItems || []).slice(0, 6).forEach((item, i) => {
+    list(chrome.navItems).slice(0, 6).forEach((item, i) => {
       const f = ui(12.5, i === 0 ? 700 : 500);
       const label = upper(item);
       b.text(nx, y + 26, label, f, { color: i === 0 ? d.accent : '#475569', letterSpacing: 0.6 });
@@ -484,9 +488,9 @@
       y += 40;
     }
 
-    if ((meta.tags || []).length) {
+    if (list(meta.tags).length) {
       let tx = PAD;
-      for (const t of meta.tags.slice(0, 5)) {
+      for (const t of list(meta.tags).slice(0, 5)) {
         const font = ui(12, 600);
         const w = approxMeasure('#' + t, font) + 26;
         b.pill(tx, y, w, 27, '#' + t, font, { fill: '#F1F5F9', color: d.accent, stroke: '#E2E8F0' });
@@ -494,7 +498,7 @@
       }
       y += 44;
     }
-    if (d.actions && (chrome.actions || []).length) y = iconActions(b, PAD, y, chrome.actions, ui(13, 600), d.accent) + 26;
+    if (d.actions && list(chrome.actions).length) y = iconActions(b, PAD, y, chrome.actions, ui(13, 600), d.accent) + 26;
 
     // the author box under the text
     if (meta.byline) {
@@ -514,7 +518,7 @@
       b.rect(sx, sy, sw, 4, { fill: d.accent });
       b.text(sx, sy + 30, upper(chrome.sidebarTitle || ''), ui(12, 800), { color: INK, letterSpacing: 1 });
       sy += 46;
-      chrome.sidebarItems.slice(0, 4).forEach((it, i) => {
+      list(chrome.sidebarItems).slice(0, 4).forEach((it, i) => {
         b.photo(sx, sy, 74, 56, { seed: 30 + i * 7, colour: true, tint: i % 2 ? 'green' : 'dusk' });
         b.text(sx + 86, sy + 2, String(i + 1), { family: d.title, size: 15, weight: 800 }, { color: d.accent });
         const end = b.para(sx + 86, sy + 20, it, ui(13, 600), sw - 86, { color: INK, lineHeight: 18 });
@@ -536,7 +540,7 @@
     b.text(PAD + 15, y + 49, initial(site), { family: d.title, size: 17, weight: 800 }, { color: '#FFFFFF', align: 'center' });
     b.text(PAD + 44, y + 50, site, { family: d.title, size: 18, weight: 800 }, { color: '#FFFFFF' });
     let fx = PAD;
-    (chrome.footerLinks || chrome.navItems || []).slice(0, 5).forEach(l => {
+    (list(chrome.footerLinks).length ? list(chrome.footerLinks) : list(chrome.navItems)).slice(0, 5).forEach(l => {
       const f = ui(11.5);
       b.text(fx, y + 86, upper(l), f, { color: '#94A3B8', letterSpacing: 0.5 });
       fx += approxMeasure(upper(l), f) + 24;
@@ -571,7 +575,7 @@
     b.icon('plus', 34, y + 31, 20, { color: '#FFFFFF', weight: 2 });
     b.icon('clip', 104, y + 31, 19, { color: '#FFFFFF', weight: 1.8 });
     let sy = y + 92;
-    (chrome.mailboxItems || []).slice(0, 5).forEach((it, i) => {
+    list(chrome.mailboxItems).slice(0, 5).forEach((it, i) => {
       if (i === 0) b.rect(10, sy - 20, SIDE - 26, 34, { fill: '#DCE7FB', radius: 17 });
       b.icon(i === 0 ? 'inbox' : i === 1 ? 'star' : i === 2 ? 'reply' : 'bookmark', 24, sy - 13, 18,
         { color: i === 0 ? d.accent : '#64748B', weight: 1.7 });
@@ -590,13 +594,13 @@
     let sx2 = x;
     y = b.para(x, y + 24, meta.subject || m.content.title, { family: d.title, size: 25, weight: 700 }, colW - 60, { color: INK, lineHeight: 32 }) - 24 + 12;
     b.icon('star', x + colW - 26, y - 34, 21, { fill: '#F59E0B', stroke: false });
-    (chrome.labelChips || []).slice(0, 3).forEach(l => {
+    list(chrome.labelChips).slice(0, 3).forEach(l => {
       const f = ui(11, 600);
       const w = approxMeasure(l, f) + 22;
       b.pill(sx2, y, w, 22, l, f, { fill: '#E7F0FE', color: d.accent });
       sx2 += w + 8;
     });
-    if ((chrome.labelChips || []).length) y += 34;
+    if (list(chrome.labelChips).length) y += 34;
     y += 14;
     avatar(b, x + 21, y + 4, 21, chrome.authorInitials || initial(meta.from), d.accent);
     b.text(x + 54, y, meta.from || '', ui(14, 700), { color: INK });
@@ -626,9 +630,9 @@
     b.rect(x, y + 6, 34, 20, { fill: '#E7EBF0', radius: 10 });
     b.icon('dots', x + 7, y + 8, 17, { color: '#64748B', weight: 1.7 });
     y += 44;
-    if ((chrome.actions || []).length) {
+    if (list(chrome.actions).length) {
       let cx = x;
-      (chrome.actions || []).slice(0, 3).forEach((a, i) => {
+      list(chrome.actions).slice(0, 3).forEach((a, i) => {
         const f = ui(13, 600);
         const w = approxMeasure(a.label || '', f) + 54;
         b.rect(cx, y, w, 36, { fill: i === 0 ? d.accent : '#FFFFFF', radius: 18, stroke: i === 0 ? null : '#CBD5E1' });
@@ -670,7 +674,7 @@
     const boxTop = y;
     y = b.para(PAD, y + 26, meta.threadTitle || m.content.title, { family: d.title, size: 26, weight: 800 }, MAIN, { color: INK, lineHeight: 33 }) - 26 + 14;
     let nx = PAD;
-    (chrome.navItems || []).slice(0, 5).forEach((item, i) => {
+    list(chrome.navItems).slice(0, 5).forEach((item, i) => {
       const f = ui(12, i === 0 ? 700 : 500);
       const w = approxMeasure(item, f) + 26;
       b.pill(nx, y, w, 26, item, f, { fill: i === 0 ? d.accent : '#FFFFFF', color: i === 0 ? '#FFFFFF' : '#64748B', stroke: i === 0 ? null : LINE });
@@ -678,13 +682,13 @@
     });
     y += 42;
 
-    const authors = meta.authors || [];
-    const stamps = meta.timestamps || [];
-    const postMeta = chrome.postMeta || [];
-    const votes = chrome.voteCounts || [];
-    const badges = chrome.userBadges || [];
+    const authors = list(meta.authors);
+    const stamps = list(meta.timestamps);
+    const postMeta = list(chrome.postMeta);
+    const votes = list(chrome.voteCounts);
+    const badges = list(chrome.userBadges);
     const AV = ['#F97316', '#2563EB', '#16A34A', '#DB2777', '#7C3AED', '#0891B2'];
-    (m.content.paragraphs || []).forEach((p, i) => {
+    list(m.content.paragraphs).forEach((p, i) => {
       const nest = i === 0 ? 0 : Math.min(2, i === 1 ? 1 : (i % 2 ? 1 : 2));
       const left = PAD + nest * 34;
       const cardTop = y;
@@ -737,7 +741,7 @@
     let iy = b.para(bx + 18, by + 74, chrome.boardInfo || '', ui(12), SIDE - 36, { color: MUTED, lineHeight: 18 });
     iy = Math.max(iy, by + 96);
     b.line(bx + 18, iy + 4, bx + SIDE - 18, iy + 4, { color: LINE });
-    (chrome.boardStats || []).slice(0, 3).forEach((st, i) => b.text(bx + 18 + i * 92, iy + 28, st, ui(12, 700), { color: INK }));
+    list(chrome.boardStats).slice(0, 3).forEach((st, i) => b.text(bx + 18 + i * 92, iy + 28, st, ui(12, 700), { color: INK }));
     box.h = Math.max(150, iy + 44 - by);
     y = Math.max(y, by + box.h + 20);
     b.text(PAD, y + 12, chrome.footerNote || '', ui(11.5), { color: MUTED });
@@ -784,8 +788,8 @@
       y += 38;
     }
 
-    const times = chrome.bubbleTimes || [];
-    (m.content.paragraphs || []).forEach((p, i) => {
+    const times = list(chrome.bubbleTimes);
+    list(m.content.paragraphs).forEach((p, i) => {
       const mine = i % 2 === 1;
       const font = { family: d.body, size: 14.5 };
       const maxW = W - 150;
@@ -1035,7 +1039,7 @@
     // the text: first paragraph with an initial, the others indented
     const font = { family: SERIF, size: 15 };
     const lh = 25;
-    (m.content.paragraphs || []).forEach((p, i) => {
+    list(m.content.paragraphs).forEach((p, i) => {
       if (i === 0 && p.length > 60) {
         y = dropCapPara(b, L, y, p, font, inner, SERIF, measure, INK, { lineHeight: lh, justify: true }) + lh - 6;
         return;
@@ -1079,7 +1083,7 @@
     n += 1;
 
     // the writing: every line on its rule, with the small unevenness of a hand
-    (m.content.paragraphs || []).forEach((para, pi) => {
+    list(m.content.paragraphs).forEach((para, pi) => {
       const font = { family: HAND, size: 21 };
       wrapIndent(para, font, inner, measure, pi ? 16 : 0).forEach((l, k) => {
         const jitter = ((pi * 7 + k * 13) % 5) - 2;
@@ -1164,6 +1168,61 @@
   /* Public                                                               */
   /* ------------------------------------------------------------------ */
 
+  /*
+   * How large a picture may become. Browsers refuse a canvas whose side is
+   * over 16384 px or whose area is very large, and they do it silently: the
+   * picture would simply stay empty. A very long text (many short chat
+   * messages, a thread with a hundred posts) reaches that size, so the model
+   * is scaled down to fit instead of failing.
+   */
+  const MAX_SIDE = 15800;
+  const MAX_AREA = 2.4e8;
+
+  /** Scale every coordinate of the model, so it keeps its proportions. */
+  function scaleModel(model, k) {
+    const num = (v) => (typeof v === 'number' ? v * k : v);
+    model.blocks = (model.blocks || []).map(b => {
+      const o = Object.assign({}, b);
+      for (const key of ['x', 'y', 'w', 'h', 'r', 'x1', 'y1', 'x2', 'y2', 'size', 'width', 'letterSpacing', 'lineHeight']) {
+        if (typeof o[key] === 'number') o[key] = num(o[key]);
+      }
+      if (o.radius) o.radius = num(o.radius);
+      if (o.font) o.font = Object.assign({}, o.font, { size: o.font.size * k });
+      if (Array.isArray(o.points)) o.points = o.points.map(([px, py]) => [px * k, py * k]);
+      return o;
+    });
+    if (model.finish) {
+      model.finish = Object.assign({}, model.finish);
+      if (model.finish.page) {
+        const p = model.finish.page;
+        model.finish.page = { x: p.x * k, y: p.y * k, w: p.w * k, h: p.h * k };
+      }
+      if (model.finish.gutter) model.finish.gutter = { x: model.finish.gutter.x * k, w: model.finish.gutter.w * k };
+    }
+    model.width = Math.round(model.width * k);
+    model.height = Math.round(model.height * k);
+    model.scaledBy = Math.round(k * 1000) / 1000;
+    return model;
+  }
+
+  /** Bring a picture into a size that can really be drawn. */
+  function fitModel(model) {
+    const w = model.width, h = model.height;
+    const k = Math.min(1, MAX_SIDE / w, MAX_SIDE / h, Math.sqrt(MAX_AREA / (w * h)));
+    return k < 1 ? scaleModel(model, k) : model;
+  }
+
+  /**
+   * How finely the picture may be drawn onto a canvas: the wish (the device
+   * pixel ratio) capped so that the canvas itself stays within what browsers
+   * accept. Never smaller than 1, because the model already fits.
+   */
+  function canvasScale(model, wish) {
+    const w = Math.max(1, model.width), h = Math.max(1, model.height);
+    const k = Math.min(wish || 1, 16384 / w, 16384 / h, Math.sqrt(2.6e8 / (w * h)));
+    return Math.max(0.5, Math.min(wish || 1, k));
+  }
+
   /** The drawing model of the screenshot; `opts.measure` defaults to the metric estimate. */
   function buildModel(material, chrome, opts) {
     opts = opts || {};
@@ -1182,7 +1241,7 @@
     model.medium = d.medium || 'screen';
     model.label = d.label;
     model.designId = core.designIdFor(material.settings || {});
-    return model;
+    return fitModel(model);
   }
 
   /** Everything the picture shows of the generated text itself. */
@@ -1202,7 +1261,7 @@
     const problems = [];
     if (!model || !Array.isArray(model.blocks) || !model.blocks.length) return ['no drawing blocks'];
     if (!(model.width > 200) || !(model.height > 200)) problems.push('implausible image size');
-    if (model.height > 12000) problems.push('image too high: ' + model.height);
+    if (model.height > MAX_SIDE + 2 || model.width > MAX_SIDE + 2) problems.push('image too large: ' + model.width + '×' + model.height);
     for (const x of model.blocks) {
       if (x.type === 'text') {
         if (typeof x.text !== 'string') problems.push('text block without text');
@@ -1484,5 +1543,5 @@
     };
   }
 
-  return { LAYOUTS, CHROME_SPECS, ICONS, layoutFor, chromeSpec, fallbackChrome, buildModel, drawPhoto, drawIcon, bodyText, chromeText, validate, draw, canvasMeasure, approxMeasure, wrap, fontString };
+  return { LAYOUTS, CHROME_SPECS, ICONS, MAX_SIDE, layoutFor, chromeSpec, fallbackChrome, buildModel, fitModel, canvasScale, drawPhoto, drawIcon, bodyText, chromeText, validate, draw, canvasMeasure, approxMeasure, wrap, fontString };
 });

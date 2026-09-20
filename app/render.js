@@ -294,7 +294,10 @@
     const ws = m.worksheet;
     const isL = m.kind === 'listening';
     const variants = variantsOf(m).filter(v => v.worksheet);
-    const vocabItems = m.plan.vocabulary.filter(v => (m.content.vocabularyUsed || []).map(x => x.toLowerCase()).includes(v.word.toLowerCase()) || (m.vocabFound || []).includes(v.word));
+    // materials saved by an older version carry plain words instead of entries
+    const vocabList = (m.plan.vocabulary || []).map(v => (typeof v === 'string' ? { word: v, translation: '' } : v)).filter(v => v && v.word);
+    const used = (m.content.vocabularyUsed || []).map(x => String(x).toLowerCase());
+    const vocabItems = vocabList.filter(v => used.includes(String(v.word).toLowerCase()) || (m.vocabFound || []).includes(v.word));
     const hl = m.settings && m.settings.highlightVocab;
     let html = `<article class="sheet teacher"><header><h1>${esc((ws && ws.title) || m.content.title)} <span class="badge">Teacher version</span></h1>`;
     html += `<p class="meta">${esc(m.plan.textbookName)} · ${esc(m.plan.unitName)} · Language ${esc(m.plan.cefr)}` + (m.level ? ` (measured ${esc(m.level.band)})` : '') + (ws ? ' · Questions ' + variants.map(v => (v.label ? esc(v.label) + ' ' : '') + esc((v.plan || m.plan).questionBands ? (v.plan || m.plan).questionBands.join('–') : (v.plan || m.plan).questionBand)).join(' / ') : '') + (isL ? ` · ≈ ${Math.round(m.plan.seconds / 60 * 10) / 10} min · ${esc(m.plan.preset.label)}` : ` · ${esc(m.settings.textType)}`) + '</p>';
@@ -329,7 +332,7 @@
         html += `<tr><td>${q.n}</td><td>${esc(skillLabel(q.skill))}</td><td>${esc(formatLabel(q.format))}</td><td>${esc(q.difficulty)}</td><td>${answerText(q)}</td><td>${q.evidenceRef ? `<span class="ref">${esc(q.evidenceRef)}</span> ` : ''}“${esc(q.evidenceQuote)}”${q.rationale ? `<div class="rationale">${esc(q.rationale)}</div>` : ''}</td></tr>`;
       }
       html += '</tbody></table></div></section>';
-      if (vws.higherOrder.length) {
+      if ((vws.higherOrder || []).length) {
         html += `<section class="block"><h2>Higher-order tasks — model answers${suffix}</h2><ol>` + vws.higherOrder.map(h => `<li><strong>${esc(hoLabel(h.type))}:</strong> ${esc(h.prompt)}<div class="rationale">Model answer: ${esc(typeof h.answer === 'string' ? h.answer : JSON.stringify(h.answer))}${h.rationale ? ' — ' + esc(h.rationale) : ''}</div></li>`).join('') + '</ol></section>';
       }
     }
@@ -337,7 +340,12 @@
     if (m.quality && (m.quality.findings || m.quality.repairs)) {
       const s = quality.summarize(m.quality.findings || []);
       html += `<section class="block qc"><h2>Quality check</h2><p class="stats">${s.pass} passed · ${s.warn} warnings · ${s.fail} failed · ${s.unverified} unverified</p>`;
-      html += '<ul class="qc-list">' + (m.quality.findings || []).map(f => `<li class="qc-${f.status}"><span class="qc-status">${f.status}</span> ${f.variant ? `<span class="badge">Niveau ${esc(f.variant)}</span> ` : ''}${esc(f.title)}${f.detail ? ` — <span class="muted">${esc(f.detail)}</span>` : ''}</li>`).join('') + '</ul>';
+      const blocked = quality.blockingFailures(m.quality.findings || []);
+      if (blocked.length) {
+        html += `<p class="qc-blocked"><strong>${blocked.length} blocking check(s) failed</strong> — do not hand this material out unchanged: `
+          + blocked.map(f => esc(f.title)).join('; ') + '.</p>';
+      }
+      html += '<ul class="qc-list">' + (m.quality.findings || []).map(f => `<li class="qc-${f.status}${f.status === 'fail' && f.blocking ? ' qc-blocking' : ''}"><span class="qc-status">${f.status}${f.status === 'fail' && f.blocking ? ' · blocking' : ''}</span> ${f.variant ? `<span class="badge">Niveau ${esc(f.variant)}</span> ` : ''}${esc(f.title)}${f.detail ? ` — <span class="muted">${esc(f.detail)}</span>` : ''}</li>`).join('') + '</ul>';
       html += repairListHTML(m.quality.repairs);
       html += '</section>';
     }
@@ -405,7 +413,7 @@
     for (const v of variantsOf(m).filter(x => x.worksheet)) {
       out.push('', '### Answer key' + (v.label ? ' — ' + v.label : ''));
       for (const q of v.worksheet.questions) out.push(`Q${q.n} · Skill: ${skillLabel(q.skill)} · Difficulty: ${q.difficulty} · Answer: ${answerText(q).replace(/<[^>]+>/g, '')} · Evidence ${q.evidenceRef}: "${q.evidenceQuote}"${q.rationale ? ' · ' + q.rationale : ''}`);
-      for (const h of v.worksheet.higherOrder) out.push(`HOT ${h.n} · ${hoLabel(h.type)} · Model answer: ${typeof h.answer === 'string' ? h.answer : JSON.stringify(h.answer)}`);
+      for (const h of v.worksheet.higherOrder || []) out.push(`HOT ${h.n} · ${hoLabel(h.type)} · Model answer: ${typeof h.answer === 'string' ? h.answer : JSON.stringify(h.answer)}`);
     }
     if (m.quality && m.quality.findings) {
       out.push('', '### Quality check');

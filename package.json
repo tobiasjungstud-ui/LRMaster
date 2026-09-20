@@ -4,10 +4,13 @@
   "description": "Listening & Reading Creator – generates CEFR-controlled listening scripts, reading texts and worksheets from a textbook's vocabulary with Claude, with built-in concept-coverage checks.",
   "private": true,
   "scripts": {
-    "test": "node tests/run.js",
+    "test": "node tests/run.js && node tests/audit.js",
     "coverage": "node scripts/coverage-report.js",
-    "serve": "python3 -m http.server 8080 --directory app"
+    "serve": "python3 -m http.server 8080 --directory app",
+    "audit": "node tests/audit.js"
   },
-  "engines": { "node": ">=18" },
+  "engines": {
+    "node": ">=18"
+  },
   "license": "MIT"
 }

@@ -220,7 +220,7 @@ Das Arbeitsblatt ist ein echtes Arbeitsblatt: Name-/Klasse-/Datum-Zeile, Aufgabe
 
 ## Kontrollmechanismen
 
-- **Konzept-Manifest** (`app/manifest.js`): 306 Anforderungen aus dem Konzeptdokument und den Auftragserweiterungen (§33 Word-Export, §34 Schwierigkeitsmesser & Niveau der Fragen, §35 Pre-Task, §36 Post-Task, §37 Authentisches Layout, §38 Vorlagen), jede mit Prüfart:
+- **Konzept-Manifest** (`app/manifest.js`): 307 Anforderungen aus dem Konzeptdokument und den Auftragserweiterungen (§33 Word-Export, §34 Schwierigkeitsmesser & Niveau der Fragen, §35 Pre-Task, §36 Post-Task, §37 Authentisches Layout, §38 Vorlagen), jede mit Prüfart:
   - `setting` – Steuerelement existiert **und** die Änderung des Werts verändert nachweislich mindestens einen Prompt (Prompt-Sensitivitätstest; tote Einstellungen fallen durch).
   - `function` – Verhalten wird mit echten Eingaben ausgeführt (z. B. Preset *Interview* ⇒ Anteile 25/75, Skill-Mix verschiebt sich mit der Schwierigkeit, Beispielkonfiguration §32 reproduziert alle Werte).
   - `rule` – Qualitätsregel existiert als Messfunktion oder als Review-Kriterium und wird im Review-Prompt an Claude übergeben.
@@ -231,8 +231,12 @@ Das Arbeitsblatt ist ein echtes Arbeitsblatt: Name-/Klasse-/Datum-Zeile, Aufgabe
 - **Word-Export**: der Generator schreibt OOXML selbst, deshalb prüft `ooxml.js` jedes erzeugte Paket vor dem Download – vorhandene Teile, Content-Types, auflösbare Beziehungen, Schema-Reihenfolge der Elemente, Tabellenstruktur. Schlägt die Prüfung fehl, wird keine Datei ausgeliefert. In den Tests wird das Paket zusätzlich von einem unabhängigen ZIP-/XML-Leser (`python3 zipfile`) geöffnet, und für jeden der 14 Texttypen wird geprüft, dass die typischen Gestaltungselemente tatsächlich im Dokument stehen.
 - **Drei Ausführungsorte derselben Prüfung**: `npm test` (lokal), GitHub Actions (`.github/workflows/test.yml`, inkl. Aktualität von `CONCEPT_COVERAGE.md`) und die Seite **Konzept-Check** in der App selbst, die gegen das laufende DOM und die echte `generate()`-Funktion prüft.
 
+- **Audit-Suite** (`tests/audit.js`, 84 Prüfungen): stellt die umgekehrte Frage – *was bricht es?* Sie baut absichtlich **korrektes** Material (positive Kontrolle: keine Regel darf anschlagen) und absichtlich **kaputtes** Material (für jede deterministische Regel eine eigene Verletzung, die sie fangen muss), fuzzt 3000 zufällige Einstellungszustände gegen Idempotenz und Plan-Invarianten, schickt feindseligen Text (Markup, Emoji, RTL, 60-Zeichen-Wörter, 160 Absätze) durch Bild, Ansicht und Word-Export, prüft, dass Claudes Antwort nichts übernehmen kann (erfundene Regeln, injizierte Fragen, Interface-Daten falschen Typs), und dass gleiche Eingaben gleiche Ergebnisse liefern. Der komplette Prüfauftrag steht in **[AUDIT.md](AUDIT.md)** – als Prompt formuliert, damit er jederzeit erneut ausgeführt werden kann.
+- **Blockierende Befunde sind sichtbar**: Prüfungen, die als blockierend definiert sind (Wortzahl, Zielvokabular, Fragenzahl, Chronologie, Sozialformen, Bildidentität …), färben den Lauf rot, nennen sich im Quality-Check mit eigenem Kasten, stehen in der Lehrerversion und im Word-Export – Material, das sie nicht besteht, wird nicht stillschweigend als fertig ausgegeben.
+
 ```bash
-npm test          # Unit-Tests + Konzept-Abdeckung
+npm test          # Unit-Tests + Konzept-Abdeckung + Audit-Suite
+npm run audit     # nur die Audit-Suite
 npm run coverage  # CONCEPT_COVERAGE.md neu erzeugen
 npm run serve     # lokale Vorschau (ohne Claude: Import, Einstellungen, Konzept-Check funktionieren; Generierung nur in Claude.ai)
 ```

@@ -317,7 +317,7 @@
     { key: 'speakerCount', type: 'select', default: 3, options: [3, 4, 5, 6], section: 4, mode: 'listening', simple: true, label: 'Number of speakers' },
     { key: 'preset', type: 'select', default: 'natural', options: PRESETS.map(p => p.key), section: 4, mode: 'listening', simple: true, label: 'Conversation Preset' },
     { key: 'speakerBalance', type: 'select', default: 'natural', options: ['balanced', 'natural', 'main', 'custom'], section: 4, mode: 'listening', simple: false, label: 'Speaker Balance' },
-    { key: 'customShares', type: 'list', default: [50, 50], section: 4, mode: 'listening', simple: false, label: 'Custom speaker shares (%)' },
+    { key: 'customShares', type: 'list', itemType: 'number', default: [50, 50], section: 4, mode: 'listening', simple: false, label: 'Custom speaker shares (%)' },
     { key: 'turnLength', type: 'range', default: 45, min: 0, max: 100, section: 4, mode: 'listening', simple: false, label: 'Speaking Turn Length' },
     { key: 'turnVariability', type: 'range', default: 70, min: 0, max: 100, section: 4, mode: 'listening', simple: false, label: 'Turn Length Variability' },
     { key: 'audioLength', type: 'select', default: '120', options: AUDIO_LENGTHS.map(a => a.key), section: 4, mode: 'listening', simple: true, label: 'Audio Length' },
@@ -341,7 +341,7 @@
     { key: 'targetVocabMin', type: 'number', default: 8, min: 0, max: 40, section: 5, mode: 'both', simple: false, label: 'Target vocabulary (min)' },
     { key: 'targetVocabMax', type: 'number', default: 12, min: 1, max: 60, section: 5, mode: 'both', simple: false, label: 'Target vocabulary (max)' },
     { key: 'vocabSelectionMode', type: 'select', default: 'auto', options: ['auto', 'manual'], section: 5, mode: 'both', simple: false, label: 'Select vocabulary manually' },
-    { key: 'selectedVocab', type: 'list', default: [], section: 5, mode: 'both', simple: false, label: 'Selected vocabulary' },
+    { key: 'selectedVocab', type: 'list', itemType: 'text', default: [], section: 5, mode: 'both', simple: false, label: 'Selected vocabulary' },
     { key: 'highlightVocab', type: 'toggle', default: true, section: 5, mode: 'both', simple: false, label: 'Highlight used target vocabulary in teacher version' },
     // 6 Worksheet & Questions
     { key: 'createWorksheet', type: 'toggle', default: true, section: 6, mode: 'both', simple: true, label: 'Create Worksheet' },
@@ -429,9 +429,21 @@
           if (Array.isArray(v)) s[def.key] = v.filter(x => def.options.includes(x));
           break;
         }
-        case 'list': if (Array.isArray(v)) s[def.key] = clone(v); break;
+        case 'list': {
+          if (!Array.isArray(v)) break;
+          // a stored or hand-made list can hold anything; keep what the entry really is
+          s[def.key] = def.itemType === 'text' ? v.filter(x => typeof x === 'string' && x.trim()).map(x => x.trim())
+            : def.itemType === 'number' ? v.map(x => Number(x)).filter(x => Number.isFinite(x))
+            : clone(v);
+          break;
+        }
         case 'map': if (v && typeof v === 'object') s[def.key] = Object.assign({}, s[def.key], clone(v)); break;
-        default: s[def.key] = String(v);
+        default:
+          // objects, NaN and Infinity would end up as "[object Object]" or "NaN"
+          // in the prompt to Claude; they are dropped, the default stays
+          if (v === null || typeof v === 'object' || typeof v === 'function') break;
+          if (typeof v === 'number' && !Number.isFinite(v)) break;
+          s[def.key] = String(v);
       }
     }
     return s;
