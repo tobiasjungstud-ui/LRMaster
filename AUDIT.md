@@ -103,6 +103,8 @@ Zweimal derselbe Input (gestubbte Claude-Antwort) → bitgleiches Material, bitg
 ### 2.11 UI & Bedienbarkeit
 Simple/Advanced, Vorlagen-Faltung, Tastaturbedienung, Fokus, `aria`, Kontrast hell/dunkel, mobil (360 px), lange Labels, Doppelklick auf „Generieren", Navigation während des Laufs, Abbruch.
 
+**Viewer**: Zeigt er wirklich das, was exportiert wird (dasselbe HTML, nicht eine zweite Darstellung)? Stimmt das Inhaltsverzeichnis mit den Überschriften des Blattes überein? Sind alle Ausgabeformate erreichbar? Was passiert bei einer Fassung ohne Inhalt (Listening ohne Worksheet)? Stimmen die Druckumbruch-Marken – und verschwinden sie, wenn das Blatt auf ein Telefon gesetzt wird?
+
 ### 2.12 Konzepttreue
 `npm test` deckt jede Anforderung ab; keine `X.unclaimed_*`; `CONCEPT_COVERAGE.md` aktuell; jede Anforderung prüft wirklich Code (nicht nur „Datei enthält Wort").
 

@@ -777,6 +777,8 @@
       };
       app.material = material;
       await store.put('materials', material);
+      // the list of materials must know about it right away, not after a reload
+      app.materials = (app.materials || []).filter(x => x.id !== material.id).concat([material]);
       renderOutput(material);
       const open = quality.repairable(findingsAll, state.autoFix === 'off' ? 'all' : state.autoFix).length;
       // a blocking check that still fails means: do not hand this out as it is
@@ -999,8 +1001,184 @@
     $('#out-quality').innerHTML = renderQualityPanel(m);
     $('#out-prompts').innerHTML = Object.entries(m.prompts || {}).map(([k, v]) => `<details><summary>${esc(k)} (${v.length} Zeichen)</summary><pre>${esc(v)}</pre></details>`).join('') || '<p class="muted">–</p>';
     $('#out-json').textContent = JSON.stringify({ content: m.content, worksheet: m.worksheet, plan: m.plan }, null, 2);
+    const open = $('#btn-open-viewer');
+    if (open) { open.hidden = false; open.onclick = () => openViewer(m, 'creator'); }
     showTab('student');
     out.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  /* ------------------------------------------------------------------ */
+  /* Viewer: the finished material as a document                           */
+  /* ------------------------------------------------------------------ */
+
+  const viewer = { material: null, version: 'student', variant: null, zoom: 1, from: 'creator' };
+  const ZOOMS = [0.75, 0.9, 1, 1.15, 1.35];
+
+  /** Open a material in the viewer. `from` is the view the back button returns to. */
+  function openViewer(m, from) {
+    if (!m) return;
+    viewer.material = m;
+    viewer.from = from || app.view || 'creator';
+    viewer.version = 'student';
+    const variants = render.variantsOf(m).filter(v => v.worksheet);
+    viewer.variant = variants.length > 1 ? variants[0].key : null;
+    document.body.dataset.kind = m.kind;
+    showView('viewer');
+    renderViewer();
+  }
+
+  /** Everything the viewer shows: bar, rail, sheet and the picture of the medium. */
+  function renderViewer() {
+    const m = viewer.material;
+    const stage = $('#vw-paper');
+    if (!m) { stage.innerHTML = '<p class="vw-empty">Kein Material geöffnet.</p>'; return; }
+    const variants = render.variantsOf(m).filter(v => v.worksheet);
+    const multi = variants.length > 1;
+
+    // everything the viewer shows comes from one model, so the screen cannot
+    // drift apart from what the exports contain
+    const model = render.viewerModel(m, { version: viewer.version, variant: viewer.variant });
+    $('#vw-title').textContent = model.title;
+    $('#vw-meta').innerHTML = model.meta.concat([new Date(m.createdAt).toLocaleDateString()])
+      .map(x => `<span>${esc(x)}</span>`).join('');
+
+    // which version, which level
+    $$('#vw-version button').forEach(b => {
+      const v = model.versions.find(x => x.key === b.dataset.version) || { available: true };
+      b.classList.toggle('active', b.dataset.version === model.version);
+      b.disabled = !v.available;
+      b.title = v.available ? '' : model.note;
+    });
+    viewer.version = model.version;
+    const seg = $('#vw-variant');
+    seg.hidden = !multi || viewer.version !== 'student';
+    if (!seg.hidden) {
+      seg.innerHTML = variants.map(v => `<button type="button" data-variant="${esc(v.key)}"${v.key === viewer.variant ? ' class="active"' : ''}>${esc(v.label)}</button>`).join('');
+      $$('#vw-variant button').forEach(b => b.addEventListener('click', () => { viewer.variant = b.dataset.variant; renderViewer(); }));
+    }
+    $('#vw-zoom-label').textContent = Math.round(viewer.zoom * 100) + ' %';
+    $('#view-viewer').style.setProperty('--zoom', viewer.zoom);
+
+    // the sheet itself, then the medium, then the quality report
+    stage.innerHTML = (model.note ? `<p class="vw-note">${esc(model.note)}</p>` : '')
+      + `<div class="vw-sheet vw-print" id="vw-sheet">${model.html}</div>`
+      + (model.hasMedium ? '<div class="vw-section" id="vw-medium"><h2>Das Medium, aus dem der Text kommt</h2><div class="vw-media" id="vw-media"></div></div>' : '')
+      + `<div class="vw-section" id="vw-quality"><h2>Qualitätskontrolle</h2><div class="vw-media" style="display:block">${renderQualityPanel(m)}</div></div>`;
+    if (m.layout && m.layout.chrome) {
+      const media = $('#vw-media');
+      media.innerHTML = '<div class="layout-shot"><canvas id="layout-canvas" data-fit="column"></canvas></div>'
+        + '<div class="layout-actions"><button type="button" class="btn tiny primary" data-download="png">Bild (PNG) herunterladen</button>'
+        + '<span class="chips layout-media">' + [['auto', 'Automatisch'], ['screen', 'Bildschirm'], ['paper', 'Papier']].map(([k, l]) =>
+          `<button type="button" class="chip-btn${(m.settings.layoutMedium || 'auto') === k ? ' active' : ''}" data-layout-medium="${k}">${l}</button>`).join('') + '</span></div>';
+      paintLayoutCanvas(m, $('#layout-canvas'));
+      $$('#vw-media [data-layout-medium]').forEach(b => b.addEventListener('click', () => {
+        m.settings = Object.assign({}, m.settings, { layoutMedium: b.dataset.layoutMedium });
+        renderViewer();
+      }));
+      $$('#vw-media [data-download]').forEach(b => b.addEventListener('click', () => download('png')));
+    }
+    buildViewerRail(m, model);
+    buildViewerDownloads(model);
+    markPageBreaks();
+    syncViewerOffsets();
+  }
+
+  /**
+   * Show where the printer breaks the page: A4 minus the margins, measured in
+   * the browser so it holds at any zoom.
+   */
+  function markPageBreaks() {
+    const sheet = $('#vw-sheet');
+    if (!sheet) return;
+    $$('.vw-break', sheet).forEach(el => el.remove());
+    const probe = document.createElement('div');
+    probe.style.cssText = 'position:absolute;visibility:hidden;height:297mm';
+    sheet.appendChild(probe);
+    const pageH = probe.getBoundingClientRect().height * viewer.zoom;
+    probe.remove();
+    const style = getComputedStyle(sheet);
+    const pad = parseFloat(style.paddingTop) || 0;
+    const usable = pageH - 2 * pad;
+    if (!(usable > 200)) return;
+    // the marks only hold while the sheet really has the width of the paper;
+    // on a phone it is fitted to the screen and would break somewhere else
+    const probeW = document.createElement('div');
+    probeW.style.cssText = 'position:absolute;visibility:hidden;width:210mm';
+    sheet.appendChild(probeW);
+    const paperW = probeW.getBoundingClientRect().width * viewer.zoom;
+    probeW.remove();
+    if (Math.abs(sheet.getBoundingClientRect().width - paperW) > paperW * 0.04) return;
+    const total = sheet.scrollHeight;
+    for (let y = pad + usable, page = 2; y < total - pad; y += usable, page++) {
+      const mark = document.createElement('div');
+      mark.className = 'vw-break';
+      mark.style.top = y + 'px';
+      mark.title = 'So bricht der Druck (A4) um';
+      mark.innerHTML = `<span>Seite ${page}</span>`;
+      sheet.appendChild(mark);
+    }
+  }
+
+  /** Keep the sticky bars below the real height of what is above them. */
+  function syncViewerOffsets() {
+    const root = $('#view-viewer');
+    if (!root) return;
+    const top = $('.topbar');
+    const bar = $('.viewer-bar');
+    if (top) root.style.setProperty('--topbar-h', Math.round(top.getBoundingClientRect().height) + 'px');
+    if (bar) root.style.setProperty('--viewerbar-h', Math.round(bar.getBoundingClientRect().height) + 'px');
+  }
+
+  /** Table of contents from the model's sections, plus the quality card. */
+  function buildViewerRail(m, model) {
+    const rail = $('#vw-rail');
+    // the model names the sections; the headings in the sheet get those ids
+    const entries = model.sections.slice();
+    $$('#vw-sheet h1, #vw-sheet h2').forEach((h, i) => { if (entries[i]) h.id = entries[i].id; });
+    for (const extra of [['vw-medium', 'Das Medium'], ['vw-quality', 'Qualitätskontrolle']]) {
+      if ($('#' + extra[0])) entries.push({ id: extra[0], label: extra[1] });
+    }
+    const s = model.quality;
+    const blocked = { length: model.quality.blocking };
+    rail.innerHTML = `<div class="vw-card"><h3>Inhalt</h3><nav class="vw-toc">`
+      + entries.map((e, i) => `<a href="#${e.id}" data-goto="${e.id}"${i ? '' : ' class="active"'}><span>${esc(e.label)}</span><span class="n">${i + 1}</span></a>`).join('')
+      + `</nav></div>`
+      + `<div class="vw-card"><h3>Qualität</h3><div class="vw-qc">`
+      + [['pass', s.pass, 'bestanden'], ['warn', s.warn, 'Warnungen'], ['fail', s.fail, 'Fehler'], ['unverified', s.unverified, 'nicht geprüft']]
+        .filter(x => x[1]).map(x => `<span class="vw-pill ${x[0]}"><b>${x[1]}</b> ${x[2]}</span>`).join('')
+      + '</div>' + (blocked.length ? `<p class="vw-blocked">${blocked.length} blockierende Prüfung(en) nicht bestanden</p>` : '')
+      + (m.level ? `<p class="muted small" style="margin-top:.5rem">Gemessen: ${esc(m.level.band)} · Ziel ${esc(m.plan.cefr)}</p>` : '')
+      + '</div>'
+      + (model.multi ? `<div class="vw-card"><h3>Niveaus</h3><p class="muted small">${model.variants.map(v => esc(v.label)).join(' · ')} – oben umschaltbar.</p></div>` : '');
+    $$('#vw-rail [data-goto]').forEach(a => a.addEventListener('click', (e) => {
+      e.preventDefault();
+      const el = $('#' + a.dataset.goto);
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }));
+    trackViewerScroll(entries);
+  }
+
+  /** Mark the section that is being read in the table of contents. */
+  function trackViewerScroll(entries) {
+    if (viewer.observer) viewer.observer.disconnect();
+    if (!('IntersectionObserver' in window) || !entries.length) return;
+    const mark = (id) => $$('#vw-rail [data-goto]').forEach(a => a.classList.toggle('active', a.dataset.goto === id));
+    viewer.observer = new IntersectionObserver((records) => {
+      const visible = records.filter(r => r.isIntersecting).sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top)[0];
+      if (visible) mark(visible.target.id);
+    }, { rootMargin: '-20% 0px -70% 0px' });
+    entries.forEach(e => { const el = $('#' + e.id); if (el) viewer.observer.observe(el); });
+  }
+
+  /** Everything this material can be handed out as — straight from the model. */
+  function buildViewerDownloads(model) {
+    const list = $('#vw-download-list');
+    list.innerHTML = model.downloads.map((d, i) => (i && d.kind === 'student' ? '<hr>' : '')
+      + `<button type="button" data-download="${esc(d.kind)}"${d.variant ? ` data-variant="${esc(d.variant)}"` : ''}>${esc(d.label)}</button>`).join('');
+    $$('#vw-download-list [data-download]').forEach(b => b.addEventListener('click', () => {
+      $('#vw-downloads').open = false;
+      download(b.dataset.download, b.dataset.variant);
+    }));
   }
 
   /** Draw the screenshot of the text into the Layout tab; returns the canvas. */
@@ -1020,22 +1198,34 @@
       renderLayout(m);
     }));
     const canvas = $('#layout-canvas');
-    // a very long text gives a very tall picture; browsers silently refuse a
-    // canvas that is too large, so the scale is capped to what they accept
+    paintLayoutCanvas(m, canvas);
+    $$('#out-layout [data-download]').forEach(b => b.addEventListener('click', () => download('png')));
+    return canvas;
+  }
+
+  /**
+   * Draw the picture of the medium onto a canvas — used by the Layout tab and
+   * by the viewer. A very long text gives a very tall picture; browsers
+   * silently refuse a canvas that is too large, so the scale is capped to what
+   * they accept, and the picture is drawn again once the web fonts are there.
+   */
+  function paintLayoutCanvas(m, canvas) {
+    if (!canvas || !m.layout || !m.layout.chrome) return null;
     const paint = () => {
-      const model2 = mock.buildModel(m, m.layout.chrome, { measure: mock.canvasMeasure(canvas) });
-      const dpr = mock.canvasScale(model2, Math.min(2, window.devicePixelRatio || 1));
-      canvas.width = Math.round(model2.width * dpr); canvas.height = Math.round(model2.height * dpr);
-      canvas.style.width = model2.width + 'px'; canvas.style.height = model2.height + 'px';
-      const c2 = canvas.getContext('2d');
-      c2.setTransform(1, 0, 0, 1, 0, 0);
-      c2.scale(dpr, dpr);
-      mock.draw(c2, model2);
+      if (!canvas.isConnected) return;
+      const model = mock.buildModel(m, m.layout.chrome, { measure: mock.canvasMeasure(canvas) });
+      const dpr = mock.canvasScale(model, Math.min(2, window.devicePixelRatio || 1));
+      canvas.width = Math.round(model.width * dpr); canvas.height = Math.round(model.height * dpr);
+      canvas.style.width = model.width + 'px'; canvas.style.height = model.height + 'px';
+      // in the viewer the picture is fitted to the column instead of scrolling
+      if (canvas.dataset.fit === 'column') { canvas.style.maxWidth = '100%'; canvas.style.height = 'auto'; }
+      const ctx = canvas.getContext('2d');
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.scale(dpr, dpr);
+      mock.draw(ctx, model);
     };
     paint();
-    // web fonts arrive asynchronously; draw again once they are there
     if (document.fonts && document.fonts.ready) document.fonts.ready.then(paint).catch(() => {});
-    $$('#out-layout [data-download]').forEach(b => b.addEventListener('click', () => download('png')));
     return canvas;
   }
 
@@ -1529,8 +1719,9 @@
   function renderMaterials() {
     const el = $('#materials-list');
     const list = app.materials.slice().sort((a, b) => b.createdAt - a.createdAt);
-    el.innerHTML = list.length ? list.map(m => { const s = quality.summarize((m.quality && m.quality.findings) || []); return `<div class="material-row"><div><strong>${esc(m.title)}</strong><div class="muted small">${m.kind === 'listening' ? 'Listening' : 'Reading'} · ${esc(m.plan.unitName)} · ${esc(m.plan.cefr)} · ${new Date(m.createdAt).toLocaleString()} · QC ${s.pass}/${s.pass + s.warn + s.fail + s.unverified}</div></div><div class="tb-actions"><button type="button" class="btn tiny" data-open="${esc(m.id)}">Öffnen</button><button type="button" class="btn tiny danger" data-del="${esc(m.id)}">Löschen</button></div></div>`; }).join('') : '<p class="muted">Noch keine Materialien gespeichert.</p>';
-    $$('[data-open]', el).forEach(b => b.addEventListener('click', () => { const m = app.materials.find(x => x.id === b.dataset.open); app.material = m; openCreator(m.kind); renderOutput(m); }));
+    el.innerHTML = list.length ? list.map(m => { const s = quality.summarize((m.quality && m.quality.findings) || []); return `<div class="material-row"><div><strong>${esc(m.title)}</strong><div class="muted small">${m.kind === 'listening' ? 'Listening' : 'Reading'} · ${esc(m.plan.unitName)} · ${esc(m.plan.cefr)} · ${new Date(m.createdAt).toLocaleString()} · QC ${s.pass}/${s.pass + s.warn + s.fail + s.unverified}</div></div><div class="tb-actions"><button type="button" class="btn tiny primary" data-open="${esc(m.id)}">Ansehen</button><button type="button" class="btn tiny" data-edit="${esc(m.id)}">Einstellungen</button><button type="button" class="btn tiny danger" data-del="${esc(m.id)}">Löschen</button></div></div>`; }).join('') : '<p class="muted">Noch keine Materialien gespeichert.</p>';
+    $$('[data-open]', el).forEach(b => b.addEventListener('click', () => { const m = app.materials.find(x => x.id === b.dataset.open); app.material = m; openViewer(m, 'materials'); }));
+    $$('[data-edit]', el).forEach(b => b.addEventListener('click', () => { const m = app.materials.find(x => x.id === b.dataset.edit); app.material = m; openCreator(m.kind); renderOutput(m); }));
     $$('[data-del]', el).forEach(b => b.addEventListener('click', async () => {
       const m = app.materials.find(x => x.id === b.dataset.del);
       if (!await askConfirm({ title: 'Material löschen', text: `„${m ? m.title : ''}“ endgültig löschen?`, okLabel: 'Löschen', danger: true })) return;
@@ -1658,6 +1849,22 @@
     $$('#output .tab').forEach(b => b.addEventListener('click', () => showTab(b.dataset.tab)));
     $$('[data-download]:not([data-variant])').forEach(b => b.addEventListener('click', () => download(b.dataset.download)));
     $('#btn-print').addEventListener('click', () => window.print());
+    // Viewer
+    $('#vw-back').addEventListener('click', () => showView(viewer.from === 'viewer' ? 'materials' : viewer.from || 'materials'));
+    $('#vw-print').addEventListener('click', () => window.print());
+    $$('#vw-version button').forEach(b => b.addEventListener('click', () => { viewer.version = b.dataset.version; renderViewer(); }));
+    $$('#vw-zoom button').forEach(b => b.addEventListener('click', () => {
+      const at = ZOOMS.indexOf(viewer.zoom);
+      viewer.zoom = b.dataset.zoom === 'reset' ? 1 : ZOOMS[Math.max(0, Math.min(ZOOMS.length - 1, at + (b.dataset.zoom === 'in' ? 1 : -1)))];
+      renderViewer();
+    }));
+    window.addEventListener('resize', () => { if (app.view === 'viewer') { syncViewerOffsets(); markPageBreaks(); } });
+    document.addEventListener('keydown', (e) => {
+      if (app.view !== 'viewer' || e.metaKey || e.ctrlKey || e.altKey) return;
+      if (/^(INPUT|TEXTAREA|SELECT)$/.test((e.target && e.target.tagName) || '')) return;
+      if (e.key === 'Escape') { showView(viewer.from || 'materials'); return; }
+      if (e.key === 's' || e.key === 'l') { viewer.version = e.key === 's' ? 'student' : 'teacher'; renderViewer(); }
+    });
     $('#btn-load-example').addEventListener('click', () => { app.state = core.applyExampleConfig(app.state, app.textbooks); app.state.setupMode = 'custom'; if (app.kind !== 'listening') { app.kind = 'listening'; document.body.dataset.kind = 'listening'; $('#creator-kind').textContent = 'Listening erstellen'; } fillForm(); onStateChange('preset'); setMode('advanced'); toast('Beispielkonfiguration aus dem Konzept (§32) geladen.'); });
     $('#btn-reset').addEventListener('click', async () => {
       if (!await askConfirm({ title: 'Zurücksetzen', text: 'Alle Einstellungen dieses Creators auf die Standardwerte zurücksetzen?', okLabel: 'Zurücksetzen', danger: true })) return;
@@ -1686,5 +1893,5 @@
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init); else init();
 
-  window.LR.ui = { app, generate, produceWorksheet, store, caps, showView, openCreator, importState, detectUnits, fetchTopics, confirmImport, newTextbook, askText, askConfirm, clone, parsePasted, initLevelPage, download, renderOutput, renderQualityPanel, renderTaskPreview, refreshDerived, renderLayout, renderSetupBar, openCustomSetup, backToTemplates, redrawTemplate, templateState, buildForm };
+  window.LR.ui = { app, generate, produceWorksheet, openViewer, renderViewer, markPageBreaks, syncViewerOffsets, buildViewerRail, buildViewerDownloads, paintLayoutCanvas, viewer, store, caps, showView, openCreator, importState, detectUnits, fetchTopics, confirmImport, newTextbook, askText, askConfirm, clone, parsePasted, initLevelPage, download, renderOutput, renderQualityPanel, renderTaskPreview, refreshDerived, renderLayout, renderSetupBar, openCustomSetup, backToTemplates, redrawTemplate, templateState, buildForm };
 })();

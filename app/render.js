@@ -211,6 +211,69 @@
   /* ------------------------------------------------------------------ */
 
   /** The worksheet variants of a material: the named ones, or the single unnamed worksheet. */
+  /**
+   * Everything the viewer shows about a finished material, as data: what it is,
+   * which versions and levels exist, which sections the sheet has, what can be
+   * handed out and how the quality check ended. The viewer only paints this —
+   * so what the teacher sees on screen is what the exports contain.
+   */
+  function viewerModel(m, opts) {
+    opts = opts || {};
+    const version = opts.version === 'teacher' ? 'teacher' : 'student';
+    const variants = variantsOf(m).filter(v => v.worksheet);
+    const multi = variants.length > 1;
+    const variant = multi ? (opts.variant || variants[0].key) : null;
+    // a listening without a worksheet has no student sheet: the students get
+    // neither the script nor questions, so the viewer says so and shows the
+    // teacher version instead of an almost empty page
+    const studentHtml = renderStudentHTML(m, multi ? variant : undefined);
+    const studentHas = /class="block|class="text|class="doc|class="qlist/.test(studentHtml);
+    const shown = version === 'student' && !studentHas ? 'teacher' : version;
+    const html = shown === 'teacher' ? renderTeacherHTML(m) : studentHtml;
+    const versions = [
+      { key: 'student', label: 'Schülerversion', available: studentHas },
+      { key: 'teacher', label: 'Lehrerversion', available: true },
+    ];
+    const note = studentHas ? '' : (m.kind === 'listening'
+      ? 'Ohne Worksheet gibt es keine Schülerversion: Das Skript bleibt bei der Lehrperson.'
+      : 'Ohne Worksheet besteht die Schülerversion nur aus dem Text.');
+    const sections = [];
+    const re = /<h([12])\b[^>]*>([\s\S]*?)<\/h\1>/g;
+    let hit;
+    while ((hit = re.exec(html))) {
+      const label = hit[2].replace(/<[^>]*>/g, ' ').replace(/&amp;/g, '&').replace(/\s+/g, ' ').trim();
+      if (label) sections.push({ id: 'vw-h-' + sections.length, label: label.slice(0, 60), level: Number(hit[1]) });
+    }
+    const q = quality.summarize((m.quality && m.quality.findings) || []);
+    const hasMedium = !!(m.layout && m.layout.chrome);
+    const downloads = (multi ? variants.map(v => ({ kind: 'docx-student', variant: v.key, label: `Word · Schülerversion ${v.label}` }))
+      : [{ kind: 'docx-student', variant: null, label: 'Word · Schülerversion' }])
+      .concat([
+        { kind: 'docx-teacher', variant: null, label: 'Word · Lehrerversion' },
+        { kind: 'student', variant: null, label: 'HTML · Schülerversion' },
+        { kind: 'teacher', variant: null, label: 'HTML · Lehrerversion' },
+        { kind: 'md', variant: null, label: 'Markdown' },
+        { kind: 'json', variant: null, label: 'JSON' },
+      ]).concat(hasMedium ? [{ kind: 'png', variant: null, label: 'Bild des Mediums (PNG)' }] : []);
+    return {
+      title: m.title || (m.content && m.content.title) || '',
+      kind: m.kind,
+      version: shown, requested: version, versions, note,
+      variant, variants: variants.map(v => ({ key: v.key, label: v.label })), multi,
+      meta: [
+        m.kind === 'listening' ? 'Listening' : 'Reading',
+        m.plan.textbookName, m.plan.unitName, 'Niveau ' + m.plan.cefr,
+        m.kind === 'listening' ? Math.round(m.plan.seconds / 60 * 10) / 10 + ' min' : (m.settings && m.settings.textType) || '',
+        quality.wordCount(quality.materialText(m.content, m.kind).text.replace(/^[^:\n]+: /gm, '')) + ' Wörter',
+        m.worksheet ? ((m.worksheet.questions || []).length + ' Fragen') : 'ohne Worksheet',
+        m.level ? 'gemessen ' + m.level.band : '',
+      ].filter(Boolean).map(String),
+      sections, downloads, hasMedium,
+      html,
+      quality: { pass: q.pass, warn: q.warn, fail: q.fail, unverified: q.unverified, blocking: quality.blockingFailures((m.quality && m.quality.findings) || []).length },
+    };
+  }
+
   function variantsOf(m) {
     if (Array.isArray(m.variants) && m.variants.length) return m.variants;
     return [{ key: null, label: '', plan: m.plan, worksheet: m.worksheet, quality: m.quality }];
@@ -424,6 +487,6 @@
     return out.join('\n');
   }
 
-  return { esc, seededShuffle, highlight, renderTextHTML, isHeadingLike, repairLabel, repairListHTML, renderStudentHTML, renderTeacherHTML, renderMarkdown, questionBody, answerText, preTaskHtml, socialLabel, modeLabel, preLabel, postLabel,
+  return { esc, seededShuffle, highlight, viewerModel, renderTextHTML, isHeadingLike, repairLabel, repairListHTML, renderStudentHTML, renderTeacherHTML, renderMarkdown, questionBody, answerText, preTaskHtml, socialLabel, modeLabel, preLabel, postLabel,
     variantsOf, forVariant, glossaryHTML, scriptAppendixHTML, levelMeterHTML };
 });

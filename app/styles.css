@@ -465,3 +465,113 @@ body[data-setup="preset"] .ctl[data-key="setupMode"] { display: none; }
 .setup-summary ul { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: .1rem .9rem; }
 .setup-summary li { padding-left: .8rem; position: relative; color: var(--ink); }
 .setup-summary li::before { content: "·"; position: absolute; left: .15rem; color: var(--muted); }
+
+
+/* ------------------------------------------------------------------ */
+/* Viewer: the finished material as a document, not as a tab strip      */
+/* ------------------------------------------------------------------ */
+
+.viewer { --paper-w: 210mm; --paper-pad: 18mm; --zoom: 1; }
+.view.viewer { max-width: none; }
+body:has(#view-viewer:not([hidden])) .page { max-width: none; padding-block-end: 0; }
+
+.viewer-bar {
+  position: sticky; top: calc(env(safe-area-inset-top, 0px) + var(--topbar-h, 3.4rem)); z-index: 15;
+  display: flex; align-items: center; gap: .75rem 1rem; flex-wrap: wrap;
+  padding: .55rem .9rem; margin-bottom: 1rem;
+  background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow);
+}
+.viewer-title { min-width: 12rem; flex: 1 1 18rem; }
+.viewer-title h1 { font-size: 1.15rem; line-height: 1.2; }
+.viewer-meta { margin: .15rem 0 0; font-size: .8rem; color: var(--muted); display: flex; flex-wrap: wrap; gap: .1rem .5rem; }
+.viewer-meta span::after { content: "·"; margin-left: .5rem; color: var(--line); }
+.viewer-meta span:last-child::after { content: ""; }
+.viewer-tools { display: flex; align-items: center; gap: .4rem; flex-wrap: wrap; margin-left: auto; }
+
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 999px; padding: 2px; background: var(--surface); }
+.seg button { border: 0; background: transparent; color: var(--muted); font: inherit; font-size: .82rem; padding: .28rem .7rem; border-radius: 999px; cursor: pointer; }
+.seg button:hover { color: var(--ink); }
+.seg button.active { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+
+.menu { position: relative; }
+.menu > summary { list-style: none; cursor: pointer; }
+.menu > summary::-webkit-details-marker { display: none; }
+.menu-list { position: absolute; right: 0; top: calc(100% + .35rem); z-index: 30; min-width: 14rem; padding: .35rem; display: grid; gap: .15rem;
+  background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); }
+.menu-list button { text-align: left; border: 0; background: transparent; color: var(--ink); font: inherit; font-size: .88rem; padding: .4rem .55rem; border-radius: 6px; cursor: pointer; }
+.menu-list button:hover { background: var(--surface-2); }
+.menu-list hr { border: 0; border-top: 1px solid var(--line); margin: .25rem .3rem; }
+
+.viewer-body { display: grid; grid-template-columns: 15rem minmax(0, 1fr); gap: 1.25rem; align-items: start; }
+.viewer-rail { position: sticky; top: calc(env(safe-area-inset-top, 0px) + var(--topbar-h, 3.4rem) + var(--viewerbar-h, 5rem) + 1rem); display: grid; gap: .9rem; max-height: calc(100vh - var(--topbar-h, 3.4rem) - var(--viewerbar-h, 5rem) - 2rem); overflow: auto; }
+.vw-toc { display: grid; gap: .1rem; }
+.vw-toc a { display: flex; justify-content: space-between; gap: .5rem; padding: .35rem .6rem; border-radius: 7px; color: var(--ink); text-decoration: none; font-size: .9rem; border-left: 2px solid transparent; }
+.vw-toc a:hover { background: var(--surface-2); }
+.vw-toc a.active { background: var(--accent-soft); color: var(--accent); border-left-color: var(--accent); font-weight: 600; }
+.vw-toc a .n { color: var(--muted); font-size: .78rem; font-family: var(--font-mono); }
+.vw-card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: .7rem .8rem; box-shadow: var(--shadow); }
+.vw-card h3 { font-size: .8rem; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); margin-bottom: .45rem; }
+.vw-qc { display: flex; flex-wrap: wrap; gap: .3rem; }
+.vw-qc b { font-weight: 700; }
+.vw-pill { display: inline-flex; align-items: center; gap: .3rem; padding: .12rem .5rem; border-radius: 999px; font-size: .78rem; border: 1px solid var(--line); }
+.vw-pill.pass { background: var(--good-soft); color: var(--good); border-color: transparent; }
+.vw-pill.warn { background: var(--warn-soft); color: var(--warn); border-color: transparent; }
+.vw-pill.fail { background: var(--bad-soft); color: var(--bad); border-color: transparent; }
+.vw-pill.unverified { background: var(--surface-2); color: var(--muted); border-color: transparent; }
+.vw-blocked { margin-top: .5rem; font-size: .82rem; color: var(--bad); font-weight: 600; }
+
+.viewer-stage { background: var(--surface-2); border: 1px solid var(--line); border-radius: var(--radius); padding: 1.5rem 1rem 2.5rem; overflow-x: auto; }
+.paper { display: grid; gap: 1.5rem; justify-items: center; min-width: 0; }
+.vw-sheet {
+  position: relative;
+  width: calc(var(--paper-w) * var(--zoom)); max-width: 100%; padding: calc(var(--paper-pad) * var(--zoom));
+  background: var(--surface); color: var(--ink);
+  border: 1px solid var(--line); border-radius: 2px;
+  box-shadow: 0 1px 2px rgba(22,32,42,.10), 0 14px 40px rgba(22,32,42,.13);
+  font-size: calc(15px * var(--zoom));
+}
+/* where the printer and Word will break the page */
+.vw-break { position: absolute; left: 0; right: 0; border-top: 1px dashed var(--line); pointer-events: none; }
+.vw-break span { position: absolute; right: .4rem; top: .2rem; font-size: 10px; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); background: var(--surface); padding: 0 .3rem; }
+.vw-sheet .sheet { max-width: none; }
+.vw-sheet .doc { max-width: none; }
+.vw-section { width: calc(var(--paper-w) * var(--zoom)); max-width: 100%; min-width: 0; }
+.vw-section > h2 { font-size: .8rem; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin: .2rem 0 .5rem; }
+.vw-media { display: grid; gap: .6rem; justify-items: center; min-width: 0; max-width: 100%; overflow-x: auto; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 1rem; }
+.vw-media img, .vw-media canvas { max-width: 100%; height: auto; border-radius: 4px; box-shadow: var(--shadow); }
+.vw-empty { color: var(--muted); font-size: .9rem; padding: 2rem; text-align: center; }
+.vw-note { width: calc(var(--paper-w) * var(--zoom)); max-width: 100%; margin: 0; padding: .5rem .8rem; font-size: .85rem;
+  color: var(--muted); background: var(--surface); border: 1px dashed var(--line); border-radius: var(--radius); }
+
+@media (max-width: 900px) {
+  .viewer-body { grid-template-columns: minmax(0, 1fr); }
+  .viewer-rail { position: static; }
+  .vw-toc { display: flex; flex-wrap: wrap; gap: .3rem; }
+  .vw-toc a { border-left: 0; background: var(--surface); border: 1px solid var(--line); }
+  /* on a phone the sheet is fitted to the screen instead of scrolling sideways */
+  .viewer { --paper-w: 100%; --paper-pad: 14px; }
+  .vw-sheet, .vw-section { width: 100%; min-width: 0; }
+  .vw-sheet .table-wrap, .vw-section .table-wrap { overflow-x: auto; }
+  .viewer-stage { padding: 1rem .5rem 2rem; }
+}
+@media print {
+  .topbar, .viewer-bar, .viewer-rail, .vw-section:not(.vw-print) { display: none !important; }
+  .viewer-body { display: block; }
+  .viewer-stage { background: none; border: 0; padding: 0; }
+  .vw-sheet { box-shadow: none; border: 0; width: auto; padding: 0; transform: none; }
+}
+
+
+/* The top bar on a small screen: one scrollable row instead of five lines. */
+@media (max-width: 760px) {
+  .topbar { gap: .4rem .6rem; padding: .45rem .7rem; }
+  .brand-sub { display: none; }
+  .brand-name { font-size: .95rem; }
+  .nav { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: thin; -webkit-overflow-scrolling: touch; width: 100%; order: 3; padding-bottom: 2px; }
+  .nav button { white-space: nowrap; font-size: .85rem; padding: .3rem .6rem; }
+  .topbar .claude-status { order: 2; font-size: .72rem; max-width: 100%; }
+  .topbar .claude-status[data-state="ok"], .topbar .claude-status[data-state="pending"] { display: none; }
+  .viewer-stage { overflow-x: hidden; }
+  .viewer-bar { position: static; }
+  .layout-shot { overflow-x: auto; }
+}

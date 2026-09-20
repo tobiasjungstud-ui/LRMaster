@@ -428,6 +428,43 @@
   add({ id: 'S28.teacher_evidence', section: 28, title: 'Teacher Version: relevante Text-/Audio-Stelle', kind: 'render', check(env) { const m = env.fixture.material(); const html = env.render.renderTeacherHTML(m); return ok(html.includes(env.render.esc(m.worksheet.questions[0].evidenceQuote)) && html.includes(env.render.esc(m.worksheet.questions[0].evidenceRef))); } });
   add({ id: 'S28.teacher_rationale', section: 28, title: 'Teacher Version: Begründung für Inference-Fragen', kind: 'render', check(env) { const m = env.fixture.material(); const q = m.worksheet.questions.find(x => x.skill === 'inference'); return ok(q && q.rationale && env.render.renderTeacherHTML(m).includes(env.render.esc(q.rationale))); } });
 
+  add({ id: 'S28.viewer', section: 28, title: 'Viewer: das fertige Material als Dokument – Blatt in A4-Breite mit Druckumbruch, Inhaltsverzeichnis, Schüler-/Lehrerfassung, Niveaus, Zoom, Bild des Mediums, Qualität und allen Downloads an einem Ort', kind: 'ui', selector: '#view-viewer',
+    extra(env) {
+      // what the viewer shows is one model, so it can be checked without a browser
+      const reading = env.fixture.material({ createWorksheet: true, preTask: true, postTask: true, authenticLayout: true, questionLevel: 'both' }, 'reading');
+      const listening = env.fixture.material({ createWorksheet: false }, 'listening');
+      for (const [name, m] of [['reading', reading], ['listening', listening]]) {
+        for (const version of ['student', 'teacher']) {
+          const v = env.render.viewerModel(m, { version });
+          if (!v.title) return name + '/' + version + ': no title';
+          if (v.meta.length < 5) return name + '/' + version + ': the material is not described';
+          if (!v.sections.length) return name + '/' + version + ': no table of contents';
+          if (!v.html || v.html.length < 200) return name + '/' + version + ': no sheet';
+          if (v.html !== (v.version === 'teacher' ? env.render.renderTeacherHTML(m) : env.render.renderStudentHTML(m, v.multi ? v.variant : undefined))) {
+            return name + '/' + version + ': the viewer shows something else than the export';
+          }
+          // a version that has nothing to show is named, not served empty
+          const student = v.versions.find(x => x.key === 'student');
+          if (!student.available && !v.note) return name + ': an empty student version without a word of explanation';
+          if (!student.available && v.version !== 'teacher') return name + ': an empty student version is shown anyway';
+          const kinds = v.downloads.map(d => d.kind);
+          for (const need of ['docx-student', 'docx-teacher', 'student', 'teacher', 'md', 'json']) {
+            if (!kinds.includes(need)) return name + ': download missing — ' + need;
+          }
+          if (v.hasMedium !== !!(m.layout && m.layout.chrome)) return name + ': the picture of the medium is not offered correctly';
+          if (v.hasMedium && !kinds.includes('png')) return name + ': no picture to download';
+          if (typeof v.quality.blocking !== 'number') return name + ': the quality is not summarised';
+        }
+      }
+      // both question levels are offered and really differ
+      const both = env.render.viewerModel(reading, { version: 'student' });
+      if (both.multi && both.variants.length < 2) return 'the levels are not offered';
+      const src = env.uiSource || '';
+      const wired = !src || (/function openViewer/.test(src) && /function markPageBreaks/.test(src) && /render\.viewerModel/.test(src) && /vw-toc/.test(src));
+      return ok(wired && env.hasControl('#vw-title') && env.hasControl('#vw-rail') && env.hasControl('#vw-paper') && env.hasControl('#vw-version'),
+        'the viewer is missing parts of its frame');
+    } });
+
   /* §29 Quality check rules */
   const RULE_REQS = [
     ['content.topic_unit', 'Content: Thema passt zur Unit'], ['content.vocab_used', 'Content: Zielvokabular sinnvoll verwendet'], ['content.coherent', 'Content: Text kohärent'], ['content.natural', 'Content: Gespräch wirkt natürlich'],

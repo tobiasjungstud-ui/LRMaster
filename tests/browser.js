@@ -248,6 +248,91 @@ const SETTINGS = (extra) => `(() => {
     await page.close();
   }
 
+  console.log('\nBrowser audit: the viewer (2.11, 2.5)');
+  {
+    const { page, errors } = await open({ scenario: 'ok' });
+    await run(page);
+    // the way in: the button after a run, and the materials list
+    const entered = await page.evaluate(() => {
+      const btn = document.querySelector('#btn-open-viewer');
+      if (!btn || btn.hidden) return { ok: false, why: 'no button into the viewer' };
+      btn.click();
+      return { ok: !document.querySelector('#view-viewer').hidden, why: '' };
+    });
+    check('a finished material opens in the viewer', entered.ok, JSON.stringify(entered));
+    await page.waitForTimeout(500);
+    const v = await page.evaluate(() => ({
+      toc: document.querySelectorAll('.vw-toc a').length,
+      sheet: document.querySelector('#vw-sheet').innerText.length,
+      sheetWidth: Math.round(document.querySelector('#vw-sheet').getBoundingClientRect().width),
+      breaks: document.querySelectorAll('.vw-break').length,
+      medium: !!document.querySelector('#vw-medium canvas'),
+      quality: !!document.querySelector('#vw-quality .qc-table, #vw-quality .stats'),
+      downloads: document.querySelectorAll('#vw-download-list [data-download]').length,
+      versions: document.querySelectorAll('#vw-version button').length,
+    }));
+    check('the viewer shows sheet, contents, medium, quality and downloads',
+      v.toc >= 3 && v.sheet > 400 && v.medium && v.quality && v.downloads >= 6 && v.versions === 2, JSON.stringify(v));
+    // switching the version really changes the sheet
+    const before = await page.evaluate(() => document.querySelector('#vw-sheet').innerText.slice(0, 300));
+    await page.click('#vw-version [data-version="teacher"]');
+    await page.waitForTimeout(400);
+    const after = await page.evaluate(() => document.querySelector('#vw-sheet').innerText.slice(0, 300));
+    check('the teacher version is really another sheet', before !== after, '');
+    // zoom changes the width of the sheet, and the contents follow the reading position
+    const zoomed = await page.evaluate(async () => {
+      const w0 = document.querySelector('#vw-sheet').getBoundingClientRect().width;
+      document.querySelector('#vw-zoom [data-zoom="in"]').click();
+      await new Promise(r => setTimeout(r, 250));
+      const w1 = document.querySelector('#vw-sheet').getBoundingClientRect().width;
+      document.querySelector('#vw-zoom [data-zoom="reset"]').click();
+      return { w0: Math.round(w0), w1: Math.round(w1) };
+    });
+    check('zoom changes the size of the sheet', zoomed.w1 > zoomed.w0, JSON.stringify(zoomed));
+    // escape leaves the viewer
+    await page.keyboard.press('Escape');
+    await page.waitForTimeout(300);
+    const left = await page.evaluate(() => document.querySelector('#view-viewer').hidden);
+    check('Escape closes the viewer', left, '');
+    // and the materials list opens it again
+    await page.click('#nav-materials');
+    await page.waitForTimeout(400);
+    const fromList = await page.evaluate(() => {
+      const b = document.querySelector('#materials-list [data-open]');
+      if (!b) return { ok: false, why: 'no material in the list' };
+      b.click();
+      return { ok: !document.querySelector('#view-viewer').hidden, why: '' };
+    });
+    check('a stored material opens in the viewer', fromList.ok, JSON.stringify(fromList) + (errors[0] ? ' | ' + errors[0] : ''));
+    check('the viewer runs without a page error', errors.length === 0, errors[0]);
+    await page.close();
+  }
+  {
+    // a long text shows where the print breaks; a phone fits the sheet instead
+    const { page } = await open({ scenario: 'ok' });
+    await page.evaluate(() => {
+      const f = window.LR.fixture, ui = window.LR.ui;
+      const m = f.material({ createWorksheet: true, authenticLayout: true, layoutMedium: 'screen', textType: 'Blog Post' }, 'reading');
+      m.content.paragraphs = Array.from({ length: 16 }, (_, i) => `Paragraph ${i + 1}. ` + 'The class talked about the group chat every single day of that week. '.repeat(3));
+      m.title = 'Langer Text'; m.createdAt = Date.now(); m.quality = { findings: [] };
+      ui.openViewer(m, 'materials');
+    });
+    await page.waitForTimeout(700);
+    const desktop = await page.evaluate(() => ({ breaks: document.querySelectorAll('.vw-break').length, w: Math.round(document.querySelector('#vw-sheet').getBoundingClientRect().width) }));
+    check('the viewer shows where the print breaks the page', desktop.breaks >= 2 && desktop.w > 700, JSON.stringify(desktop));
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.waitForTimeout(600);
+    const phone = await page.evaluate(() => ({
+      breaks: document.querySelectorAll('.vw-break').length,
+      w: Math.round(document.querySelector('#vw-sheet').getBoundingClientRect().width),
+      overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+      topbar: Math.round(document.querySelector('.topbar').getBoundingClientRect().height),
+    }));
+    check('on a phone the sheet is fitted and nothing scrolls sideways',
+      phone.w <= 390 && phone.overflow <= 0 && phone.breaks === 0 && phone.topbar < 200, JSON.stringify(phone));
+    await page.close();
+  }
+
   console.log('\nBrowser audit: keyboard, focus, dark mode, small screens (2.11)');
   {
     // without Claude the generate button stays disabled on purpose — the app
@@ -312,7 +397,16 @@ const SETTINGS = (extra) => `(() => {
     await page.waitForTimeout(300);
     const r = await page.evaluate(() => {
       const de = document.documentElement;
-      const wide = Array.from(document.querySelectorAll('body *')).filter(e => e.getBoundingClientRect().right > de.clientWidth + 2).slice(0, 3).map(e => e.tagName + '.' + String(e.className).split(' ')[0]);
+      // something inside a bar that scrolls sideways on purpose is not an overflow
+      const inScroller = (el) => {
+        for (let p = el.parentElement; p && p !== document.body; p = p.parentElement) {
+          if (/auto|scroll/.test(getComputedStyle(p).overflowX)) return true;
+        }
+        return false;
+      };
+      const wide = Array.from(document.querySelectorAll('body *'))
+        .filter(e => e.getBoundingClientRect().right > de.clientWidth + 2 && !inScroller(e))
+        .slice(0, 3).map(e => e.tagName + '.' + String(e.className).split(' ')[0]);
       return { overflow: de.scrollWidth - de.clientWidth, wide };
     });
     check('a phone screen with a very long topic does not scroll sideways', r.overflow <= 0 && !r.wide.length, JSON.stringify(r));

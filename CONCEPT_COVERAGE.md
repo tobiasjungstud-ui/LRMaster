@@ -2,7 +2,7 @@
 
 Erzeugt von `npm run coverage`. Jede Zeile ist eine Anforderung aus `docs/Konzept_Listening_Reading_Creator.md`, gebunden an die Stelle im Code, die sie umsetzt, und das Ergebnis der automatischen Prüfung (`npm test`).
 
-**Ergebnis: 309 von 309 Anforderungen bestanden.**
+**Ergebnis: 310 von 310 Anforderungen bestanden.**
 
 Prüfarten: **setting** – Steuerelement vorhanden und Änderung des Werts verändert nachweislich den Prompt an Claude · **function** – Verhalten wird mit echten Eingaben ausgeführt und verglichen · **rule** – Qualitätsregel existiert als Messung oder Claude-Review-Kriterium · **render** – Ausgabe wird auf einer Fixture gerendert und inhaltlich geprüft · **ui** – Navigations-/Strukturelement existiert.
 
@@ -250,7 +250,7 @@ Prüfarten: **setting** – Steuerelement vorhanden und Änderung des Werts ver�
 | ✅ | `S27.types` | Formen Prediction / Vocabulary Activation / Speaking Prompt (plus weitere Aufgabentypen, §35) | setting | Setting `preTaskTypes` (core.SCHEMA → Control `[data-setting="preTaskTypes"]` → prompts.js) |
 | ✅ | `S27.no_spoilers` | Pre-Task nimmt keine Antworten vorweg | rule | Quality rule `pretask.no_spoilers` (Claude-Review über buildReviewPrompt) |
 
-## §28 Output (15/15)
+## §28 Output (16/16)
 
 | Status | ID | Anforderung | Art | Umsetzung |
 |---|---|---|---|---|
@@ -268,6 +268,7 @@ Prüfarten: **setting** – Steuerelement vorhanden und Änderung des Werts ver�
 | ✅ | `S28.teacher_difficulty` | Teacher Version: Difficulty je Frage | render | render.js (renderStudentHTML / renderTeacherHTML) |
 | ✅ | `S28.teacher_evidence` | Teacher Version: relevante Text-/Audio-Stelle | render | render.js (renderStudentHTML / renderTeacherHTML) |
 | ✅ | `S28.teacher_rationale` | Teacher Version: Begründung für Inference-Fragen | render | render.js (renderStudentHTML / renderTeacherHTML) |
+| ✅ | `S28.viewer` | Viewer: das fertige Material als Dokument – Blatt in A4-Breite mit Druckumbruch, Inhaltsverzeichnis, Schüler-/Lehrerfassung, Niveaus, Zoom, Bild des Mediums, Qualität und allen Downloads an einem Ort | ui | Element `#view-viewer` |
 | ✅ | `X.no_hardcoded_content` | Kontrolle: keine hartkodierten Textbausteine für Titel, Instruktion, Fragen, Pre-Tasks oder Themen | function | Funktion (siehe Check im Manifest) |
 
 ## §29 Quality Check (35/35)

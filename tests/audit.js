@@ -1054,6 +1054,73 @@ test('2.12', 'every setting and every quality rule is claimed by a requirement',
 });
 
 /* ------------------------------------------------------------------ */
+console.log('\nAudit: the viewer of the finished material');
+
+test('2.11 2.5', 'the viewer shows exactly what the exports contain', () => {
+  for (const [name, over, kind] of [
+    ['reading, everything on', { createWorksheet: true, preTask: true, postTask: true, authenticLayout: true }, 'reading'],
+    ['reading, two levels', { createWorksheet: true, questionLevel: 'both', authenticLayout: true }, 'reading'],
+    ['listening with worksheet', { createWorksheet: true }, 'listening'],
+    ['listening without worksheet', { createWorksheet: false }, 'listening'],
+  ]) {
+    const m = fixture.material(over, kind);
+    m.title = 'Titel'; m.quality = { findings: quality.runContentChecks(m.settings, m.plan, m.content) };
+    if (over.questionLevel === 'both') {
+      // two question levels, as the pipeline assembles them
+      const easy = JSON.parse(JSON.stringify(m.worksheet));
+      const hard = JSON.parse(JSON.stringify(m.worksheet));
+      hard.questions = hard.questions.map(q => Object.assign({}, q, { prompt: 'Schwerer: ' + q.prompt, difficulty: 'B1.2' }));
+      m.variants = [
+        { key: 'a', label: 'Niveau A', plan: m.plan, worksheet: easy, quality: m.quality },
+        { key: 'b', label: 'Niveau B', plan: m.plan, worksheet: hard, quality: m.quality },
+      ];
+    }
+    for (const version of ['student', 'teacher']) {
+      const v = render.viewerModel(m, { version });
+      assert.ok(v.title && v.meta.length >= 5, `${name}/${version}: the material is not described`);
+      assert.ok(v.sections.length >= 1, `${name}/${version}: no table of contents`);
+      // the sheet in the viewer is the very same HTML the export writes
+      const expected = v.version === 'teacher' ? render.renderTeacherHTML(m) : render.renderStudentHTML(m, v.multi ? v.variant : undefined);
+      assert.equal(v.html, expected, `${name}/${version}: the viewer shows something else than the export`);
+      // every way of handing it out is offered
+      const kinds = v.downloads.map(d => d.kind);
+      for (const need of ['docx-student', 'docx-teacher', 'student', 'teacher', 'md', 'json']) {
+        assert.ok(kinds.includes(need), `${name}: download missing — ${need}`);
+      }
+      assert.equal(kinds.includes('png'), !!(m.layout && m.layout.chrome), name + ': the picture is offered wrongly');
+      assert.equal(v.quality.blocking, quality.blockingFailures(m.quality.findings).length, name + ': the quality is summarised differently');
+      // the sections really are the headings of that sheet
+      const heads = [...expected.matchAll(/<h[12]\b[^>]*>([\s\S]*?)<\/h[12]>/g)].map(x => x[1].replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim()).filter(Boolean);
+      assert.deepEqual(v.sections.map(x => x.label), heads.map(h => h.slice(0, 60)), name + '/' + version + ': the table of contents does not match the sheet');
+    }
+    // two levels are offered, one worksheet each
+    const both = render.viewerModel(m, { version: 'student' });
+    if (over.questionLevel === 'both') {
+      assert.ok(both.multi && both.variants.length === 2, name + ': the two levels are not offered');
+      const a = render.viewerModel(m, { version: 'student', variant: both.variants[0].key }).html;
+      const b = render.viewerModel(m, { version: 'student', variant: both.variants[1].key }).html;
+      assert.notEqual(a, b, name + ': both levels show the same sheet');
+    }
+  }
+});
+
+test('2.11', 'a version with nothing to show is named, not served empty', () => {
+  const m = fixture.material({ createWorksheet: false }, 'listening');
+  m.title = 'Ohne Worksheet'; m.quality = { findings: [] };
+  const v = render.viewerModel(m, { version: 'student' });
+  assert.equal(v.versions.find(x => x.key === 'student').available, false, 'an empty student version counts as available');
+  assert.ok(v.note && v.note.length > 20, 'no word of explanation');
+  assert.equal(v.version, 'teacher', 'the empty version is shown anyway');
+  assert.ok(v.html.includes('Teacher'), 'the teacher version is not shown instead');
+  // with a worksheet the student version exists again
+  const w = fixture.material({ createWorksheet: true }, 'listening');
+  w.title = 'Mit Worksheet'; w.quality = { findings: [] };
+  const v2 = render.viewerModel(w, { version: 'student' });
+  assert.ok(v2.versions.find(x => x.key === 'student').available, 'the student version is wrongly declared empty');
+  assert.equal(v2.note, '', 'a note although there is nothing to explain');
+});
+
+/* ------------------------------------------------------------------ */
 console.log('\nAudit: the rules Claude judges');
 
 test('2.3', 'every rule Claude judges carries its guardrails', () => {

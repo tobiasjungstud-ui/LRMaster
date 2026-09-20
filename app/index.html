@@ -92,6 +92,7 @@
           <button type="button" class="tab" data-tab="json">JSON</button>
         </div>
         <div class="output-actions">
+          <button type="button" class="btn tiny primary" id="btn-open-viewer" hidden>Im Viewer ansehen</button>
           <button type="button" class="btn tiny primary" data-download="docx-student">Word: Schülerversion</button><span id="dl-variants" class="dl-variants"></span>
           <button type="button" class="btn tiny primary" data-download="docx-teacher">Word: Lehrerversion</button>
           <button type="button" class="btn tiny" id="btn-print">Drucken</button>
@@ -108,6 +109,38 @@
       <div class="pane" data-pane="prompts" id="out-prompts" hidden></div>
       <pre class="pane json" data-pane="json" id="out-json" hidden></pre>
     </section>
+  </section>
+
+  <!-- Viewer: the finished material as a document -->
+  <section class="view viewer" id="view-viewer" hidden>
+    <div class="viewer-bar">
+      <button type="button" class="btn ghost" id="vw-back">‹ Zurück</button>
+      <div class="viewer-title">
+        <h1 id="vw-title">–</h1>
+        <p class="viewer-meta" id="vw-meta"></p>
+      </div>
+      <div class="viewer-tools">
+        <div class="seg" id="vw-version" role="group" aria-label="Fassung">
+          <button type="button" data-version="student" class="active">Schülerversion</button>
+          <button type="button" data-version="teacher">Lehrerversion</button>
+        </div>
+        <div class="seg" id="vw-variant" role="group" aria-label="Niveau" hidden></div>
+        <div class="seg" id="vw-zoom" role="group" aria-label="Zoom">
+          <button type="button" data-zoom="out" aria-label="Kleiner">−</button>
+          <button type="button" data-zoom="reset" id="vw-zoom-label">100 %</button>
+          <button type="button" data-zoom="in" aria-label="Grösser">+</button>
+        </div>
+        <button type="button" class="btn tiny" id="vw-print">Drucken</button>
+        <details class="menu" id="vw-downloads">
+          <summary class="btn tiny primary">Herunterladen</summary>
+          <div class="menu-list" id="vw-download-list"></div>
+        </details>
+      </div>
+    </div>
+    <div class="viewer-body">
+      <aside class="viewer-rail" id="vw-rail" aria-label="Inhalt des Materials"></aside>
+      <div class="viewer-stage" id="vw-stage"><div class="paper" id="vw-paper"></div></div>
+    </div>
   </section>
 
   <!-- Level meter -->
