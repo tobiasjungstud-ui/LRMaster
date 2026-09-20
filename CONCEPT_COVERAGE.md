@@ -500,7 +500,7 @@ Prüfarten: **setting** – Steuerelement vorhanden und Änderung des Werts ver�
 |---|---|---|---|---|
 | ✅ | `S38.gallery` | Vorlagen-Galerie über dem Formular: Karten mit Titel, Kurzbeschreibung und der Konfiguration in Worten | ui | Element `#setup-bar` |
 | ✅ | `S38.presets` | Je sechs Vorlagen für Listening und Reading, die alle Bereiche individuell setzen (Thema, Sprache, Aufbau, Vokabular, Fragen, Aufgabenphasen) | function | Funktion (siehe Check im Manifest) |
-| ✅ | `S38.summary` | Jede Vorlage wird in Worten zusammengefasst – aus den Einstellungen selbst, also immer zutreffend | function | Funktion (siehe Check im Manifest) |
+| ✅ | `S38.summary` | Jede Vorlage wird in Worten zusammengefasst – ergänzend zu den Tags, ohne eine Angabe doppelt zu nennen, mit Sozialform und Modus je Aufgabe | function | Funktion (siehe Check im Manifest) |
 | ✅ | `S38.tags` | Jede Vorlagenkarte zeigt die wichtigsten Angaben oben als kurze Tags (Niveau, Länge, Textsorte, Fragen, Aufgabenzeiten) | function | Funktion (siehe Check im Manifest) |
 | ✅ | `S38.redo` | Jede Karte hat einen Redo-Knopf: Claude schlägt eine neue Variante derselben Vorlage vor, geprüft übernommen | function | Funktion (siehe Check im Manifest) |
 | ✅ | `S38.folding` | Mit Vorlage bleiben die Einzeleinstellungen zugeklappt; „Vorlage anpassen“ und „Alles selbst einstellen“ öffnen sie | ui | Element `#btn-setup-adapt` |

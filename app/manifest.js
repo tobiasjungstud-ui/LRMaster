@@ -1572,18 +1572,39 @@
       }
       return ok(true);
     } });
-  add({ id: 'S38.summary', section: 38, title: 'Jede Vorlage wird in Worten zusammengefasst – aus den Einstellungen selbst, also immer zutreffend', kind: 'function',
+  add({ id: 'S38.summary', section: 38, title: 'Jede Vorlage wird in Worten zusammengefasst – ergänzend zu den Tags, ohne eine Angabe doppelt zu nennen, mit Sozialform und Modus je Aufgabe', kind: 'function',
     check(env) {
-      const s = env.core.applySetupPreset(env.state({ kind: 'reading' }), 'horrorblog');
-      const bullets = env.core.describeSetup(s, env.ctx);
-      if (bullets.length < 7) return 'the summary has only ' + bullets.length + ' lines';
-      const text = bullets.join(' | ');
-      const must = [s.cefr, String(s.wordCount), s.textType, 'Pre-Task', 'Post-Task', 'Fragen'];
-      for (const m of must) if (!text.includes(m)) return 'the summary does not mention ' + m;
+      for (const kind of ['listening', 'reading']) {
+        for (const preset of env.core.setupPresets(kind)) {
+          const s = env.core.applySetupPreset(env.state({ kind }), preset.key);
+          const bullets = env.core.describeSetup(s, env.ctx);
+          if (bullets.length < 7) return preset.key + ': the summary has only ' + bullets.length + ' lines';
+          const text = bullets.join(' | ');
+          // nothing that already stands in a tag above may be repeated here
+          for (const part of env.core.tagsFor(s, env.ctx).flatMap(t => t.split(' · ')).map(t => t.replace(/^(Pre|Post) /, ''))) {
+            if (text.includes(part)) return `${preset.key}: „${part}“ steht im Tag und noch einmal in der Zusammenfassung`;
+          }
+          if (!/Thema/.test(text) || !/Zielvokabular/.test(text)) return preset.key + ': topic or vocabulary missing';
+          const plan = env.core.buildPlan(s, env.ctx);
+          for (const [label, phase] of [['Pre-Task', plan.preTask], ['Post-Task', plan.postTask]]) {
+            const line = bullets.find(b => b.indexOf(label + ':') === 0);
+            if (!line) return preset.key + ': no line for ' + label;
+            for (const t of phase.tasks) {
+              const short = (env.core.SOCIAL_FORMS.find(f => f.key === t.socialForm) || {}).short;
+              if (!line.includes(short)) return `${preset.key}/${label}: the social form of task ${t.n} is missing`;
+            }
+            if (!/mündlich|schriftlich/.test(line)) return `${preset.key}/${label}: oral or written is missing`;
+            if (/Aufgabe\(n\)|\d+ min/.test(line)) return `${preset.key}/${label}: repeats the count or the minutes`;
+          }
+        }
+      }
       // it follows the settings, it is not a stored sentence
-      const changed = env.core.normalizeState(Object.assign(env.core.clone(s), { cefr: 'A2.1', wordCount: 150, glossary: false }));
+      const s = env.core.applySetupPreset(env.state({ kind: 'reading' }), 'horrorblog');
+      const before = env.core.describeSetup(s, env.ctx).join(' | ');
+      const changed = env.core.normalizeState(Object.assign(env.core.clone(s), { cefr: 'A2.1', wordCount: 150, glossary: false, grammarComplexity: 5, postTask: false }));
       const after = env.core.describeSetup(changed, env.ctx).join(' | ');
-      return ok(after.includes('A2.1') && after.includes('150') && !after.includes('Fremdwörter erklärt') && after !== text, 'the summary does not follow the settings');
+      return ok(after !== before && /einfachste Strukturen/.test(after) && !after.includes('Fremdwörter erklärt') && /Post-Task: aus/.test(after),
+        'the summary does not follow the settings');
     } });
   add({ id: 'S38.tags', section: 38, title: 'Jede Vorlagenkarte zeigt die wichtigsten Angaben oben als kurze Tags (Niveau, Länge, Textsorte, Fragen, Aufgabenzeiten)', kind: 'function',
     check(env) {

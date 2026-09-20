@@ -193,7 +193,7 @@
       definition: 'Vocabulary activation: pre-teach target words of the unit — matching, completing, sorting, or using them in own sentences. The words must be the target vocabulary listed above.' },
     { key: 'hypothesis', label: 'Fragen & Hypothesen', short: 'Hypothesen', interaction: 2, oral: false,
       definition: 'Questions and hypotheses: learners write down questions they expect the material to answer, or hypotheses they will verify while listening/reading.' },
-    { key: 'prediction', label: 'Prediction', short: 'Prediction', interaction: 1, oral: false,
+    { key: 'prediction', label: 'Vermutungen zum Text', short: 'Vermutung', interaction: 1, oral: false,
       definition: 'Prediction: from the title and the kind of material, learners predict what will be said or written.' },
   ];
   const PRE_TASK_TYPE_KEYS = PRE_TASK_TYPES.map(t => t.key);
@@ -229,10 +229,10 @@
 
   /** Social forms of a pre-task (Einzel-, Partner-, Gruppen-, Plenumsarbeit). */
   const SOCIAL_FORMS = [
-    { key: 'single', label: 'Einzelarbeit', en: 'on your own', interaction: 0, weight: 2 },
-    { key: 'pair', label: 'Partnerarbeit', en: 'with your partner', interaction: 2, weight: 2 },
-    { key: 'group', label: 'Gruppenarbeit', en: 'in a group of three or four', interaction: 3, weight: 1 },
-    { key: 'plenary', label: 'Plenum / ganze Klasse', en: 'with the whole class', interaction: 3, weight: 1 },
+    { key: 'single', label: 'Einzelarbeit', short: 'EA', en: 'on your own', interaction: 0, weight: 2 },
+    { key: 'pair', label: 'Partnerarbeit', short: 'PA', en: 'with your partner', interaction: 2, weight: 2 },
+    { key: 'group', label: 'Gruppenarbeit', short: 'GA', en: 'in a group of three or four', interaction: 3, weight: 1 },
+    { key: 'plenary', label: 'Plenum / ganze Klasse', short: 'Plenum', en: 'with the whole class', interaction: 3, weight: 1 },
   ];
   const SOCIAL_FORM_KEYS = SOCIAL_FORMS.map(f => f.key);
   const PRE_TASK_MODES = [
@@ -859,7 +859,7 @@
         questionFormats: ['multiple_choice', 'note_taking', 'table_completion', 'short_answer'], autoFormatMix: true,
         higherOrder: false, glossary: true, appendScript: false,
       }, tasks: { pre: 'quick', post: 'writing' } },
-    { key: 'debate', kind: 'listening', label: 'Streitgespräch', blurb: 'Drei Stimmen, die sich widersprechen und ins Wort fallen.',
+    { key: 'debate', kind: 'listening', label: 'Streitgespräch', blurb: 'Stimmen, die sich widersprechen und ins Wort fallen.',
       settings: {
         useUnitTopic: false, topicMode: 'custom', customTopic: 'a heated discussion in which three people disagree about a rule at school',
         cefr: 'B2.1', levelMeter: true, languageComplexity: 70, grammarComplexity: 65, vocabularyDifficulty: 65, idiomaticLanguage: 75, explicitness: 65,
@@ -911,7 +911,7 @@
         questionFormats: ['multiple_choice', 'true_false_correction', 'table_completion', 'short_answer'], autoFormatMix: true,
         higherOrder: false, glossary: true, authenticLayout: true,
       }, tasks: { pre: 'quick', post: 'discussion' } },
-    { key: 'hostemail', kind: 'reading', label: 'E-Mail an die Gastfamilie', blurb: 'Kurz, freundlich, alles direkt gesagt – für A2.',
+    { key: 'hostemail', kind: 'reading', label: 'E-Mail an die Gastfamilie', blurb: 'Kurz, freundlich, alles direkt gesagt.',
       settings: {
         useUnitTopic: false, topicMode: 'custom', customTopic: 'an exchange student writes to the host family before arriving: plans, questions and small worries',
         cefr: 'A2.2', levelMeter: true, languageComplexity: 15, grammarComplexity: 15, vocabularyDifficulty: 15, idiomaticLanguage: 10, explicitness: 10,
@@ -980,31 +980,46 @@
     const step = (v, labels) => labels[Math.min(labels.length - 1, Math.floor((clamp(Number(v) || 0, 0, 100) / 100) * labels.length))];
     const plan = buildPlan(s, { textbook: (ctx && ctx.textbook) || { name: '' }, unit });
     const out = [];
+    /*
+     * The card shows the hard numbers as tags above (level, length, text type,
+     * number of questions, task minutes). This summary says what those tags
+     * cannot say — and never repeats them.
+     */
     const topic = s.useUnitTopic && s.topicMode === 'unit' ? `Thema aus der Unit (${unit.topic || unit.name || '–'})` : `Thema: ${String(s.customTopic || '').trim() || '–'}`;
     if (s.kind === 'listening') {
-      const fmt = { monologue: 'Monolog', dialogue: 'Dialog (2 Sprechende)', conversation: `Gespräch (${effectiveSpeakerCount(s)} Sprechende)` }[s.format];
-      out.push(`${fmt} · ${plan.preset.label} · ${topic}`);
-      out.push(`${Math.round(audioSeconds(s) / 60 * 10) / 10} min ≈ ${plan.targetWords} Wörter · ${step(s.speakingSpeed, ['langsames', 'ruhiges', 'normales', 'zügiges', 'schnelles'])} Sprechtempo · Beiträge ${step(s.turnLength, ['sehr kurz', 'kurz', 'mittel', 'länger', 'lang'])}`);
-      out.push(`${step(s.naturalness, ['sehr saubere', 'klare', 'natürliche', 'sehr natürliche', 'ungefilterte'])} Sprechweise · Emotion-Tags ${{ off: 'aus', low: 'wenige', medium: 'mittel', high: 'viele' }[s.emotionTags]}`);
+      out.push(topic + (s.format === 'conversation' ? ` · ${effectiveSpeakerCount(s)} Sprechende` : ''));
+      out.push(`${step(s.speakingSpeed, ['langsames', 'ruhiges', 'normales', 'zügiges', 'schnelles'])} Sprechtempo · Beiträge ${step(s.turnLength, ['sehr kurz', 'kurz', 'mittel', 'länger', 'lang'])} · ${step(s.naturalness, ['sehr saubere', 'klare', 'natürliche', 'sehr natürliche', 'ungefilterte'])} Sprechweise · Emotion-Tags ${{ off: 'aus', low: 'wenige', medium: 'mittel', high: 'viele' }[s.emotionTags]}`);
     } else {
-      out.push(`${s.textType === 'Custom' ? s.customTextType : s.textType} · ${topic}`);
-      out.push(`${plan.targetWords} Wörter · ${{ short: 'kurze', medium: 'mittlere', long: 'lange' }[s.paragraphLength]} Absätze · ${step(s.styleBalance, ['stark erzählend', 'eher erzählend', 'gemischt', 'eher sachlich', 'stark sachlich'])}${Number(s.dialogueProportion) >= 40 ? ' · viel wörtliche Rede' : ''}`);
+      out.push(topic);
+      out.push(`${{ short: 'kurze', medium: 'mittlere', long: 'lange' }[s.paragraphLength]} Absätze · ${step(s.styleBalance, ['stark erzählend', 'eher erzählend', 'gemischt', 'eher sachlich', 'stark sachlich'])}${Number(s.dialogueProportion) >= 40 ? ' · viel wörtliche Rede' : ''}`);
     }
-    out.push(`Sprachniveau ${s.cefr} · ${step(s.grammarComplexity, ['einfachste Strukturen', 'einfache Sätze', 'niveautypische Sätze', 'komplexe Sätze', 'volles Strukturrepertoire'])} · ${step(s.vocabularyDifficulty, ['nur häufigster', 'häufiger', 'niveautypischer', 'anspruchsvoller', 'sehr anspruchsvoller'])} Wortschatz`);
+    out.push(`${step(s.grammarComplexity, ['einfachste Strukturen', 'einfache Sätze', 'niveautypische Sätze', 'komplexe Sätze', 'volles Strukturrepertoire'])} · ${step(s.vocabularyDifficulty, ['nur häufigster', 'häufiger', 'niveautypischer', 'anspruchsvoller', 'sehr anspruchsvoller'])} Wortschatz`);
     out.push(`Idiomatik ${step(s.idiomaticLanguage, ['keine', 'selten', 'gelegentlich', 'häufig', 'sehr häufig'])} · Informationen ${step(s.explicitness, ['sehr direkt gesagt', 'direkt gesagt', 'teils implizit', 'oft implizit', 'stark implizit'])}`);
     out.push(`Zielvokabular: ${s.vocabSelectionMode === 'manual' ? `${(s.selectedVocab || []).length} selbst gewählte Wörter` : `${s.targetVocabMin}–${s.targetVocabMax} Wörter aus der Unit`} · ${step(s.vocabUsage, ['unauffällig', 'zurückhaltend', 'deutlich', 'prominent', 'sehr prominent'])} eingesetzt`);
     if (!s.createWorksheet) out.push('Kein Arbeitsblatt – nur Skript bzw. Text');
     else {
-      const lvl = QUESTION_LEVELS[s.questionLevel];
-      out.push(`${plan.questionCount} Fragen · ${lvl ? lvl.label + ' (' + lvl.bands.join('–') + ')' : 'Niveau ' + plan.questionBand} · Inferenz ${step(s.inferenceLevel, ['textnah', 'leicht', 'mittel', 'anspruchsvoll', 'sehr anspruchsvoll'])} · ${plan.formats.length} Formate`);
-      if (s.higherOrder) out.push(`${plan.higherOrderCount} Higher-Order-Aufgabe(n): ${plan.higherOrderTypes.join(', ')}`);
+      // how the questions sit against the text, instead of repeating the level
+      const at = (b) => CEFR_BANDS.indexOf(b);
+      const diffs = (plan.questionBands || [plan.questionBand]).map(b => at(b) - at(s.cefr));
+      const rel = diffs.every(d => d === 0) ? 'auf Textniveau'
+        : diffs.every(d => d < 0) ? (Math.max(...diffs) === -1 ? 'eine Stufe unter dem Text' : 'deutlich unter dem Text')
+          : diffs.every(d => d > 0) ? 'über dem Textniveau' : 'gestaffelt um das Textniveau';
+      const formats = plan.formats.map(f => (QUESTION_FORMATS.find(x => x.key === f) || {}).label || f);
+      out.push(`Fragen ${rel} · Inferenz ${step(s.inferenceLevel, ['textnah', 'leicht', 'mittel', 'anspruchsvoll', 'sehr anspruchsvoll'])} · ${formats.slice(0, 3).join(', ')}${formats.length > 3 ? ' …' : ''}`);
+      if (s.higherOrder) out.push(`Higher-Order: ${plan.higherOrderTypes.join(', ')}`);
     }
     for (const phase of ['pre', 'post']) {
       const ph = TASK_PHASES[phase];
       const p = phase === 'pre' ? plan.preTask : plan.postTask;
       if (!p) { out.push(`${ph.label}: aus`); continue; }
-      const types = p.types.map(k => (ph.types.find(t => t.key === k) || {}).short || k).join(' + ');
-      out.push(`${ph.label}: ${types} · ${p.count} Aufgabe(n), ${p.minutes} min, ${p.oralCount} mündlich`);
+      // every task with its social form and whether it is spoken or written —
+      // the number of tasks follows from the list, the minutes are a tag
+      const tasks = p.tasks.map(t => {
+        const type = (ph.types.find(x => x.key === t.type) || {}).short || t.type;
+        const social = (SOCIAL_FORMS.find(x => x.key === t.socialForm) || {}).short || t.socialForm;
+        return `${type} (${social}, ${t.mode === 'oral' ? 'mündlich' : 'schriftlich'})`;
+      }).join(', ');
+      out.push(`${ph.label}: ${tasks}`);
     }
     const extras = [
       s.glossary ? 'Fremdwörter erklärt' : '',
@@ -1034,7 +1049,8 @@
       tags.push(plan.targetWords + ' Wörter');
       tags.push(s.textType === 'Custom' ? (s.customTextType || 'Custom') : s.textType);
     }
-    if (plan.questionCount) tags.push(plan.questionCount + ' Fragen' + (lv ? ' · Niveau ' + lv.key : ''));
+    if (plan.questionCount) tags.push(plan.questionCount + ' Fragen');
+    if (plan.questionCount && lv) tags.push('Fragen Niveau ' + lv.key);
     if (plan.preTask) tags.push('Pre ' + plan.preTask.minutes + ' min');
     if (plan.postTask) tags.push('Post ' + plan.postTask.minutes + ' min');
     return tags;

@@ -249,9 +249,27 @@ test('whole-setup templates configure a complete, valid material', () => {
       assert.equal(core.activeSetupPreset(s), preset.key, preset.key);
       const bullets = core.describeSetup(s, { textbook: tb, unit: tb.units[0] });
       assert.ok(bullets.length >= 7, preset.key + ': summary too short');
-      assert.ok(bullets.join(' ').includes(s.cefr), preset.key + ': summary without level');
-      assert.deepEqual(core.validateState(s, { textbook: tb, unit: tb.units[0] }), [], preset.key);
-      const plan = core.buildPlan(s, { textbook: tb, unit: tb.units[0] });
+      // tags carry the hard numbers; the summary must not say them a second time
+      const ctx = { textbook: tb, unit: tb.units[0] };
+      const tags = core.tagsFor(s, ctx);
+      const text = bullets.join(' | ');
+      for (const part of tags.flatMap(t => t.split(' · ')).map(t => t.replace(/^(Pre|Post) /, ''))) {
+        assert.ok(!text.includes(part), `${preset.key}: „${part}“ steht im Tag und noch einmal in der Zusammenfassung`);
+      }
+      // and every task is named with its social form and whether it is spoken
+      const plan0 = core.buildPlan(s, ctx);
+      for (const [label, phase] of [['Pre-Task', plan0.preTask], ['Post-Task', plan0.postTask]]) {
+        const line = bullets.find(b => b.startsWith(label + ':'));
+        assert.ok(line, preset.key + ': no line for ' + label);
+        for (const t of phase.tasks) {
+          const short = (core.SOCIAL_FORMS.find(f => f.key === t.socialForm) || {}).short;
+          assert.ok(line.includes(short), `${preset.key}/${label}: social form of task ${t.n} missing`);
+        }
+        assert.ok(/mündlich|schriftlich/.test(line), `${preset.key}/${label}: no mode`);
+        assert.ok(!/Aufgabe\(n\)|\d+ min/.test(line), `${preset.key}/${label}: repeats what the tags say`);
+      }
+      assert.deepEqual(core.validateState(s, ctx), [], preset.key);
+      const plan = core.buildPlan(s, ctx);
       assert.ok(plan.preTask && plan.postTask, preset.key + ': task phases missing');
       assert.ok(plan.questionCount > 0 && plan.targetWords > 0, preset.key);
       if (kind === 'reading') assert.equal(plan.authenticLayout, true, preset.key);

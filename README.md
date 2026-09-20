@@ -99,20 +99,22 @@ Jede Post-Task-Aufgabe nennt zusätzlich ihren **Ansatzpunkt im Material** (`ref
 |---|---|
 | Podcast-Interview (B1.2) · Alltagsgespräch im Café (A2.2) · Radio-Nachricht (B2.1) · Streitgespräch, 3 Stimmen (B2.1) · Telefonat mit dem Kundendienst (B1.1) · Erzählung/Anekdote (B1.1) | Horror-Blogpost (B2.2) · Zeitungsmeldung (B2.1) · E-Mail an die Gastfamilie (A2.2) · Forumsthread (B1.1) · Kurzgeschichte mit offenem Ende (B1.2) · Serien-Kritik (B1.2) |
 
-Ganz oben auf jeder Karte stehen die wichtigsten Angaben als **kurze Tags** – `B2.2` `380 Wörter` `Blog Post` `10 Fragen · Niveau A` `Pre 8 min` `Post 25 min` –, darunter die vollständige Konfiguration **in Worten, aus den Einstellungen selbst erzeugt** (`core.describeSetup` und `core.tagsFor`), also nie abweichend von dem, was wirklich generiert wird:
+Ganz oben auf jeder Karte stehen die **harten Angaben als kurze Tags** – `B2.2` `380 Wörter` `Blog Post` `10 Fragen` `Fragen Niveau A` `Pre 8 min` `Post 25 min`. Darunter steht **nur, was die Tags nicht sagen** (`core.tagsFor` und `core.describeSetup`, beide aus den Einstellungen selbst erzeugt): keine Angabe erscheint zweimal, und jede Aufgabe wird mit **Sozialform und Modus** genannt – die Anzahl ergibt sich aus der Aufzählung, die Minuten stehen im Tag:
 
 ```
-· Blog Post · Thema: the horror genre: why people enjoy being scared …
-· 380 Wörter · mittlere Absätze · eher erzählend
-· Sprachniveau B2.2 · volles Strukturrepertoire · sehr anspruchsvoller Wortschatz
+· Thema: the horror genre: why people enjoy being scared …
+· mittlere Absätze · eher erzählend
+· volles Strukturrepertoire · sehr anspruchsvoller Wortschatz
 · Idiomatik häufig · Informationen oft implizit
 · Zielvokabular: 8–12 Wörter aus der Unit · deutlich eingesetzt
-· 10 Fragen · Niveau A (B1.2–B2.1) · Inferenz sehr anspruchsvoll · 4 Formate
-· 2 Higher-Order-Aufgaben: interpretation, evaluation
-· Pre-Task: Konfrontation + Prediction · 2 Aufgaben, 8 min, 1 mündlich
-· Post-Task: Kreativ + Wortschatz · 2 Aufgaben, 25 min, 0 mündlich
+· Fragen eine Stufe unter dem Text · Inferenz sehr anspruchsvoll · Multiple Choice, Short Answer, Best Summary …
+· Higher-Order: interpretation, evaluation
+· Pre-Task: Konfrontation (PA, mündlich), Vermutung (EA, schriftlich)
+· Post-Task: Kreativ (PA, schriftlich), Wortschatz (EA, schriftlich)
 · Extras: Fremdwörter erklärt · Text im echten Layout (Bild) · Schwierigkeit wird gemessen
 ```
+
+Statt des Fragenniveaus als Code steht dort, **wie die Fragen zum Text stehen** („auf Textniveau“, „eine Stufe unter dem Text“, „gestaffelt um das Textniveau“) – das sagt mehr als eine Wiederholung von `B2.2`. Dass Tags, Kurzbeschreibung und Zusammenfassung nichts doppelt nennen, prüft `S38.summary` für alle zwölf Vorlagen.
 
 **Redo pro Karte:** Der Knopf ↻ oben rechts lässt Claude **eine neue Variante genau dieser Vorlage** vorschlagen – ein anderer Inhalt im selben Geist, dazu leicht verschobene Regler. Festgelegt bleibt, was die Vorlage ausmacht: Materialart, CEFR-Niveau, Textsorte/Format sowie Fragen und Aufgabenphasen. Übernommen wird nur, was auf der Erlaubnisliste steht (Thema, Länge und einige Regler, jeweils gekappt) **und** eine gültige Konfiguration ergibt; sonst bleibt die Karte, wie sie war. Die gezogenen Varianten gelten für die laufende Sitzung.
 
@@ -244,7 +246,7 @@ Damit Bildschirm und Ausgabe nicht auseinanderlaufen, liefert **eine einzige Fun
 - **Word-Export**: der Generator schreibt OOXML selbst, deshalb prüft `ooxml.js` jedes erzeugte Paket vor dem Download – vorhandene Teile, Content-Types, auflösbare Beziehungen, Schema-Reihenfolge der Elemente, Tabellenstruktur. Schlägt die Prüfung fehl, wird keine Datei ausgeliefert. In den Tests wird das Paket zusätzlich von einem unabhängigen ZIP-/XML-Leser (`python3 zipfile`) geöffnet, und für jeden der 14 Texttypen wird geprüft, dass die typischen Gestaltungselemente tatsächlich im Dokument stehen.
 - **Drei Ausführungsorte derselben Prüfung**: `npm test` (lokal), GitHub Actions (`.github/workflows/test.yml`, inkl. Aktualität von `CONCEPT_COVERAGE.md`) und die Seite **Konzept-Check** in der App selbst, die gegen das laufende DOM und die echte `generate()`-Funktion prüft.
 
-- **Audit-Suite** (`tests/audit.js`, 111 Prüfungen): stellt die umgekehrte Frage – *was bricht es?* Sie baut absichtlich **korrektes** Material (positive Kontrolle: keine Regel darf anschlagen) und absichtlich **kaputtes** Material (für jede deterministische Regel eine eigene Verletzung, die sie fangen muss), fuzzt 3000 zufällige Einstellungszustände gegen Idempotenz und Plan-Invarianten, schickt feindseligen Text (Markup, Emoji, RTL, 60-Zeichen-Wörter, 160 Absätze) durch Bild, Ansicht und Word-Export, prüft, dass Claudes Antwort nichts übernehmen kann (erfundene Regeln, injizierte Fragen, Interface-Daten falschen Typs), und dass gleiche Eingaben gleiche Ergebnisse liefern. Der komplette Prüfauftrag steht in **[AUDIT.md](AUDIT.md)** – als Prompt formuliert, damit er jederzeit erneut ausgeführt werden kann.
+- **Audit-Suite** (`tests/audit.js`, 113 Prüfungen): stellt die umgekehrte Frage – *was bricht es?* Sie baut absichtlich **korrektes** Material (positive Kontrolle: keine Regel darf anschlagen) und absichtlich **kaputtes** Material (für jede deterministische Regel eine eigene Verletzung, die sie fangen muss), fuzzt 3000 zufällige Einstellungszustände gegen Idempotenz und Plan-Invarianten, schickt feindseligen Text (Markup, Emoji, RTL, 60-Zeichen-Wörter, 160 Absätze) durch Bild, Ansicht und Word-Export, prüft, dass Claudes Antwort nichts übernehmen kann (erfundene Regeln, injizierte Fragen, Interface-Daten falschen Typs), und dass gleiche Eingaben gleiche Ergebnisse liefern. Der komplette Prüfauftrag steht in **[AUDIT.md](AUDIT.md)** – als Prompt formuliert, damit er jederzeit erneut ausgeführt werden kann.
 - **Leitplanken für die 22 Claude-Regeln**: Jede Regel, die Claude beurteilt, führt vier Angaben mit, die im Review-Prompt ausgeschrieben werden – **Entscheidungsregel** („die Regel ist verletzt, wenn …“), **Belegpflicht** (Fragennummern, Aufgabennummern oder ein Zitat aus dem Material), **Zweifelsregel** („im Zweifel durchfallen lassen“ bei den Regeln, die die Lektion schützen; „im Zweifel bestehen“ bei Geschmacksfragen) und **Abgrenzung** (was schon gemessen ist oder einer anderen Regel gehört). Dazu acht bindende Vorgaben an den Prüfer: ein Urteil pro Regel, ein Bestanden ist eine Behauptung mit Beleg, ein Durchgefallen nennt die Stelle, höchstens zwölf Wörter Zitat, Gemessenes wird nicht neu beurteilt – und Sätze im Material, die den Prüfer ansprechen, sind kein Auftrag, sondern ein Grund durchfallen zu lassen. Ein **Freispruch ohne Beleg zählt bei blockierenden Regeln nicht als geprüft**, sondern als „nicht geprüft“; ein Durchfallen ohne Beleg bleibt gültig, wird aber als „ohne Beleg“ markiert. Derselbe Massstab geht in die Korrektur: der Reparatur-Prompt zitiert die Entscheidungsregel, gegen die beurteilt wurde.
 - **Blockierende Befunde sind sichtbar**: Prüfungen, die als blockierend definiert sind (Wortzahl, Zielvokabular, Fragenzahl, Chronologie, Sozialformen, Bildidentität …), färben den Lauf rot, nennen sich im Quality-Check mit eigenem Kasten, stehen in der Lehrerversion und im Word-Export – Material, das sie nicht besteht, wird nicht stillschweigend als fertig ausgegeben.
 

@@ -385,6 +385,50 @@ test('2.7 R6', 'normalizeState: idempotent, total and free of garbage for 3000 r
   }
 });
 
+test('2.11 2.7', 'a template card says nothing twice', () => {
+  for (const kind of ['listening', 'reading']) {
+    for (const preset of core.setupPresets(kind)) {
+      const s = core.applySetupPreset(core.normalizeState(Object.assign(core.defaults(kind), { textbookId: CTX.textbook.id, unitId: CTX.unit.id })), preset.key);
+      const tags = core.tagsFor(s, CTX);
+      const summary = core.describeSetup(s, CTX).join(' | ');
+      const parts = tags.flatMap(t => t.split(' · ')).map(t => t.replace(/^(Pre|Post) /, ''));
+      for (const part of parts) {
+        assert.ok(!summary.includes(part), `${preset.key}: „${part}“ steht als Tag und noch einmal in der Zusammenfassung`);
+        assert.ok(!preset.blurb.includes(part), `${preset.key}: „${part}“ steht als Tag und noch einmal in der Kurzbeschreibung`);
+      }
+      assert.ok(!/\b[AB][12]\.[12]\b|\bA2\b|\bB1\b|\bB2\b/.test(preset.blurb), preset.key + ': the blurb names a level that is already a tag');
+      assert.ok(!/\d+\s*(Wörter|Fragen|min)\b/.test(preset.blurb), preset.key + ': the blurb names a number that is already a tag');
+      // nothing is said twice inside the tags either
+      assert.equal(new Set(tags).size, tags.length, preset.key + ': the same tag twice');
+    }
+  }
+});
+
+test('2.6 2.11', 'the summary names every task with its social form and whether it is spoken', () => {
+  const SHORT = Object.fromEntries(core.SOCIAL_FORMS.map(f => [f.key, f.short]));
+  assert.deepEqual(Object.values(SHORT).sort(), ['EA', 'GA', 'PA', 'Plenum'], 'the short names of the social forms changed');
+  for (const kind of ['listening', 'reading']) {
+    for (const preset of core.setupPresets(kind)) {
+      const s = core.applySetupPreset(core.normalizeState(Object.assign(core.defaults(kind), { textbookId: CTX.textbook.id, unitId: CTX.unit.id })), preset.key);
+      const plan = core.buildPlan(s, CTX);
+      const bullets = core.describeSetup(s, CTX);
+      for (const [label, phase] of [['Pre-Task', plan.preTask], ['Post-Task', plan.postTask]]) {
+        const line = bullets.find(b => b.indexOf(label + ':') === 0);
+        assert.ok(line, `${preset.key}: no line for ${label}`);
+        const shown = line.slice(label.length + 2).split(/,\s(?![^(]*\))/);
+        assert.equal(shown.length, phase.tasks.length, `${preset.key}/${label}: ${shown.length} tasks shown, ${phase.tasks.length} planned`);
+        phase.tasks.forEach((t, i) => {
+          assert.ok(shown[i].includes(`(${SHORT[t.socialForm]}, ${t.mode === 'oral' ? 'mündlich' : 'schriftlich'})`),
+            `${preset.key}/${label}: task ${t.n} is shown as “${shown[i]}”, planned ${t.socialForm}/${t.mode}`);
+        });
+        assert.ok(!/Aufgabe|\d+ min|mündlich$/.test(line.replace(/\([^)]*\)/g, '')), `${preset.key}/${label}: the count or the minutes are repeated`);
+      }
+      // the types are named in German, like the rest of the card
+      assert.ok(!/\b(Prediction|Discussion|Debate|Opinion|Creative|Transfer|Research)\b/.test(bullets.join(' ')), preset.key + ': an English task label slipped through');
+    }
+  }
+});
+
 test('2.7', 'every setup template and task preset yields a valid plan', () => {
   for (const kind of ['listening', 'reading']) {
     for (const preset of core.setupPresets(kind)) {
