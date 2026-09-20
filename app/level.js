@@ -142,12 +142,21 @@
     return 'c';
   }
 
+  /**
+   * Words as a teacher counts them — numbers included, stage directions not.
+   * The whole app counts with this one function, so the difficulty meter and
+   * the length rule never show two different numbers for the same text.
+   */
+  function countWords(text) {
+    return String(text || '').replace(/\[[a-z]+\]/gi, ' ').match(/[\p{L}\p{N}][\p{L}\p{N}'’-]*/gu) || [];
+  }
+
   function tokenize(text) {
     const out = [];
     const re = /[\p{L}][\p{L}'’-]*[\p{L}]|[\p{L}]/gu;
     let m;
     while ((m = re.exec(text))) {
-      const raw = m[0].replace(/[’]/g, "'");
+      const raw = m[0].replace(/[\u2019]/g, "'");
       const parts = raw.split("'");
       let base = parts[0];
       if (!base) continue;
@@ -246,7 +255,7 @@
     const text = plainText(content, kind);
     const sents = sentences(text);
     const toks = tokenize(text);
-    const totalWords = toks.length;
+    const totalWords = countWords(text).length;
     const sentLengths = sents.map(s => tokenize(s).length);
     const msl = sentLengths.length ? sentLengths.reduce((a, b) => a + b, 0) / sentLengths.length : 0;
 
@@ -436,5 +445,5 @@
     return lines;
   }
 
-  return { BANDS, DESCRIPTORS, DIMENSIONS, measure, compare, targetsFor, targetLines, glossaryCandidates, rankOf, rankBand, lemmaOf, tokenize, sentences, candidates, americanize, maxRankFor, hardWordsFor, stripDirections };
+  return { BANDS, DESCRIPTORS, DIMENSIONS, measure, compare, targetsFor, targetLines, glossaryCandidates, rankOf, rankBand, lemmaOf, tokenize, sentences, candidates, americanize, maxRankFor, hardWordsFor, stripDirections, countWords };
 });

@@ -123,6 +123,14 @@ Fang hier an, nicht beim Einfachen. Diese Liste ist die Selbstanzeige des Autors
 
 ---
 
+## 3a. Wie dieser Auftrag ausgeführt und kontrolliert wird
+
+Der Prompt kontrolliert sich selbst, damit „abgearbeitet" nicht Behauptung bleibt:
+
+- **`tests/audit.js`** (`npm run audit`, Teil von `npm test`): jede Prüfung trägt das Kapitel, das sie beantwortet (`2.1`–`2.12`) und ggf. die Schwachstelle aus Kapitel 3 (`R1`–`R10`). Am Ende listet die Suite jedes Kapitel mit der Zahl seiner Prüfungen und **schlägt fehl, wenn auch nur eines ohne Prüfung bleibt**. Der Abdeckungs-Gate beweist Anwesenheit, nicht Tiefe — die Tiefe steht in der Liste der Prüfungen darunter.
+- **`tests/browser.js`** (`npm run audit:browser`): alles, was Node nicht kann — die In-App-Konzeptprüfung gegen den *exportierten* Quelltext, der ganze Durchlauf gegen neun bösartige Claude-Stubs, XSS in allen Tabs, kaputter und voller `localStorage`, Doppelstart, Stop bei hängendem Aufruf, Tastaturbedienung, Fokus, Dunkelmodus-Kontrast, 360-px-Ansicht, Navigation während des Laufs. Fehlt Playwright, überspringt sich die Suite mit einer Meldung statt zu scheitern.
+- **Beide Blickwinkel auf den Konzept-Check**: `npm test` prüft das Manifest gegen die ganze Datei `ui.js`, die Audit-Suite zusätzlich gegen genau die Funktionen, die `window.LR.ui` exportiert — also gegen das, was die Prüfung im Browser sieht (Schwachstelle 1). Was nur in Node grün ist, fällt damit sofort auf.
+
 ## 4. Ergebnis
 
 Liefere am Ende:

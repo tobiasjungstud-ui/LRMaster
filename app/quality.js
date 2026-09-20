@@ -14,13 +14,13 @@
   /* Text utilities                                                       */
   /* ------------------------------------------------------------------ */
 
-  function words(text) {
-    return String(text || '').replace(/\[[a-z]+\]/gi, ' ').match(/[A-Za-zÀ-ÿ0-9'’-]+/g) || [];
-  }
+  // one counter for the whole app (see level.countWords), so that the length
+  // rule, the difficulty meter and the teacher version never disagree
+  function words(text) { return level.countWords(text); }
   function wordCount(text) { return words(text).length; }
 
   function normalizeForSearch(s) {
-    return String(s || '').toLowerCase().replace(/[’‘`´]/g, "'").replace(/[“”]/g, '"').replace(/[^a-z0-9' ]+/g, ' ').replace(/\s+/g, ' ').trim();
+    return String(s || '').toLowerCase().replace(/[\u2019\u2018`\u00B4]/g, "'").replace(/[\u201C\u201D]/g, '"').replace(/[^a-z0-9' ]+/g, ' ').replace(/\s+/g, ' ').trim();
   }
 
   /** Full plain text of the material and the character offset where each line/paragraph starts. */
@@ -620,6 +620,70 @@
     { id: 'questions.answerable', group: 'questions', kind: 'llm', title: 'Every question is answerable unambiguously', needsWorksheet: true, criterion: 'every question has exactly one defensible answer', blocking: true },
     { id: 'questions.derivable', group: 'questions', kind: 'llm', title: 'Correct answer follows from the material', needsWorksheet: true, criterion: 'each key answer can actually be derived from the material (and from the evidence quote given)', blocking: true },
     { id: 'questions.distractors', group: 'questions', kind: 'llm', title: 'Distractors are plausible', needsWorksheet: true, criterion: 'distractors in closed formats are plausible but clearly wrong', blocking: false },
+    { id: 'questions.complete', group: 'questions', kind: 'deterministic', title: 'Every question can be used as it stands', needsWorksheet: true, blocking: true,
+      check(ctx) {
+        const bad = [], soft = [];
+        const answerOf = (q) => (Array.isArray(q.answer) ? q.answer.join(', ') : String(q.answer == null ? '' : q.answer)).trim();
+        const optionsOf = (q) => (Array.isArray(q.options) ? q.options : []).map(o => String(o).trim()).filter(Boolean);
+        const itemsOf = (q) => (Array.isArray(q.items) ? q.items : []);
+        const letterIndex = (a) => (/^[A-Za-z]$/.test(a) ? a.toUpperCase().charCodeAt(0) - 65 : -1);
+        for (const q of ctx.worksheet.questions || []) {
+          const answer = answerOf(q), opts = optionsOf(q), items = itemsOf(q);
+          const text = String(q.prompt || q.statement || '').trim();
+          const say = (why) => bad.push(`Q${q.n}: ${why}`);
+          if (!text) say('no question text');
+          if (!answer && !items.length) say('no answer');
+          switch (q.format) {
+            case 'multiple_choice': case 'best_summary': {
+              if (opts.length < 3) say(`only ${opts.length} option(s)`);
+              else {
+                const i = letterIndex(answer);
+                const hit = i >= 0 ? i < opts.length : opts.some(o => normalizeForSearch(o) === normalizeForSearch(answer));
+                if (!hit) say(`the answer “${answer}” is not one of the options`);
+              }
+              break;
+            }
+            case 'select_all': {
+              if (opts.length < 3) say(`only ${opts.length} option(s)`);
+              const letters = (Array.isArray(q.answer) ? q.answer : String(q.answer || '').split(/[,\s]+/)).map(x => letterIndex(String(x).trim()));
+              if (!letters.length || letters.some(i => i < 0 || i >= opts.length)) say('the answer does not name options that exist');
+              break;
+            }
+            case 'true_false': case 'true_false_correction': {
+              if (!/^(true|false)$/i.test(answer)) say(`the answer “${answer}” is not True or False`);
+              if (q.format === 'true_false_correction' && /^false$/i.test(answer) && !String(q.correction || '').trim()) soft.push(`Q${q.n}: no correction for a false statement`);
+              break;
+            }
+            case 'matching': {
+              const pairs = items.filter(it => it && String(it.left || '').trim() && String(it.right || '').trim());
+              if (pairs.length < 3) say(`only ${pairs.length} complete pair(s)`);
+              break;
+            }
+            case 'ordering': { if (items.length < 3) say(`only ${items.length} item(s) to order`); break; }
+            case 'who_said_it': {
+              if (opts.length < 2) say('fewer than two speakers to choose from');
+              else if (!opts.some(o => normalizeForSearch(o) === normalizeForSearch(answer)) && letterIndex(answer) < 0) say(`the answer “${answer}” is not one of the speakers`);
+              break;
+            }
+            case 'table_completion': {
+              const t = q.table || {};
+              if (!Array.isArray(t.rows) || !t.rows.length) say('no table');
+              if (!Array.isArray(q.answer) || !q.answer.length) say('no entries for the blanks');
+              break;
+            }
+            case 'gap_fill': case 'note_taking': {
+              if (!Array.isArray(q.answer) || !q.answer.length) say('no list of answers for the gaps');
+              break;
+            }
+            case 'sentence_completion': { if (!/_{2,}|\.\.\./.test(text)) soft.push(`Q${q.n}: no gap marked in the sentence`); break; }
+            default: break;
+          }
+        }
+        const numbers = (list) => [...new Set(list.map(x => Number(/(\d+)/.exec(x)[1])))].sort((a, b) => a - b);
+        const status = bad.length ? 'fail' : soft.length ? 'warn' : 'pass';
+        return finding(this, status, bad.concat(soft).join('; ') + (bad.length || soft.length ? '.' : '')
+          || `All ${(ctx.worksheet.questions || []).length} question(s) complete.`, { questions: numbers(bad.concat(soft)) });
+      } },
     { id: 'questions.chronology', group: 'questions', kind: 'deterministic', title: 'Questions follow the timeline of the audio/text', needsWorksheet: true, blocking: true,
       check(ctx) {
         const r = chronologyReport(ctx.worksheet, ctx.content, ctx.state.kind);

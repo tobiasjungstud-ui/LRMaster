@@ -927,7 +927,7 @@
 
   function slug(s) {
     return String(s || 'material').toLowerCase()
-      .replace(/[äàâ]/g, 'a').replace(/[öô]/g, 'o').replace(/[üû]/g, 'u').replace(/ß/g, 'ss')
+      .replace(/[\u00E4\u00E0\u00E2]/g, 'a').replace(/[\u00F6\u00F4]/g, 'o').replace(/[\u00FC\u00FB]/g, 'u').replace(/\u00DF/g, 'ss')
       .replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 60) || 'material';
   }
   function filename(material, which, variantKey) { return slug(material.title) + '-' + which + (variantKey ? '-niveau-' + String(variantKey).toLowerCase() : '') + '.docx'; }

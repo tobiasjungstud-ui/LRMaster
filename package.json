@@ -7,7 +7,8 @@
     "test": "node tests/run.js && node tests/audit.js",
     "coverage": "node scripts/coverage-report.js",
     "serve": "python3 -m http.server 8080 --directory app",
-    "audit": "node tests/audit.js"
+    "audit": "node tests/audit.js",
+    "audit:browser": "node tests/browser.js"
   },
   "engines": {
     "node": ">=18"

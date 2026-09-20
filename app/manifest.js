@@ -433,6 +433,7 @@
     ['content.topic_unit', 'Content: Thema passt zur Unit'], ['content.vocab_used', 'Content: Zielvokabular sinnvoll verwendet'], ['content.coherent', 'Content: Text kohärent'], ['content.natural', 'Content: Gespräch wirkt natürlich'],
     ['listening.shares', 'Listening: Sprechanteile entsprechen den Einstellungen'], ['listening.distinguishable', 'Listening: Sprecher eindeutig unterscheidbar'], ['listening.emotion_tags', 'Listening: Emotion-Tags sinnvoll verteilt'], ['listening.no_artificial_switches', 'Listening: keine künstlichen Sprecherwechsel'],
     ['questions.answerable', 'Questions: jede Frage eindeutig beantwortbar'], ['questions.derivable', 'Questions: Antwort aus dem Material ableitbar'], ['questions.distractors', 'Questions: Distraktoren plausibel'], ['questions.chronology', 'Questions: Audio-/Textreihenfolge'],
+    ['questions.complete', 'Questions: jede Frage ist so einsetzbar (Text, Antwort, Optionen, Paare passen zum Format)'],
     ['questions.no_duplicates', 'Questions: keine zwei Fragen prüfen dieselbe Information'], ['questions.skill_distribution', 'Questions: Skill-Verteilung entspricht Einstellungen'], ['questions.difficulty', 'Questions: Difficulty entspricht Stufe'], ['questions.inference_genuine', 'Questions: Inference-Fragen wirklich inferentiell'],
   ];
   for (const [rid, title] of RULE_REQS) add({ id: 'S29.' + rid, section: 29, title: 'Quality Check – ' + title, kind: 'rule', ruleId: rid });

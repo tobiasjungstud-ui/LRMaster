@@ -11,6 +11,7 @@ jobs:
         with:
           node-version: 20
       - run: npm test
+      - run: npm run audit:browser
       - run: npm run coverage
       - name: Coverage report must be up to date
         run: git diff --exit-code -- CONCEPT_COVERAGE.md || (echo "Run 'npm run coverage' and commit CONCEPT_COVERAGE.md" && exit 1)

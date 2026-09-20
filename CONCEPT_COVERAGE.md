@@ -2,7 +2,7 @@
 
 Erzeugt von `npm run coverage`. Jede Zeile ist eine Anforderung aus `docs/Konzept_Listening_Reading_Creator.md`, gebunden an die Stelle im Code, die sie umsetzt, und das Ergebnis der automatischen Prüfung (`npm test`).
 
-**Ergebnis: 307 von 307 Anforderungen bestanden.**
+**Ergebnis: 308 von 308 Anforderungen bestanden.**
 
 Prüfarten: **setting** – Steuerelement vorhanden und Änderung des Werts verändert nachweislich den Prompt an Claude · **function** – Verhalten wird mit echten Eingaben ausgeführt und verglichen · **rule** – Qualitätsregel existiert als Messung oder Claude-Review-Kriterium · **render** – Ausgabe wird auf einer Fixture gerendert und inhaltlich geprüft · **ui** – Navigations-/Strukturelement existiert.
 
@@ -270,7 +270,7 @@ Prüfarten: **setting** – Steuerelement vorhanden und Änderung des Werts ver�
 | ✅ | `S28.teacher_rationale` | Teacher Version: Begründung für Inference-Fragen | render | render.js (renderStudentHTML / renderTeacherHTML) |
 | ✅ | `X.no_hardcoded_content` | Kontrolle: keine hartkodierten Textbausteine für Titel, Instruktion, Fragen, Pre-Tasks oder Themen | function | Funktion (siehe Check im Manifest) |
 
-## §29 Quality Check (33/33)
+## §29 Quality Check (34/34)
 
 | Status | ID | Anforderung | Art | Umsetzung |
 |---|---|---|---|---|
@@ -286,6 +286,7 @@ Prüfarten: **setting** – Steuerelement vorhanden und Änderung des Werts ver�
 | ✅ | `S29.questions.derivable` | Quality Check – Questions: Antwort aus dem Material ableitbar | rule | Quality rule `questions.derivable` (Claude-Review über buildReviewPrompt) |
 | ✅ | `S29.questions.distractors` | Quality Check – Questions: Distraktoren plausibel | rule | Quality rule `questions.distractors` (Claude-Review über buildReviewPrompt) |
 | ✅ | `S29.questions.chronology` | Quality Check – Questions: Audio-/Textreihenfolge | rule | Quality rule `questions.chronology` (gemessen in quality.js) |
+| ✅ | `S29.questions.complete` | Quality Check – Questions: jede Frage ist so einsetzbar (Text, Antwort, Optionen, Paare passen zum Format) | rule | Quality rule `questions.complete` (gemessen in quality.js) |
 | ✅ | `S29.questions.no_duplicates` | Quality Check – Questions: keine zwei Fragen prüfen dieselbe Information | rule | Quality rule `questions.no_duplicates` (gemessen in quality.js) |
 | ✅ | `S29.questions.skill_distribution` | Quality Check – Questions: Skill-Verteilung entspricht Einstellungen | rule | Quality rule `questions.skill_distribution` (gemessen in quality.js) |
 | ✅ | `S29.questions.difficulty` | Quality Check – Questions: Difficulty entspricht Stufe | rule | Quality rule `questions.difficulty` (Claude-Review über buildReviewPrompt) |
@@ -615,6 +616,7 @@ Prüfarten: **setting** – Steuerelement vorhanden und Änderung des Werts ver�
 | `questions.answerable` | questions | llm | ja | Every question is answerable unambiguously |
 | `questions.derivable` | questions | llm | ja | Correct answer follows from the material |
 | `questions.distractors` | questions | llm | nein | Distractors are plausible |
+| `questions.complete` | questions | deterministic | ja | Every question can be used as it stands |
 | `questions.chronology` | questions | deterministic | ja | Questions follow the timeline of the audio/text |
 | `questions.no_duplicates` | questions | deterministic | nein | No two questions test the same information |
 | `questions.duplicates_llm` | questions | llm | nein | No two questions test exactly the same information (review) |

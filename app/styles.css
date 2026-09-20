@@ -287,6 +287,9 @@ mark.vocab { background: var(--mark); color: inherit; border-radius: 3px; paddin
 .qc-status { font-family: var(--font-mono); font-size: .72rem; text-transform: uppercase; letter-spacing: .05em; white-space: nowrap; }
 .qc-pass .qc-status { color: var(--good); }
 .qc-warn .qc-status { color: var(--warn); }
+.topbar .claude-status { font-size: .78rem; color: var(--muted); max-width: 22rem; }
+.claude-status[data-state="off"] { color: var(--bad); font-weight: 600; }
+.claude-status[data-state="ok"] { color: var(--good, #1B5E20); }
 .qc-fail .qc-status { color: var(--bad); }
 .qc-blocked { border: 1px solid var(--bad); border-left-width: 4px; border-radius: 8px; padding: .6rem .8rem; margin: .6rem 0 1rem; background: color-mix(in srgb, var(--bad) 8%, transparent); }
 .qc-blocked ul { margin: .4rem 0 0; padding-left: 1.1rem; }

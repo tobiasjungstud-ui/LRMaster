@@ -10,7 +10,7 @@
 
   const UNIT_HEADING = /^\s*(unit|einheit|lektion|lesson|chapter|kapitel|module|topic)\s*([0-9]+[a-z]?)?\s*[:\-–—.]?\s*(.*)$/i;
   /** A line or cell only counts as vocabulary if it carries a letter or digit. */
-  const HAS_WORD = /[0-9A-Za-zÀ-ÿ\u0100-\u024F\u0370-\uFFFF]/;
+  const HAS_WORD = /[0-9A-Za-z\u00C0-\u00FF\u0100-\u024F\u0370-\uFFFF]/;
 
   function detectDelimiter(lines) {
     const candidates = ['\t', ';', ',', '|'];

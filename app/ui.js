@@ -27,11 +27,14 @@
   }
 
   function updateClaudeStatus() {
-    const el = $('#claude-status');
-    if (!el) return;
-    if (!caps.ready) { el.textContent = 'Verbindung zu Claude wird geprüft …'; el.dataset.state = 'pending'; return; }
-    if (caps.sample) { el.textContent = 'Claude verbunden – Generierung möglich'; el.dataset.state = 'ok'; }
-    else { el.textContent = 'Claude ist in dieser Ansicht nicht verfügbar. Öffne das Artifact in Claude.ai, um Material zu generieren.'; el.dataset.state = 'off'; }
+    // the line lives in the top bar and in the generate row: whoever sees a
+    // disabled button must also see why it is disabled
+    const els = $$('.claude-status');
+    const say = (text, state) => els.forEach(el => { el.textContent = text; el.dataset.state = state; });
+    if (!els.length) return;
+    if (!caps.ready) { say('Verbindung zu Claude wird geprüft …', 'pending'); return; }
+    if (caps.sample) say('Claude verbunden – Generierung möglich', 'ok');
+    else say('Claude ist in dieser Ansicht nicht verfügbar. Öffne das Artifact in Claude.ai, um Material zu generieren.', 'off');
     $$('#btn-generate, #btn-suggest-topics, #btn-parse-claude').forEach(b => { b.disabled = !caps.sample; });
     const detect = $('#btn-detect-units');
     if (detect) detect.disabled = !caps.sample || !importState.units;
@@ -341,6 +344,7 @@
     $('#btn-generate').addEventListener('click', () => generate());
     $('#btn-stop').addEventListener('click', () => { if (app.running) app.running.abort(); });
     $('#btn-suggest-topics').addEventListener('click', suggestTopics);
+    updateClaudeStatus();
   }
 
   function jumpTo(key) {
