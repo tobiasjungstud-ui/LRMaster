@@ -509,16 +509,20 @@
       y += 112;
     }
 
-    // the column beside the text: most-read list with thumbnails, then an ad slot
+    // the column beside the text: most-read list with thumbnails, then the
+    // modules a site stacks under it. It is built down to the foot of the
+    // article, so the page never shows a long empty strip next to the text.
     let sideBottom = articleTop;
+    const sideX = PAD + colW + 44, sideW = W - (PAD + colW + 44) - PAD;
     if (hasSide) {
-      const sx = PAD + colW + 44;
-      const sw = W - sx - PAD;
+      const sx = sideX, sw = sideW;
+      const target = y - 24;
       let sy = articleTop + 34;
       b.rect(sx, sy, sw, 4, { fill: d.accent });
       b.text(sx, sy + 30, upper(chrome.sidebarTitle || ''), ui(12, 800), { color: INK, letterSpacing: 1 });
       sy += 46;
-      list(chrome.sidebarItems).slice(0, 4).forEach((it, i) => {
+      list(chrome.sidebarItems).slice(0, 6).forEach((it, i) => {
+        if (i >= 4 && sy + 80 > target) return;
         b.photo(sx, sy, 74, 56, { seed: 30 + i * 7, colour: true, tint: i % 2 ? 'green' : 'dusk' });
         b.text(sx + 86, sy + 2, String(i + 1), { family: d.title, size: 15, weight: 800 }, { color: d.accent });
         const end = b.para(sx + 86, sy + 20, it, ui(13, 600), sw - 86, { color: INK, lineHeight: 18 });
@@ -526,11 +530,62 @@
         b.line(sx, sy - 10, sx + sw, sy - 10, { color: LINE });
       });
       sy += 14;
-      b.rect(sx, sy, sw, 200, { fill: '#F1F5F9', radius: 10, stroke: LINE });
-      b.rect(sx + 18, sy + 18, sw - 36, 96, { fill: '#E2E8F0', radius: 6 });
-      b.circle(sx + sw / 2, sy + 66, 18, { fill: '#CBD5E1' });
-      [0, 1, 2].forEach(i => b.rect(sx + 18, sy + 130 + i * 16, (sw - 36) * (i === 2 ? 0.55 : 1), 8, { fill: '#DDE3EA', radius: 4 }));
-      sideBottom = sy + 200;
+      // What a site stacks beside an article: its tags, a sign-up box and the
+      // advertisement slots. They are laid down to the foot of the text, and
+      // only as long as they still fit, so neither column is left half empty.
+      const tags = list(meta.tags).slice(0, 6);
+      const tagBox = (yy) => {
+        b.text(sx, yy + 16, upper(chrome.sectionLabel || ''), ui(11, 800), { color: MUTED, letterSpacing: 1 });
+        let tx = sx, ty = yy + 40;
+        for (const t of tags) {
+          const f = ui(12);
+          const w = approxMeasure('#' + t, f) + 24;
+          if (tx + w > sx + sw) { tx = sx; ty += 34; }
+          b.pill(tx, ty, w, 26, '#' + t, f, { fill: '#F1F5F9', color: d.accent, stroke: LINE });
+          tx += w + 8;
+        }
+      };
+      const signUp = (yy) => {
+        b.rect(sx, yy, sw, 150, { fill: SOFT, radius: 10, stroke: LINE });
+        b.rect(sx + 18, yy + 20, 26, 26, { fill: d.accent, radius: 6 });
+        b.text(sx + 18, yy + 72, upper(site), ui(11, 800), { color: INK, letterSpacing: 1 });
+        b.rect(sx + 18, yy + 86, sw - 36, 30, { fill: '#FFFFFF', radius: 6, stroke: LINE });
+        b.rect(sx + 18, yy + 124, 96, 14, { fill: d.accent, radius: 7 });
+      };
+      const adBox = (yy) => {
+        b.rect(sx, yy, sw, 200, { fill: '#F1F5F9', radius: 10, stroke: LINE });
+        b.rect(sx + 18, yy + 18, sw - 36, 96, { fill: '#E2E8F0', radius: 6 });
+        b.circle(sx + sw / 2, yy + 66, 18, { fill: '#CBD5E1' });
+        [0, 1, 2].forEach(i => b.rect(sx + 18, yy + 130 + i * 16, (sw - 36) * (i === 2 ? 0.55 : 1), 8, { fill: '#DDE3EA', radius: 4 }));
+      };
+      const skyscraper = (yy) => {
+        b.rect(sx, yy, sw, 600, { fill: '#F8FAFC', radius: 10, stroke: LINE });
+        b.rect(sx + 16, yy + 16, sw - 32, 300, { fill: '#E2E8F0', radius: 6 });
+        b.circle(sx + sw / 2, yy + 166, 26, { fill: '#CBD5E1' });
+        [0, 1, 2, 3].forEach(i => b.rect(sx + 16, yy + 340 + i * 18, (sw - 32) * (i === 3 ? 0.6 : 1), 9, { fill: '#DDE3EA', radius: 4 }));
+        b.rect(sx + 16, yy + 470, 120, 30, { fill: '#CBD5E1', radius: 15 });
+        b.text(sx + sw / 2, yy + 566, 'ADVERTISEMENT', ui(10, 700), { color: '#94A3B8', align: 'center', letterSpacing: 1.4 });
+      };
+      const place = (draw, h) => {
+        if (!h || sy + h > target + 40) return false;
+        draw(sy); sy += h + 20; return true;
+      };
+      place(tagBox, tags.length ? 40 + Math.ceil(tags.length / 3) * 34 : 0);
+      place(signUp, 150);
+      for (let i = 0; i < 24 && target - sy > 140; i++) {
+        if (!place(target - sy >= 620 ? skyscraper : adBox, target - sy >= 620 ? 600 : 200)) break;
+      }
+      // whatever is left over at the foot of the rail is closed with a slot of
+      // exactly that height — a rail does not end in a hole
+      const rest = target - sy;
+      if (rest > 80) {
+        b.rect(sx, sy, sw, rest, { fill: '#F1F5F9', radius: 10, stroke: LINE });
+        b.rect(sx + 18, sy + 18, sw - 36, Math.max(24, rest - 74), { fill: '#E2E8F0', radius: 6 });
+        b.circle(sx + sw / 2, sy + 18 + Math.max(24, rest - 74) / 2, Math.min(18, rest / 6), { fill: '#CBD5E1' });
+        b.text(sx + sw / 2, sy + rest - 18, 'ADVERTISEMENT', ui(10, 700), { color: '#94A3B8', align: 'center', letterSpacing: 1.4 });
+        sy += rest;
+      }
+      sideBottom = sy - 20;
     }
 
     y = Math.max(y, sideBottom) + 24;
@@ -546,7 +601,11 @@
       fx += approxMeasure(upper(l), f) + 24;
     });
     b.text(W - PAD, y + 50, chrome.footerNote || '', ui(11.5), { color: '#64748B', align: 'right' });
-    return finish(b, W, y + 120);
+    const model = finish(b, W, y + 120);
+    // the grid of the page, so the proportions can be measured (§29)
+    model.columns = [{ x: PAD, w: colW, top: articleTop, bottom: y - 24 }];
+    if (hasSide) model.columns.push({ x: sideX, w: sideW, top: articleTop, bottom: y - 24 });
+    return model;
   }
 
   /* --- mail client ---------------------------------------------------- */
@@ -858,7 +917,8 @@
    * ones under the photo, the last one at the top), filling each to the same
    * baseline — the way a page is actually made up.
    */
-  function flowUneven(paragraphs, font, colW, cols, measure, lh, tops, indent) {
+  function flowUneven(paragraphs, font, colW, cols, measure, lh, tops, indent, reserve) {
+    const kept = (c) => (reserve && reserve[c]) || 0;
     const items = [];
     paragraphs.forEach((p, pi) => {
       const ls = wrap(p, font, colW - indent, measure);
@@ -867,13 +927,19 @@
     });
     while (items.length && items[items.length - 1].gap) items.pop();
     const lowest = Math.max(...tops);
+    // the height at which the columns come out even: everything that has to be
+    // set, spread over the columns, measured from where each one starts. The
+    // fill starts here, so no column is left nearly empty while another is full.
+    let need = items.reduce((sum, it) => sum + (it.gap ? lh * 0.5 : lh), 0);
+    for (let c = 0; c < cols; c++) need += kept(c);
+    const even = (need + tops.reduce((a, t) => a + t, 0)) / cols;
     const tryFill = (bottom) => {
       const placed = [];
       let col = 0, y = tops[0];
       for (let i = 0; i < items.length; i++) {
         const it = items[i];
         const step = it.gap ? lh * 0.5 : lh;
-        if (!it.gap && y + lh > bottom) {
+        if (!it.gap && y + lh > bottom - kept(col)) {
           col += 1;
           if (col >= cols) return null;
           y = tops[col];
@@ -883,11 +949,11 @@
       }
       return placed;
     };
-    let bottom = lowest + Math.ceil(items.length / cols) * lh;
-    for (let guard = 0; guard < 400; guard++) {
+    let bottom = Math.max(lowest + lh, even);
+    for (let guard = 0; guard < 800; guard++) {
       const placed = tryFill(bottom);
       if (placed) return { placed, bottom };
-      bottom += lh;
+      bottom += lh / 2;
     }
     return { placed: tryFill(bottom) || [], bottom };
   }
@@ -899,8 +965,12 @@
     const meta = m.content.meta || {};
     const P = PAGE_PAD, M = 48;
     const pageW = W - 2 * P, inner = pageW - 2 * M;
-    const cols = d.columns || 3;
     const gutter = 24;
+    // A column that holds four lines while its neighbour holds forty is not a
+    // page, it is a mistake. So the number of columns follows the amount of
+    // text: a column has to carry at least MIN_COL_LINES lines, otherwise the
+    // page is set in fewer, fuller columns.
+    const cols = columnsForText(m.content.paragraphs || [], { family: SERIF, size: 14.5 }, inner, gutter, measure, d.columns || 3, 2);
     const colW = (inner - gutter * (cols - 1)) / cols;
     const accent = d.pressAccent || '#1B4E8F';
     const warm = d.pressWarm || '#C2410C';
@@ -937,8 +1007,11 @@
     const keyword = String((meta.tags && meta.tags[0]) || chrome.sectionLabel || '').toUpperCase();
     if (meta.standfirst) {
       const font = { family: SERIF, size: 17, weight: 700 };
-      const kwWidth = keyword ? measure(keyword + '  ', Object.assign({}, font, { family: SANS, size: 13 })) : 0;
-      if (keyword) b.text(L, y + 16, keyword, { family: SANS, size: 13, weight: 700 }, { color: warm, letterSpacing: 0.8 });
+      const kwFont = { family: SANS, size: 13, weight: 700 };
+      // the keyword is set with letter spacing, so its real width is wider than
+      // the plain measurement — otherwise the stand-first starts inside it
+      const kwWidth = keyword ? measure(keyword, kwFont) + keyword.length * 0.8 + 16 : 0;
+      if (keyword) b.text(L, y + 16, keyword, kwFont, { color: warm, letterSpacing: 0.8 });
       const lines = wrap(meta.standfirst, font, headW - kwWidth, measure);
       lines.forEach((l, i) => b.text(i === 0 ? L + kwWidth : L, y + 16 + i * 24, l, font, { color: INK }));
       y += 16 + lines.length * 24 + 6;
@@ -968,7 +1041,20 @@
     // the first columns start under the photo, the last one beside it
     const tops = [];
     for (let c = 0; c < cols; c++) tops.push(cols >= 3 && c === cols - 1 ? y : photoBottom);
-    const flow = flowUneven(m.content.paragraphs || [], font, colW, cols, measure, lh, tops, indent);
+    // The pull quote is not what is left over at the foot of the page; it is a
+    // part of the page. Its height is kept free in the last column before the
+    // text is poured, so the columns still come out even around it.
+    const paras = m.content.paragraphs || [];
+    const qFont = { family: SERIF, size: 17, style: 'italic' };
+    const quote = String((m.content.meta || {}).pullQuote || '');
+    const qLines = quote ? wrap(quote, qFont, colW - 36, measure) : [];
+    let bodyLines = 0;
+    for (const p of paras) bodyLines += wrap(p, font, colW - indent, measure).length;
+    const quoteH = qLines.length ? 44 + qLines.length * 24 + 46 : 0;
+    const useQuote = quoteH > 0 && bodyLines >= cols * MIN_COL_LINES;
+    const reserve = [];
+    for (let c = 0; c < cols; c++) reserve.push(useQuote && c === cols - 1 ? quoteH : 0);
+    const flow = flowUneven(paras, font, colW, cols, measure, lh, tops, indent, reserve);
     for (const l of flow.placed) {
       const x = L + l.col * (colW + gutter);
       const yy = l.y + lh;
@@ -985,7 +1071,13 @@
     const lastLines = flow.placed.filter(l => l.col === lastCol);
     const lastY = lastLines.length ? Math.max(...lastLines.map(l => l.y + lh)) : tops[lastCol];
     const hole = bodyBottom - lastY;
-    if (hole > 150) {
+    if (useQuote) {
+      const gx = L + lastCol * (colW + gutter), gy = bodyBottom - quoteH + 16;
+      b.line(gx, gy, gx + colW, gy, { color: accent, width: 3 });
+      qLines.forEach((l, i) => b.text(gx + 18, gy + 44 + i * 24, l, qFont, { color: accent }));
+      b.text(gx + 18, gy + 44 + qLines.length * 24 + 18, upper(chrome.publication || ''), { family: SANS, size: 9, weight: 700 }, { color: warm, letterSpacing: 1.2 });
+      b.line(gx, gy + 44 + qLines.length * 24 + 30, gx + colW, gy + 44 + qLines.length * 24 + 30, { color: '#C7C2B5' });
+    } else if (hole > 150) {
       const gx = L + lastCol * (colW + gutter), gy = lastY + 22, gh = hole - 34;
       const quote = (m.content.meta || {}).pullQuote || '';
       const qFont = { family: SERIF, size: 17, style: 'italic' };
@@ -1010,7 +1102,29 @@
     b.line(L, y, R, y, { color: '#A8A29E' });
     b.text(L, y + 18, String(chrome.footerNote || ''), { family: SERIF, size: 10, style: 'italic' }, { color: '#78716C' });
     b.text(R, y + 18, String(chrome.publication || ''), { family: SANS, size: 10, weight: 700 }, { color: '#78716C', align: 'right', letterSpacing: 1 });
-    return paperFinish(b, W, y + 42 + P, d);
+    const model = paperFinish(b, W, y + 42 + P, d);
+    // the grid the page was set on, so the proportions can be measured (§29)
+    model.columns = [];
+    for (let c = 0; c < cols; c++) model.columns.push({ x: L + c * (colW + gutter), w: colW, top: tops[c], bottom: bodyBottom });
+    return model;
+  }
+
+  /** At least this many lines before another column is opened. */
+  const MIN_COL_LINES = 10;
+
+  /**
+   * How many columns this much text really carries. Starts at the number the
+   * design wants and takes one away as long as the columns would stay thin.
+   */
+  function columnsForText(paragraphs, font, inner, gutter, measure, maxCols, minCols) {
+    const floor = Math.max(1, minCols || 1);
+    for (let c = maxCols; c > floor; c--) {
+      const colW = (inner - gutter * (c - 1)) / c;
+      let lines = 0;
+      for (const p of paragraphs) lines += wrap(p, font, colW - 16, measure).length;
+      if (lines / c >= MIN_COL_LINES) return c;
+    }
+    return floor;
   }
 
   /** A page out of a book. */
@@ -1280,6 +1394,59 @@
   }
 
   /* ------------------------------------------------------------------ */
+  /* Proportions: is the page visually in balance?                        */
+  /* ------------------------------------------------------------------ */
+
+  /** The lowest point a drawing block reaches. */
+  function blockBottom(b) {
+    if (b.type === 'text') return b.y;
+    if (b.type === 'line') return Math.max(b.y1, b.y2);
+    if (b.type === 'circle') return b.y + b.r;
+    if (b.type === 'poly') return Math.max.apply(null, b.points.map(p => p[1]));
+    return (b.y || 0) + (b.h || 0);
+  }
+
+  /** Where a drawing block starts horizontally. */
+  function blockLeft(b) {
+    if (b.type === 'line') return Math.min(b.x1, b.x2);
+    if (b.type === 'circle') return b.x - b.r;
+    if (b.type === 'poly') return Math.min.apply(null, b.points.map(p => p[0]));
+    return b.x || 0;
+  }
+
+  /**
+   * How the finished picture is proportioned — the check the eye would make:
+   * does every column carry its share, and does the page end shortly after the
+   * text? `columns` is what each column really holds, `balance` is the thinnest
+   * column against the fullest (1 = even), `tail` the empty strip under the
+   * last thing on the page as a share of its height.
+   */
+  function proportions(model) {
+    const blocks = (model && model.blocks) || [];
+    const page = (model && model.finish && model.finish.page) || { x: 0, y: 0, w: (model && model.width) || 0, h: (model && model.height) || 0 };
+    const cols = (model && model.columns) || [];
+    const columns = cols.map((c, i) => {
+      const inside = blocks.filter(b => {
+        const x = blockLeft(b);
+        if (!(x >= c.x - 6 && x < c.x + c.w + 12)) return false;
+        const bot = blockBottom(b);
+        return bot >= c.top - 4 && bot <= c.bottom + 60;
+      });
+      const bottom = inside.length ? Math.max.apply(null, inside.map(blockBottom)) : c.top;
+      const height = Math.max(1, c.bottom - c.top);
+      return { index: i, lines: inside.filter(b => b.type === 'text' && b.role === 'body').length,
+        top: Math.round(c.top), bottom: Math.round(bottom), height: Math.round(height),
+        filled: Math.max(0, Math.min(1, (bottom - c.top) / height)) };
+    });
+    const fills = columns.map(c => c.filled);
+    const fullest = fills.length ? Math.max.apply(null, fills) : 1;
+    const balance = fills.length ? (fullest > 0 ? Math.min.apply(null, fills) / fullest : 1) : 1;
+    const lowest = blocks.length ? Math.max.apply(null, blocks.filter(b => b.type !== 'wallpaper' && !(b.type === 'rect' && b.shadow)).map(blockBottom)) : 0;
+    const tail = page.h > 0 ? Math.max(0, (page.y + page.h - lowest) / page.h) : 0;
+    return { columns, balance, tail, lowest: Math.round(lowest), page: { width: model ? model.width : 0, height: model ? model.height : 0 } };
+  }
+
+  /* ------------------------------------------------------------------ */
   /* Drawing (browser)                                                    */
   /* ------------------------------------------------------------------ */
 
@@ -1543,5 +1710,5 @@
     };
   }
 
-  return { LAYOUTS, CHROME_SPECS, ICONS, MAX_SIDE, layoutFor, chromeSpec, fallbackChrome, buildModel, fitModel, canvasScale, drawPhoto, drawIcon, bodyText, chromeText, validate, draw, canvasMeasure, approxMeasure, wrap, fontString };
+  return { LAYOUTS, CHROME_SPECS, ICONS, MAX_SIDE, layoutFor, chromeSpec, fallbackChrome, buildModel, fitModel, canvasScale, drawPhoto, drawIcon, bodyText, chromeText, validate, proportions, draw, canvasMeasure, approxMeasure, wrap, fontString };
 });

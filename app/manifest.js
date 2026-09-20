@@ -532,6 +532,34 @@
       return ok(proper.every(f => f.status === 'pass'), 'a well-founded verdict is not accepted');
     } });
 
+  add({ id: 'S29.review_data_complete', section: 29, title: 'Jede Claude-Regel bekommt die Daten, \u00fcber die sie urteilt: das Arbeitsblatt steht vollst\u00e4ndig im Pr\u00fcf-Prompt, und eine Regel ohne ihre Daten wird nicht gefragt, sondern als ungepr\u00fcft gemeldet', kind: 'function',
+    check(env) {
+      const m = env.fixture.material({ createWorksheet: true, preTask: true, postTask: true, higherOrder: true, authenticLayout: true }, 'reading');
+      const rules = env.quality.llmRules(m.settings, m.plan, m.worksheet, { layout: m.layout });
+      const prompt = env.prompts.buildReviewPrompt(m.settings, m.plan, m.content, m.worksheet, rules, [], m.layout);
+      // the whole worksheet, not a hand-picked selection of its fields
+      const section = prompt.split('## Worksheet (JSON)')[1];
+      if (!section) return 'the worksheet is missing from the review prompt';
+      let sent = null;
+      try { sent = JSON.parse(section.split('\n').filter(l => l.trim().charAt(0) === '{')[0]); } catch (e) { return 'the worksheet in the review prompt is not valid JSON'; }
+      for (const key of Object.keys(m.worksheet)) {
+        if (!(key in sent)) return 'the review prompt does not carry worksheet.' + key;
+      }
+      for (const t of m.worksheet.postTasks) {
+        if (!prompt.includes(String(t.prompt).slice(0, 30))) return 'the post-task prompts are missing from the review prompt';
+      }
+      if (env.prompts.reviewDataGaps(prompt, rules).length) return 'a rule is asked although its data is missing: ' + env.prompts.reviewDataGaps(prompt, rules).join(', ');
+      // and the guard itself: without the data, the rule is not judged but reported as unverified
+      const without = Object.assign({}, m.worksheet, { postTasks: [] });
+      const blind = env.prompts.buildReviewPrompt(m.settings, m.plan, m.content, without, rules, [], m.layout);
+      const gaps = env.prompts.reviewDataGaps(blind, rules);
+      if (!gaps.length || !gaps.every(id => id.indexOf('posttask.') === 0)) return 'a missing worksheet part is not noticed';
+      const merged = env.quality.mergeReview(rules, { results: gaps.map(id => ({ rule: id, pass: false, note: 'no data given', evidence: 'T1' })) }, { unavailable: gaps });
+      const bad = merged.filter(f => gaps.indexOf(f.id) >= 0 && f.status !== 'unverified');
+      if (bad.length) return 'a rule without its data still produces a verdict: ' + bad.map(f => f.id).join(', ');
+      return ok(!env.quality.blockingFailures(merged).length, 'a rule without its data still blocks the material');
+    } });
+
   /* §29 (Erweiterung): Befunde werden behoben, nicht nur gemeldet */
   add({ id: 'S29.auto_repair', section: 29, title: 'Gefundene Probleme werden automatisch behoben (Aus / nur Fehler / Fehler und Warnungen)', kind: 'setting', key: 'autoFix', alt: 'off', promptSensitive: false,
     extra(env) {
@@ -779,6 +807,35 @@
       const pageBreak = /w:type w:val="nextPage"|<w:type w:val="nextPage"\/>/.test(xml);
       return ok(hasText && hasQuestions && pageBreak, `text ${hasText}, questions ${hasQuestions}, section break ${pageBreak}`);
     } });
+  add({ id: 'S33.lesson_order', section: 33, title: 'Reihenfolge der Stunde in jeder Ausgabe: Pre-Task und Vokabular stehen vor dem Text, Fragen und Post-Task danach (Bildschirm, Markdown, Word)', kind: 'function',
+    check(env) {
+      const problems = [];
+      const plain = (html) => squash(String(html).replace(/<[^>]*>/g, ' '));
+      // every output has to read like the lesson runs: warm up, words, text, questions, transfer
+      const order = (hay, marks, where) => {
+        let last = -1, lastName = '';
+        for (const mark of marks) {
+          const at = hay.indexOf(squash(mark));
+          if (at < 0) { problems.push(where + ': "' + mark + '" is missing'); return; }
+          if (at < last) problems.push(where + ': "' + mark + '" stands before "' + lastName + '"');
+          last = at; lastName = mark;
+        }
+      };
+      for (const kind of ['reading', 'listening']) {
+        const m = env.fixture.material({ preTask: true, postTask: true, glossary: true, higherOrder: true }, kind);
+        const body = kind === 'reading' ? m.content.paragraphs[0].slice(0, 40) : m.content.lines[0].text.slice(0, 40);
+        const read = kind === 'listening' ? 'listen' : 'read';
+        const studentBody = kind === 'reading' ? [body] : [];
+        order(plain(env.render.renderStudentHTML(m, {})), ['Before you ' + read, 'Words to know'].concat(studentBody, [m.worksheet.questions[0].prompt.slice(0, 30), 'After you ' + read]), kind + ' student HTML');
+        order(plain(env.render.renderTeacherHTML(m, {})), ['Pre-task', 'Target vocabulary used', 'Words to know', body, 'Answer key', 'Post-task'], kind + ' teacher HTML');
+        const md = squash(env.render.renderMarkdown(m, {}));
+        order(md, ['Before you ' + read, 'Words to know'].concat(studentBody, ['After you ' + read, 'Teacher version', 'Pre-task', 'Target vocabulary used', kind === 'reading' ? '### Text' : '### Script', 'Answer key']), kind + ' Markdown');
+        order(squash(docText(env, m, 'student')), ['Before you ' + read, 'Words to know'].concat(studentBody, ['After you ' + read]), kind + ' Word student');
+        order(squash(docText(env, m, 'teacher')), ['Pre-Task', 'Target vocabulary used', 'Words to know', body, 'Answer key', 'Post-Task'], kind + ' Word teacher');
+      }
+      return ok(!problems.length, problems.slice(0, 4).join(' | '));
+    } });
+
   add({ id: 'S33.html_matches', section: 33, title: 'Die Bildschirmvorschau zeigt denselben Texttyp-Aufbau wie das Word-Dokument', kind: 'function',
     check(env) {
       const m = env.fixture.material({ textType: 'Forum Discussion' }, 'reading');
@@ -1526,6 +1583,35 @@
       const good = layoutFind(env, 'layout.image_valid');
       const broken = env.mock.validate({ width: 10, height: 10, blocks: [{ type: 'text', x: 0, y: 900, text: 'x' }] });
       return ok(good.status === 'pass' && broken.length >= 2, `${good.status}; broken model reports ${broken.length} problems`);
+    } });
+  add({ id: 'S37.rule_proportions', section: 37, title: 'Kontrolle: das Bild ist proportioniert – die Spalten tragen gleich viel, keine bleibt fast leer, und die Seite endet kurz nach dem Text', kind: 'rule', ruleId: 'layout.proportions',
+    extra(env) {
+      const problems = [];
+      // every medium, on screen and on paper, comes out in proportion
+      for (const textType of env.core.TEXT_TYPES) {
+        for (const layoutMedium of ['screen', 'paper']) {
+          const f = layoutFind(env, 'layout.proportions', { textType, layoutMedium });
+          if (!f) { problems.push(textType + '/' + layoutMedium + ': not checked'); continue; }
+          if (f.status !== 'pass') problems.push(textType + '/' + layoutMedium + ': ' + f.status + ' — ' + f.detail);
+        }
+      }
+      // and the check really has teeth: a column left nearly empty is a fault
+      const lame = { width: 1000, height: 1000, blocks: [
+        { type: 'text', x: 60, y: 900, text: 'full column', font: { family: 'serif', size: 14 }, role: 'body' },
+        { type: 'text', x: 560, y: 220, text: 'almost empty', font: { family: 'serif', size: 14 }, role: 'body' },
+      ], columns: [{ x: 60, w: 400, top: 200, bottom: 900 }, { x: 560, w: 400, top: 200, bottom: 900 }] };
+      const measured = env.mock.proportions(lame);
+      if (!(measured.balance < 0.6)) problems.push('an empty column is not noticed (balance ' + measured.balance.toFixed(2) + ')');
+      // a long text still fills both columns of the page
+      const long = layoutMaterial(env, { textType: 'Blog Post', layoutMedium: 'screen' });
+      long.content.paragraphs = new Array(24).fill(long.content.paragraphs[0]);
+      const grid = env.mock.proportions(env.quality.layoutModel(long));
+      if (grid.columns.length < 2) problems.push('the page beside the text is not measured');
+      else if (grid.balance < 0.8) problems.push('a long text leaves the column beside it empty (balance ' + grid.balance.toFixed(2) + ')');
+      // and the teacher sees the measurement next to the picture
+      const src = env.uiSource || '';
+      if (src && !(/function proportionNote/.test(src) && /mock\.proportions/.test(src) && /layout-proportions/.test(src))) problems.push('the layout tab does not show the proportion check');
+      return ok(!problems.length, problems.slice(0, 3).join(' | '));
     } });
   add({ id: 'S37.rule_authentic', section: 37, title: 'Kontrolle (Claude): das Medium wirkt echt und passt zum Text', kind: 'rule', ruleId: 'layout.authentic' });
 

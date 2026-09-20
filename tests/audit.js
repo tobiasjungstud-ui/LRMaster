@@ -456,6 +456,42 @@ console.log('\nAudit: hostile and extreme content');
 const HOSTILE = 'A & B <tag> "q" \'s\' </w:t> ]]> <script>alert(1)</script> émoji 🎬 RTL مرحبا';
 const LONG_WORD = 'Donaudampfschifffahrtsgesellschaftskapitaensmuetzenhalter'.repeat(2);
 
+test('2.4 R3', 'every picture is in proportion: no column is left nearly empty, whatever the text is like', () => {
+  const words = 'the quick brown fox jumps over a lazy dog while students argue about trust and gossip in class today'.split(' ');
+  const body = (n, per) => {
+    const out = [];
+    for (let i = 0; i < n; i++) {
+      const line = [];
+      for (let j = 0; j < per; j++) line.push(words[(i * 7 + j) % words.length]);
+      out.push(line.join(' ') + '.');
+    }
+    return out;
+  };
+  const cases = [[1, 25], [2, 30], [3, 45], [6, 70], [12, 85], [24, 95], [40, 60]];
+  for (const textType of core.TEXT_TYPES) {
+    for (const layoutMedium of ['screen', 'paper']) {
+      for (const [n, per] of cases) {
+        const m = goodMaterial({ textType, layoutMedium, authenticLayout: true }, 'reading');
+        m.content.paragraphs = body(n, per);
+        const model = quality.layoutModel(m);
+        const p = mock.proportions(model);
+        const where = `${textType}/${layoutMedium}/${n}×${per}`;
+        assert.deepEqual(mock.validate(model), [], where + ': the picture is not drawable');
+        assert.ok(p.balance >= 0.6, where + ': a column carries far less than the others — ' + p.columns.map(c => Math.round(c.filled * 100) + ' %').join(' / '));
+        assert.ok(p.tail <= 0.25, where + ': the page ends far below the last element (' + Math.round(p.tail * 100) + ' %)');
+        // the whole text is still in the picture, whatever the make-up does
+        assert.ok(quality.normalizeForSearch(mock.bodyText(model)).includes(quality.normalizeForSearch(m.content.paragraphs[n - 1])), where + ': the last paragraph is missing from the picture');
+      }
+    }
+  }
+  // the measurement is not a rubber stamp: an empty column is caught
+  const lame = { width: 800, height: 900, blocks: [
+    { type: 'text', x: 40, y: 800, text: 'x', font: { family: 'serif', size: 14 }, role: 'body' },
+    { type: 'text', x: 440, y: 210, text: 'y', font: { family: 'serif', size: 14 }, role: 'body' },
+  ], columns: [{ x: 40, w: 320, top: 200, bottom: 800 }, { x: 440, w: 320, top: 200, bottom: 800 }] };
+  assert.ok(mock.proportions(lame).balance < 0.6, 'an empty column passes as proportioned');
+});
+
 test('2.4 R3', 'the picture stays correct and drawable for every medium, also under abuse', () => {
   const CASES = {
     'hostile': [HOSTILE + ' first paragraph.', 'second & <b>bold</b> ' + HOSTILE],
@@ -1207,6 +1243,45 @@ test('2.3 R10', 'the guardrails really reach Claude', () => {
     assert.ok(p.includes(line), 'binding instruction missing: ' + line);
   }
   assert.ok(Buffer.byteLength(p, 'utf8') < 65536, 'the review prompt no longer fits');
+});
+
+test('2.3 R10', 'every rule sees the data it judges, and a rule without its data judges nothing', () => {
+  for (const kind of ['listening', 'reading']) {
+    const m = goodMaterial({ createWorksheet: true, preTask: true, postTask: true, higherOrder: true }, kind);
+    const rules = quality.llmRules(m.settings, m.plan, m.worksheet, {});
+    const p = prompts.buildReviewPrompt(m.settings, m.plan, m.content, m.worksheet, rules, checkAll(m), null);
+    // every field of the worksheet travels, so no part can be forgotten again
+    const sent = JSON.parse(p.split('## Worksheet (JSON)')[1].split('\n').filter(l => l.trim().charAt(0) === '{')[0]);
+    for (const key of Object.keys(m.worksheet)) assert.ok(key in sent, kind + ': worksheet.' + key + ' never reaches the review');
+    for (const t of m.worksheet.postTasks) assert.ok(p.includes(String(t.prompt).slice(0, 30)), kind + ': post-task T' + t.n + ' has no prompt in the review');
+    for (const t of m.worksheet.preTasks) assert.ok(p.includes(String(t.prompt).slice(0, 30)), kind + ': pre-task P' + t.n + ' has no prompt in the review');
+    assert.deepEqual(prompts.reviewDataGaps(p, rules), [], kind + ': a rule is asked without its data');
+
+    // and the guard: strip one part and the rules about it are not asked, not failed
+    for (const [part, prefix] of [['postTasks', 'posttask.'], ['preTasks', 'pretask.'], ['questions', 'questions.']]) {
+      const blind = prompts.buildReviewPrompt(m.settings, m.plan, m.content, Object.assign({}, m.worksheet, { [part]: [] }), rules, [], null);
+      const gaps = prompts.reviewDataGaps(blind, rules);
+      assert.ok(gaps.length, kind + ': missing ' + part + ' goes unnoticed');
+      assert.ok(gaps.every(id => id.indexOf(prefix) === 0), kind + ': missing ' + part + ' blames other rules: ' + gaps.join(', '));
+      const asked = rules.filter(r => gaps.indexOf(r.id) < 0);
+      const reduced = prompts.buildReviewPrompt(m.settings, m.plan, m.content, Object.assign({}, m.worksheet, { [part]: [] }), asked, [], null);
+      for (const id of gaps) assert.ok(!reduced.includes('"' + id + '"'), kind + ': ' + id + ' is still asked without data');
+      // a verdict for a rule that was not shown its data never counts
+      const merged = quality.mergeReview(rules, { results: gaps.map(id => ({ rule: id, pass: false, note: 'The worksheet JSON does not include them', evidence: 'T1, T2' })) }, { unavailable: gaps });
+      for (const id of gaps) assert.equal(merged.find(f => f.id === id).status, 'unverified', kind + ': ' + id + ' fails for data it never got');
+      assert.deepEqual(quality.blockingFailures(merged).map(f => f.id), [], kind + ': missing data blocks the material');
+    }
+  }
+  // the JSON stays whole and valid even when it has to be shortened
+  const big = goodMaterial({ createWorksheet: true, preTask: true, postTask: true }, 'reading');
+  for (const budget of [300, 2000, 30000]) {
+    const json = prompts.clipJSON(big.worksheet, budget);
+    const back = JSON.parse(json);
+    for (const key of Object.keys(big.worksheet)) {
+      assert.ok(key in back, 'clipped worksheet lost ' + key + ' at budget ' + budget);
+      if (Array.isArray(big.worksheet[key])) assert.equal(back[key].length, big.worksheet[key].length, key + ' lost entries at budget ' + budget);
+    }
+  }
 });
 
 test('2.3 R5', 'a repair is asked against the same standard the rule was judged by', () => {

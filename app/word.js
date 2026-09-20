@@ -623,23 +623,31 @@
     return out;
   }
 
-  function worksheetBlocks(ctx) {
+  /**
+   * `part` follows the lesson: "before" is the head, the pre-task and the words
+   * the text needs; "after" is everything the students do once they have read
+   * or heard it. Without a part the whole worksheet comes back, in that order.
+   */
+  function worksheetBlocks(ctx, part) {
     const { m, d } = ctx;
     const ws = m.worksheet;
     const accent = d.accent;
-    const out = [nameRow(ctx), SP(14)];
-    out.push(P((m.kind === 'listening' ? 'Listening' : 'Reading') + '  ·  ' + joinMeta([m.plan.unitName, m.plan.cefr, m.variantLabel]),
-      { after: 3, run: { font: WS.display, size: 9, bold: true, caps: true, letterSpacing: 1.4, color: accent } }));
-    out.push(P(ws.title || m.content.title, { after: 4, run: { font: WS.display, size: 18, bold: true, color: INK } }));
-    if (ws.instructions) out.push(P(ws.instructions, { after: 10, run: { font: WS.body, size: 10.5, italic: true, color: GREY } }));
-    out.push(ruleP({ color: accent, sz: 8, after: 12 }));
+    const out = [];
+    if (part !== 'after') {
+      out.push(nameRow(ctx), SP(14));
+      out.push(P((m.kind === 'listening' ? 'Listening' : 'Reading') + '  ·  ' + joinMeta([m.plan.unitName, m.plan.cefr, m.variantLabel]),
+        { after: 3, run: { font: WS.display, size: 9, bold: true, caps: true, letterSpacing: 1.4, color: accent } }));
+      out.push(P(ws.title || m.content.title, { after: 4, run: { font: WS.display, size: 18, bold: true, color: INK } }));
+      if (ws.instructions) out.push(P(ws.instructions, { after: 10, run: { font: WS.body, size: 10.5, italic: true, color: GREY } }));
+      out.push(ruleP({ color: accent, sz: 8, after: 12 }));
 
-    if (m.glossary && m.glossary.length) out.push(...glossaryBlocks(ctx));
-
-    if (ws.preTasks && ws.preTasks.length) {
-      out.push(P('Before you ' + (m.kind === 'listening' ? 'listen' : 'read'), { after: 6, run: { font: WS.display, size: 12, bold: true, color: INK } }));
-      ws.preTasks.forEach((p, i) => out.push(...preTaskBlocks(p, ctx, i)));
-      out.push(SP(6));
+      if (ws.preTasks && ws.preTasks.length) {
+        out.push(P('Before you ' + (m.kind === 'listening' ? 'listen' : 'read'), { after: 6, run: { font: WS.display, size: 12, bold: true, color: INK } }));
+        ws.preTasks.forEach((p, i) => out.push(...preTaskBlocks(p, ctx, i)));
+        out.push(SP(6));
+      }
+      if (m.glossary && m.glossary.length) out.push(...glossaryBlocks(ctx));
+      if (part === 'before') return out;
     }
 
     if (ws.questions.length) {
@@ -875,11 +883,14 @@
     const d = ctx.d;
     const sections = [];
     const wsCtx = Object.assign({}, ctx, { W: usableWidth(M_DOC), margins: M_DOC });
+    // the sheet follows the lesson: pre-task and the words first, then the
+    // text in its own design, then everything that is done afterwards
+    if (material.worksheet) sections.push({ blocks: worksheetBlocks(wsCtx, 'before'), props: { margins: M_DOC, type: 'nextPage' } });
     if (material.kind === 'reading') {
       sections.push({ blocks: textBlocks(ctx), props: { margins: ctx.margins, cols: d.page.cols, colSep: d.page.colSep, colSpace: d.page.colSpace, type: 'nextPage' } });
     }
     if (material.worksheet) {
-      sections.push({ blocks: worksheetBlocks(wsCtx), props: { margins: M_DOC } });
+      sections.push({ blocks: worksheetBlocks(wsCtx, 'after'), props: { margins: M_DOC } });
       // Listening option: the script on the last page, after the questions.
       if (material.kind === 'listening' && material.settings.appendScript) {
         sections[sections.length - 1].props = Object.assign({}, sections[sections.length - 1].props, { type: 'nextPage' });
@@ -902,18 +913,20 @@
   function teacherSpec(material) {
     const ctx = context(material, { highlight: material.settings.highlightVocab ? (material.plan.vocabulary || []).filter(v => (material.vocabFound || []).includes(v.word)) : null, numbered: material.kind === 'reading' });
     const d = ctx.d;
-    const first = teacherHeadBlocks(Object.assign({}, ctx, { W: usableWidth(M_DOC) }))
-      .concat(material.kind === 'listening' ? scriptBlocks(Object.assign({}, ctx, { W: usableWidth(M_DOC) })) : textBlocks(ctx));
     const wsCtx = Object.assign({}, ctx, { W: usableWidth(M_DOC), margins: M_DOC });
-    const rest = vocabBlocks(wsCtx)
-      .concat(material.glossary && material.glossary.length ? [SP(14)].concat(glossaryBlocks(wsCtx)) : [])
+    // same order as the lesson: what happens before the text stands before it
+    const head = teacherHeadBlocks(wsCtx)
       .concat(material.worksheet && (material.worksheet.preTasks || []).length ? [SP(14)].concat(preTaskTableBlocks(wsCtx, 'pre')) : [])
+      .concat([SP(14)]).concat(vocabBlocks(wsCtx))
+      .concat(material.glossary && material.glossary.length ? [SP(14)].concat(glossaryBlocks(wsCtx)) : []);
+    const body = material.kind === 'listening' ? scriptBlocks(wsCtx) : textBlocks(ctx);
+    const rest = (material.worksheet ? keyBlocks(wsCtx) : [])
       .concat(material.worksheet && (material.worksheet.postTasks || []).length ? [SP(14)].concat(preTaskTableBlocks(wsCtx, 'post')) : [])
-      .concat(material.worksheet ? [SP(14)].concat(keyBlocks(wsCtx)) : [])
       .concat(levelBlocks(wsCtx))
       .concat(qualityBlocks(wsCtx));
     const sections = [
-      { blocks: first, props: { margins: material.kind === 'reading' ? ctx.margins : M_DOC, cols: material.kind === 'reading' ? d.page.cols : 1, colSep: d.page.colSep, type: 'nextPage' } },
+      { blocks: head, props: { margins: M_DOC, type: 'nextPage' } },
+      { blocks: body, props: { margins: material.kind === 'reading' ? ctx.margins : M_DOC, cols: material.kind === 'reading' ? d.page.cols : 1, colSep: d.page.colSep, type: 'nextPage' } },
       { blocks: rest, props: { margins: M_DOC } },
     ];
     return {

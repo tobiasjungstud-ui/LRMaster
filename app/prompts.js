@@ -403,6 +403,81 @@
   /* 4. Quality review (concept §29, the judgements that need reading)     */
   /* ------------------------------------------------------------------ */
 
+  /**
+   * The whole value as JSON inside a budget. Cutting the end off the string
+   * (`.slice`) drops whatever stands last and leaves broken JSON — that is how
+   * the post-tasks once disappeared from the review prompt and the reviewer
+   * failed two blocking rules for data it never got. Instead the longest text
+   * leaves are shortened until it fits, so every field stays present.
+   */
+  function clipJSON(value, budget) {
+    let copy;
+    try { copy = JSON.parse(JSON.stringify(value === undefined ? null : value)); }
+    catch (e) { return String(value).slice(0, budget); }
+    let out = JSON.stringify(copy);
+    for (let guard = 0; out.length > budget && guard < 600; guard++) {
+      const longest = longestString(copy);
+      if (!longest || longest.value.length <= 8) break;
+      longest.set(longest.value.slice(0, Math.max(8, Math.floor(longest.value.length * 0.6))) + '\u2026');
+      out = JSON.stringify(copy);
+    }
+    // Last resort: valid JSON that is too long beats a slice that is broken.
+    return out;
+  }
+
+  /** The longest string leaf in a tree, with a setter to replace it. */
+  function longestString(root) {
+    let best = null;
+    (function walk(node) {
+      if (!node || typeof node !== 'object') return;
+      const keys = Array.isArray(node) ? node.map((_, i) => i) : Object.keys(node);
+      for (const k of keys) {
+        const v = node[k];
+        if (typeof v === 'string') {
+          if (!best || v.length > best.value.length) best = { value: v, set: (str) => { node[k] = str; } };
+        } else walk(v);
+      }
+    })(root);
+    return best;
+  }
+
+  /**
+   * Which data a rule is judged on. A rule whose data is not in the prompt
+   * cannot be judged — asking it anyway produces a verdict about nothing,
+   * which is what the missing post-tasks caused.
+   */
+  function reviewDataFor(rule) {
+    if (!rule) return null;
+    if (rule.needsLayout) return 'chrome';
+    if (rule.group === 'pretask' || rule.phase === 'pre') return 'preTasks';
+    if (rule.group === 'posttask' || rule.phase === 'post') return 'postTasks';
+    if (rule.needsWorksheet) return 'questions';
+    return null;
+  }
+
+  /**
+   * The rules that must not be asked of this prompt, because the data they
+   * judge does not stand in it. Read from the finished prompt, not from the
+   * inputs, so a field forgotten anywhere on the way is caught — now and for
+   * every field added later.
+   */
+  function reviewDataGaps(prompt, rules) {
+    const text = String(prompt || '');
+    const hasChrome = /^## The medium the text is shown in/m.test(text);
+    let ws = null;
+    const m = text.match(/^## Worksheet \(JSON\)\n(?:[^\n]*\n)*?(\{.*)$/m);
+    if (m) { try { ws = JSON.parse(m[1]); } catch (e) { ws = null; } }
+    const carries = (key) => {
+      if (key === 'chrome') return hasChrome;
+      const v = ws && ws[key];
+      return Array.isArray(v) ? v.length > 0 : !!v;
+    };
+    return (rules || []).filter(r => {
+      const key = reviewDataFor(r);
+      return key && !carries(key);
+    }).map(r => r.id);
+  }
+
   function buildReviewPrompt(state, plan, content, worksheet, llmRules, deterministicFindings, layout) {
     const lines = [];
     lines.push('You are a strict reviewer of EFL classroom material. Judge the material and the worksheet below against each rule and answer with pass or fail per rule.');
@@ -429,7 +504,7 @@
     ].filter(Boolean).join('\n'));
     lines.push('## Material\n' + contentAsText(content, state));
     if (layout && layout.chrome) lines.push(`## The medium the text is shown in (${layout.label || ''})\nThe interface around the text, as a screenshot would show it:\n` + JSON.stringify(layout.chrome, null, 0).slice(0, 4000));
-    if (worksheet) lines.push('## Worksheet (JSON)\n' + JSON.stringify({ preTasks: worksheet.preTasks, questions: worksheet.questions, higherOrder: worksheet.higherOrder }, null, 0).slice(0, 30000));
+    if (worksheet) lines.push('## Worksheet (JSON)\nEverything the worksheet holds — pre-tasks, comprehension questions, higher-order tasks and post-tasks:\n' + clipJSON(worksheet, 30000));
     if (deterministicFindings && deterministicFindings.length) {
       lines.push('## Already measured exactly — do not judge these again\n' + deterministicFindings.map(f => `- ${f.title}: ${f.status}${f.detail ? ' — ' + f.detail : ''}`).join('\n'));
     }
@@ -733,6 +808,7 @@
   return {
     scale, SKILL_DEFINITIONS, FORMAT_SHAPES, contentAsText, documentBlock, metaSpec, contentSchema,
     buildTopicPrompt, buildContentPrompt, buildQuestionPrompt, buildReviewPrompt,
+    clipJSON, reviewDataFor, reviewDataGaps,
     buildContentRevisionPrompt, buildQuestionRevisionPrompt, buildQuestionRepairPrompt, findingsBlock, buildVocabParsePrompt,
     buildUnitDetectPrompt, buildUnitTopicPrompt, buildAllPrompts, buildGlossaryPrompt, buildLevelOpinionPrompt,
     chronologyRule, levelTargetBlock, questionLevelLines, taskBlock, preTaskBlock, postTaskBlock,

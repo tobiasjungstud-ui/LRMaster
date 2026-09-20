@@ -330,8 +330,10 @@
     html += `<p class="meta">${esc(m.plan.textbookName)} · ${esc(m.plan.unitName)} · ${esc(m.plan.cefr)}${m.variantLabel ? ` · ${esc(m.variantLabel)}` : ''}</p>`;
     if (ws && ws.instructions) html += `<p class="instructions">${esc(ws.instructions)}</p>`;
     html += '</header>';
+    // the sheet follows the lesson: first the pre-task, then the words the
+    // text needs, then the text itself
+    if (ws && ws.preTasks && ws.preTasks.length) html += `<section class="block pre-tasks"><h2>Before you ${isL ? 'listen' : 'read'}</h2>` + ws.preTasks.map(p => preTaskHtml(p, false)).join('') + '</section>';
     html += glossaryHTML(m, false);
-    if (ws && ws.preTasks && ws.preTasks.length) html += `<section class="block"><h2>Before you ${isL ? 'listen' : 'read'}</h2>` + ws.preTasks.map(p => preTaskHtml(p, false)).join('') + '</section>';
     if (!isL) {
       html += '<section class="block text">' + renderTextHTML(m, {}) + '</section>';
     }
@@ -367,6 +369,21 @@
     if (m.content.summary) html += `<p class="summary">${esc(m.content.summary)}</p>`;
     html += '</header>';
 
+    // the teacher version follows the lesson: pre-task, the words, the text,
+    // then questions and answers, then the post-task; the measurements come last
+    const preTaskBlocks = variants.map(v => {
+      const suffix = v.label ? ` — ${esc(v.label)}` : '';
+      return (v.worksheet.preTasks || []).length
+        ? `<section class="block pre-tasks"><h2>Pre-task${suffix}</h2>` + v.worksheet.preTasks.map(p => preTaskHtml(p, true)).join('') + '</section>'
+        : '';
+    }).join('');
+    html += preTaskBlocks;
+    html += '<section class="block vocab"><h2>Target vocabulary used</h2>';
+    html += vocabItems.length ? '<ul class="vocab-list">' + vocabItems.map(v => `<li><strong>${esc(v.word)}</strong>${v.translation ? ' — ' + esc(v.translation) : ''}</li>`).join('') + '</ul>' : '<p class="muted">No target item detected.</p>';
+    if (m.vocabMissing && m.vocabMissing.length) html += `<p class="muted">Not used: ${m.vocabMissing.map(esc).join(', ')}</p>`;
+    html += '</section>';
+
+    if (m.glossary && m.glossary.length) html += glossaryHTML(m, true);
     html += `<section class="block script"><h2>${isL ? 'Script' : 'Text'}</h2>`;
     if (isL) {
       html += '<div class="script-lines">' + (m.content.lines || []).map((l, i) => `<p class="line"><span class="line-no">${i + 1}</span><span class="speaker">${esc(l.speaker)}:</span> ${l.emotion ? `<span class="tag">[${esc(l.emotion)}]</span> ` : ''}${hl ? highlight(l.text, vocabItems) : esc(l.text)}</p>`).join('') + '</div>';
@@ -378,28 +395,21 @@
     }
     html += '</section>';
 
-    html += '<section class="block vocab"><h2>Target vocabulary used</h2>';
-    html += vocabItems.length ? '<ul class="vocab-list">' + vocabItems.map(v => `<li><strong>${esc(v.word)}</strong>${v.translation ? ' — ' + esc(v.translation) : ''}</li>`).join('') + '</ul>' : '<p class="muted">No target item detected.</p>';
-    if (m.vocabMissing && m.vocabMissing.length) html += `<p class="muted">Not used: ${m.vocabMissing.map(esc).join(', ')}</p>`;
-    html += '</section>';
-
-    if (m.glossary && m.glossary.length) html += glossaryHTML(m, true);
-    if (m.level) html += '<section class="block level"><h2>Difficulty meter</h2>' + levelMeterHTML(m.level, m.plan.cefr, { compact: true }) + '</section>';
     for (const v of variants) {
       const vws = v.worksheet;
       const suffix = v.label ? ` — ${esc(v.label)} (${esc((v.plan || m.plan).questionBands ? (v.plan || m.plan).questionBands.join('–') : (v.plan || m.plan).questionBand)})` : '';
-      if (vws.preTasks.length) html += `<section class="block"><h2>Pre-task${suffix}</h2>` + vws.preTasks.map(p => preTaskHtml(p, true)).join('') + '</section>';
-      if ((vws.postTasks || []).length) html += `<section class="block"><h2>Post-task${suffix}</h2>` + vws.postTasks.map(p => preTaskHtml(p, true, 'post')).join('') + '</section>';
       html += `<section class="block key"><h2>Answer key${suffix}</h2><div class="table-wrap"><table class="keytable"><thead><tr><th>Q</th><th>Skill</th><th>Format</th><th>Difficulty</th><th>Correct answer</th><th>Evidence</th></tr></thead><tbody>`;
       for (const q of vws.questions) {
         html += `<tr><td>${q.n}</td><td>${esc(skillLabel(q.skill))}</td><td>${esc(formatLabel(q.format))}</td><td>${esc(q.difficulty)}</td><td>${answerText(q)}</td><td>${q.evidenceRef ? `<span class="ref">${esc(q.evidenceRef)}</span> ` : ''}“${esc(q.evidenceQuote)}”${q.rationale ? `<div class="rationale">${esc(q.rationale)}</div>` : ''}</td></tr>`;
       }
       html += '</tbody></table></div></section>';
+      if ((vws.postTasks || []).length) html += `<section class="block post-tasks"><h2>Post-task${suffix}</h2>` + vws.postTasks.map(p => preTaskHtml(p, true, 'post')).join('') + '</section>';
       if ((vws.higherOrder || []).length) {
         html += `<section class="block"><h2>Higher-order tasks — model answers${suffix}</h2><ol>` + vws.higherOrder.map(h => `<li><strong>${esc(hoLabel(h.type))}:</strong> ${esc(h.prompt)}<div class="rationale">Model answer: ${esc(typeof h.answer === 'string' ? h.answer : JSON.stringify(h.answer))}${h.rationale ? ' — ' + esc(h.rationale) : ''}</div></li>`).join('') + '</ol></section>';
       }
     }
 
+    if (m.level) html += '<section class="block level"><h2>Difficulty meter</h2>' + levelMeterHTML(m.level, m.plan.cefr, { compact: true }) + '</section>';
     if (m.quality && (m.quality.findings || m.quality.repairs)) {
       const s = quality.summarize(m.quality.findings || []);
       html += `<section class="block qc"><h2>Quality check</h2><p class="stats">${s.pass} passed · ${s.warn} warnings · ${s.fail} failed · ${s.unverified} unverified</p>`;
@@ -443,18 +453,20 @@
     out.push('');
     out.push('## Student version' + (variantsOf(m).length > 1 ? ' — ' + variantsOf(m).map(v => v.label).join(' / ') : ''));
     if (ws && ws.instructions) out.push(ws.instructions, '');
-    if (m.glossary && m.glossary.length) out.push('### Words to know', ...m.glossary.map(g => `- **${g.form || g.word}** — ${g.explanation}${g.german ? ' (' + g.german + ')' : ''}`), '');
     const taskLines = (list, phase) => list.flatMap(p => [
       `### ${p.n ? p.n + '. ' : ''}${phase === 'post' ? postLabel(p.type) : preLabel(p.type)}${p.title ? ': ' + p.title : ''}`,
       [socialLabel(p.socialForm), modeLabel(p.mode), p.minutes ? p.minutes + ' min' : ''].filter(Boolean).join(' · '),
       '', p.prompt, ...(p.items || []).map(i => `- ${i}`),
       ...(p.product ? ['', `Result: ${p.product}`] : []),
       ...((p.criteria || []).length ? ['', 'Success criteria:', ...p.criteria.map(c => `- ${c}`)] : []), '']);
+    if (ws && (ws.preTasks || []).length) out.push(`## Before you ${isL ? 'listen' : 'read'}`, '');
     for (const p of (ws && ws.preTasks) || []) out.push(
       `### ${p.n ? p.n + '. ' : ''}${preLabel(p.type)}${p.title ? ': ' + p.title : ''}`,
       [socialLabel(p.socialForm), modeLabel(p.mode), p.minutes ? p.minutes + ' min' : ''].filter(Boolean).join(' · '),
       '', p.prompt, ...(p.items || []).map(i => `- ${i}`),
       ...((p.criteria || []).length ? ['', 'Success criteria:', ...p.criteria.map(c => `- ${c}`)] : []), '');
+    // the words the text needs come after the pre-task and before the text
+    if (m.glossary && m.glossary.length) out.push('### Words to know', ...m.glossary.map(g => `- **${g.form || g.word}** — ${g.explanation}${g.german ? ' (' + g.german + ')' : ''}`), '');
     if (!isL) out.push(...(m.content.paragraphs || []), '');
     for (const v of variantsOf(m).filter(x => x.worksheet)) {
     if (v.label) out.push(`### ${v.label}`);
@@ -468,10 +480,14 @@
     }
     if (ws && (ws.postTasks || []).length) out.push('', `## After you ${isL ? 'listen' : 'read'}`, '', ...taskLines(ws.postTasks, 'post'));
     if (isL && m.settings && m.settings.appendScript) out.push('', '### Script', ...(m.content.lines || []).map(l => `${l.speaker}: ${l.emotion ? '[' + l.emotion + '] ' : ''}${l.text}`));
-    out.push('', '## Teacher version', '', `### ${isL ? 'Script' : 'Text'}`);
+    // the lesson order also holds for the teacher: pre-task and the words first, the text after them
+    out.push('', '## Teacher version', '');
+    if (ws && (ws.preTasks || []).length) out.push('### Pre-task', ...taskLines(ws.preTasks, 'pre'));
+    out.push('### Target vocabulary used', ...(m.vocabFound || []).map(w => `- ${w}`), '');
+    if (m.glossary && m.glossary.length) out.push('### Words to know', ...m.glossary.map(g => `- **${g.form || g.word}** — ${g.explanation}${g.german ? ' (' + g.german + ')' : ''}`), '');
+    out.push(`### ${isL ? 'Script' : 'Text'}`);
     if (isL) out.push(...(m.content.lines || []).map(l => `${l.speaker}: ${l.emotion ? '[' + l.emotion + '] ' : ''}${l.text}`));
     else out.push(...(m.content.paragraphs || []));
-    out.push('', '### Target vocabulary used', ...(m.vocabFound || []).map(w => `- ${w}`));
     if (m.level) out.push('', '### Difficulty meter', `Measured ${m.level.band} (score ${m.level.score}, confidence ${m.level.confidence}), target ${m.plan.cefr}`, ...(m.level.dimensions || []).map(d => `- ${d.label}: ${d.value} ${d.unit} → ${d.band}`));
     for (const v of variantsOf(m).filter(x => x.worksheet)) {
       out.push('', '### Answer key' + (v.label ? ' — ' + v.label : ''));

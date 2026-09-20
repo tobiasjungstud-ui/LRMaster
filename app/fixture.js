@@ -167,6 +167,10 @@
     return {
       id: 'fixture', kind, createdAt: 0, settings, plan, content: c, worksheet: settings.createWorksheet ? ws : null, layout,
       vocabFound: ['argue', 'trust'], vocabMissing: ['gossip'],
+      glossary: settings.glossary ? [
+        { word: 'apologise', form: 'apologise', explanation: 'to say you are sorry', german: 'sich entschuldigen' },
+        { word: 'reunion', form: 'reunion', explanation: 'a meeting of people who have not met for a long time', german: 'Wiedersehen' },
+      ] : [],
       quality: { findings: [] },
     };
   }

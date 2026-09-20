@@ -421,6 +421,10 @@ mark.vocab { background: var(--mark); color: inherit; border-radius: 3px; paddin
 
 /* Authentic layout: the text as a screenshot of its medium */
 .layout-note { color: var(--muted); font-size: .9rem; margin: 0 0 .6rem; }
+.layout-proportions { font-size: .85rem; margin: .7rem 0 0; padding: .5rem .7rem; border-radius: 8px; background: var(--panel-2, #f4f6f9); border-left: 3px solid var(--muted); }
+.layout-proportions.qc-pass { border-left-color: var(--good); }
+.layout-proportions.qc-warn { border-left-color: var(--warn); }
+.layout-proportions.qc-fail { border-left-color: var(--bad); }
 .layout-actions { margin-bottom: .8rem; }
 .layout-shot { overflow: auto; background: var(--ground); border: 1px solid var(--line); border-radius: 10px; padding: 1rem; }
 .layout-shot canvas { display: block; margin: 0 auto; box-shadow: 0 8px 30px rgba(15, 23, 42, .18); border-radius: 6px; max-width: 100%; height: auto; }

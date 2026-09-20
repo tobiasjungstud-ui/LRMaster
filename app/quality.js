@@ -514,6 +514,10 @@
   /** Everything a pre-task shows the students, as one string. */
   function preTaskText(p) { return [p.title, p.prompt, (p.items || []).join(' '), (p.vocabUsed || []).join(' ')].filter(Boolean).join(' '); }
 
+  /* How even a picture has to be: a column filled less than this share of the
+     fullest one is a fault, not a style. */
+  const PROPORTION_FAIL = 0.6, PROPORTION_WARN = 0.8, PROPORTION_TAIL = 0.25;
+
   function finding(rule, status, detail, extra) {
     const base = { id: rule.id, group: rule.group, title: rule.title, kind: rule.kind, blocking: !!rule.blocking, status, detail: detail || '' };
     // a rule Claude judges carries its standard, so a repair prompt can quote it
@@ -802,6 +806,24 @@
         const problems = mock.validate(model);
         return finding(this, problems.length ? 'fail' : 'pass', problems.length ? problems.join('; ') : `${model.label}: ${model.width} × ${model.height} px, ${model.blocks.length} elements.`);
       } },
+    { id: 'layout.proportions', group: 'layout', kind: 'deterministic', title: 'The picture is in proportion', needsLayout: true, blocking: false,
+      check(ctx) {
+        const model = layoutModel({ settings: ctx.state, content: ctx.content, layout: ctx.layout });
+        const p = mock.proportions(model);
+        const pct = (x) => Math.round(x * 100) + ' %';
+        const cols = p.columns;
+        const problems = [];
+        if (cols.length > 1) {
+          const worst = cols.reduce((a, c) => (c.filled < a.filled ? c : a), cols[0]);
+          if (p.balance < PROPORTION_FAIL) problems.push(`Column ${worst.index + 1} of ${cols.length} is only filled to ${pct(worst.filled)} while another one is full.`);
+          else if (p.balance < PROPORTION_WARN) problems.push(`The columns are uneven: ${cols.map(c => pct(c.filled)).join(' / ')}.`);
+        }
+        if (p.tail > PROPORTION_TAIL) problems.push(`The page ends ${pct(p.tail)} of its height below the last element.`);
+        const status = problems.length ? (p.balance < PROPORTION_FAIL ? 'fail' : 'warn') : 'pass';
+        const detail = problems.length ? problems.join(' ')
+          : (cols.length > 1 ? `${cols.length} columns, evenly filled (${cols.map(c => pct(c.filled)).join(' / ')}).` : `One column, the page ends ${pct(p.tail)} below the text.`);
+        return finding(this, status, detail, { measured: { balance: Math.round(p.balance * 100) / 100, tail: Math.round(p.tail * 100) / 100, columns: cols.map(c => Math.round(c.filled * 100) / 100) } });
+      } },
     { id: 'layout.authentic', group: 'layout', kind: 'llm', title: 'The medium looks real and fits the text', needsLayout: true,
       criterion: 'the interface around the text (address, site or app name, navigation, buttons, counts, times) is what that medium really looks like and fits this text: same world, names, places and dates agree, nothing contradicts the text', failsWhen: 'the interface contradicts the text (other names, places, dates) or shows something this medium does not have', evidence: 'chrome', whenUnsure: 'pass', notMine: 'completeness of the interface fields and whether the picture shows the text unchanged — both are measured', blocking: false },
   ];
@@ -907,10 +929,18 @@
    * asked are dropped, a missing verdict stays "unverified", and a "pass" on
    * a blocking rule without any basis is counted as unverified rather than as
    * a check that was carried out.
+   *
+   * `opts.unavailable` lists rules whose data never reached the review prompt.
+   * They are reported as unverified and never as a fail: a rule that was not
+   * shown its data has judged nothing, so it must not block the material.
    */
-  function mergeReview(rules, review) {
+  function mergeReview(rules, review, opts) {
     const results = (review && Array.isArray(review.results)) ? review.results : [];
+    const unavailable = (opts && opts.unavailable) || [];
     return rules.map(r => {
+      if (unavailable.indexOf(r.id) >= 0) {
+        return finding(r, 'unverified', 'Die Daten zu dieser Regel standen nicht im Pr\u00fcf-Prompt \u2013 nicht gepr\u00fcft.', { missingData: true });
+      }
       const hit = results.find(x => x && typeof x === 'object' && String(x.rule) === r.id);
       if (!hit) return finding(r, 'unverified', 'No verdict returned.');
       const note = String(hit.note == null ? '' : hit.note).slice(0, 400).trim();

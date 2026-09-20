@@ -820,9 +820,15 @@
     const key = (name) => name + (tag || '');
     const reviewNow = async (ws, det, suffix) => {
       const rules = quality.llmRules(state, plan, ws, { layout: run.layout });
-      usedPrompts[key('review' + suffix)] = prompts.buildReviewPrompt(state, plan, content, ws, rules, det, run.layout);
-      const res = await askJSON(usedPrompts[key('review' + suffix)], { signal: ctl.signal });
-      return { review: res, findings: quality.mergeReview(rules, res) };
+      let prompt = prompts.buildReviewPrompt(state, plan, content, ws, rules, det, run.layout);
+      // A rule may only be asked when the data it judges really stands in the
+      // prompt. Otherwise it is left out and reported as unverified instead of
+      // failing the material for data it was never shown.
+      const gaps = prompts.reviewDataGaps(prompt, rules);
+      if (gaps.length) prompt = prompts.buildReviewPrompt(state, plan, content, ws, rules.filter(r => gaps.indexOf(r.id) < 0), det, run.layout);
+      usedPrompts[key('review' + suffix)] = prompt;
+      const res = await askJSON(prompt, { signal: ctl.signal });
+      return { review: res, findings: quality.mergeReview(rules, res, { unavailable: gaps }) };
     };
     // Every worksheet that arrives is put into the timeline of the material first (concept §26 — always).
     const inOrder = (ws, round, cont) => {
@@ -969,8 +975,11 @@
 
   async function reviewContentOnly(state, plan, content, contentFindings, ctl, layout) {
     const rules = quality.llmRules(state, plan, null, { layout });
-    const review = await askJSON(prompts.buildReviewPrompt(state, plan, content, null, rules, contentFindings, layout), { signal: ctl.signal });
-    return quality.mergeReview(rules, review);
+    let prompt = prompts.buildReviewPrompt(state, plan, content, null, rules, contentFindings, layout);
+    const gaps = prompts.reviewDataGaps(prompt, rules);
+    if (gaps.length) prompt = prompts.buildReviewPrompt(state, plan, content, null, rules.filter(r => gaps.indexOf(r.id) < 0), contentFindings, layout);
+    const review = await askJSON(prompt, { signal: ctl.signal });
+    return quality.mergeReview(rules, review, { unavailable: gaps });
   }
 
   /* ------------------------------------------------------------------ */
@@ -1192,7 +1201,8 @@
       + '<div class="layout-actions"><button type="button" class="btn tiny primary" data-download="png">Bild (PNG) herunterladen</button>'
       + '<span class="chips layout-media">' + [['auto', 'Automatisch'], ['screen', 'Bildschirm'], ['paper', 'Papier']].map(([k, l]) =>
         `<button type="button" class="chip-btn${medium === k ? ' active' : ''}" data-layout-medium="${k}">${l}</button>`).join('') + '</span></div>'
-      + '<div class="layout-shot"><canvas id="layout-canvas"></canvas></div>';
+      + '<div class="layout-shot"><canvas id="layout-canvas"></canvas></div>'
+      + proportionNote(m);
     $$('#out-layout [data-layout-medium]').forEach(b => b.addEventListener('click', () => {
       m.settings = Object.assign({}, m.settings, { layoutMedium: b.dataset.layoutMedium });
       renderLayout(m);
@@ -1201,6 +1211,23 @@
     paintLayoutCanvas(m, canvas);
     $$('#out-layout [data-download]').forEach(b => b.addEventListener('click', () => download('png')));
     return canvas;
+  }
+
+  /**
+   * What the proportion check saw: how full each column is and how the page
+   * ends. It is the same measurement the quality rule judges, shown where the
+   * picture is, so the teacher can compare it with their own eyes.
+   */
+  function proportionNote(m) {
+    let p;
+    try { p = mock.proportions(quality.layoutModel(m)); } catch (e) { return ''; }
+    const pct = (x) => Math.round(x * 100) + ' %';
+    const cols = p.columns.length > 1
+      ? `${p.columns.length} Spalten, gefüllt zu ${p.columns.map(c => pct(c.filled)).join(' / ')}`
+      : 'eine Spalte';
+    const even = p.columns.length > 1 ? (p.balance >= 0.8 ? 'ausgeglichen' : p.balance >= 0.6 ? 'ungleich' : 'eine Spalte bleibt fast leer') : '';
+    const state = p.balance >= 0.8 ? 'pass' : p.balance >= 0.6 ? 'warn' : 'fail';
+    return `<p class="layout-proportions qc-${state}">Proportionen geprüft: ${esc(cols)}${even ? ' — ' + esc(even) : ''}; die Seite endet ${pct(p.tail)} ihrer Höhe unter dem letzten Element.</p>`;
   }
 
   /**
@@ -1893,5 +1920,5 @@
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init); else init();
 
-  window.LR.ui = { app, generate, produceWorksheet, openViewer, renderViewer, markPageBreaks, syncViewerOffsets, buildViewerRail, buildViewerDownloads, paintLayoutCanvas, viewer, store, caps, showView, openCreator, importState, detectUnits, fetchTopics, confirmImport, newTextbook, askText, askConfirm, clone, parsePasted, initLevelPage, download, renderOutput, renderQualityPanel, renderTaskPreview, refreshDerived, renderLayout, renderSetupBar, openCustomSetup, backToTemplates, redrawTemplate, templateState, buildForm };
+  window.LR.ui = { app, generate, produceWorksheet, openViewer, renderViewer, markPageBreaks, syncViewerOffsets, buildViewerRail, buildViewerDownloads, paintLayoutCanvas, proportionNote, viewer, store, caps, showView, openCreator, importState, detectUnits, fetchTopics, confirmImport, newTextbook, askText, askConfirm, clone, parsePasted, initLevelPage, download, renderOutput, renderQualityPanel, renderTaskPreview, refreshDerived, renderLayout, renderSetupBar, openCustomSetup, backToTemplates, redrawTemplate, templateState, buildForm };
 })();

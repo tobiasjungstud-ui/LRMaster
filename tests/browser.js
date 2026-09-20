@@ -57,8 +57,33 @@ const TEXT = {
 };
 const XSS = '<img src=x onerror="window.__xss=1"><svg onload="window.__xss=1">';
 
+/*
+ * A worksheet the way Claude would write one for TEXT. The stub used to answer
+ * the question call with an empty object, so every rule about questions,
+ * pre-tasks and post-tasks was judged over nothing — and the review still came
+ * back "passed". A test that hands the app no data proves nothing about how it
+ * treats data (weak spot R7).
+ */
+const WORKSHEET = {
+  title: 'Group chats at school',
+  instructions: 'Read the blog post and answer the questions in full sentences.',
+  preTasks: [
+    { n: 1, type: 'confrontation', title: 'Take a side', prompt: 'A class group chat does more harm than good. Take a side and give one reason.', socialForm: 'pair', mode: 'oral', minutes: 5, criteria: ['I can state my position with one reason.'] },
+  ],
+  postTasks: [
+    { n: 1, type: 'discussion', title: 'Class rules', prompt: 'The class in the text stopped its chat for two weeks. Discuss in your group which rule you would keep and which one you would change.', socialForm: 'group', mode: 'oral', minutes: 12, product: 'three rules on a poster', reference: 'the two weeks without the class chat', criteria: ['We agree on three rules and can say why.'] },
+  ],
+  questions: [
+    { n: 1, skill: 'gist', format: 'short_answer', difficulty: 'B1.1', prompt: 'What is the blog post mainly about?', answer: 'A class that stopped using its group chat.', evidenceQuote: 'our class group chat had more than fifty messages a day', evidenceRef: '[1]', rationale: 'The first paragraph names the subject.' },
+    { n: 2, skill: 'specific', format: 'short_answer', difficulty: 'B1.1', prompt: 'What did two people argue about?', answer: 'A football match.', evidenceQuote: 'started to argue about a football match', evidenceRef: '[2]', rationale: 'Stated in the second paragraph.' },
+    { n: 3, skill: 'detail', format: 'short_answer', difficulty: 'B1.1', prompt: 'How long did the class go without the chat?', answer: 'Two weeks.', evidenceQuote: 'suggested two weeks with no class chat', evidenceRef: '[3]', rationale: 'Stated in the third paragraph.' },
+    { n: 4, skill: 'inference', format: 'short_answer', difficulty: 'B1.2', prompt: 'Why did people stop needing screenshots?', answer: 'Because things were said face to face, so everyone heard them.', evidenceQuote: 'nobody had to trust a screenshot to know what was said', evidenceRef: '[4]', rationale: 'Has to be concluded from the last paragraph.' },
+  ],
+  higherOrder: [],
+};
+
 /** The stub for window.claude: `scenario` decides how badly it behaves. */
-function claudeStub({ scenario, text, xss }) {
+function claudeStub({ scenario, text, xss, worksheet }) {
   window.__calls = [];
   window.__xss = false;
   const sample = async () => ({ text: '{}' });
@@ -93,7 +118,8 @@ function claudeStub({ scenario, text, xss }) {
     }
     if (kind === 'questions') {
       if (scenario === 'xss') return { questions: [{ n: 1, skill: 'gist', format: 'short_answer', difficulty: 'B1.1', prompt: xss, answer: xss, evidenceQuote: xss, evidenceRef: '[¶1]' }] };
-      return {};
+      if (scenario === 'empty') return {};
+      return worksheet;
     }
     return {};
   };
@@ -134,7 +160,7 @@ const SETTINGS = (extra) => `(() => {
     const errors = [];
     page.on('pageerror', e => errors.push(String(e.message).slice(0, 160)));
     if (opts.before) await page.addInitScript(opts.before);
-    if (opts.scenario) await page.addInitScript(claudeStub, { scenario: opts.scenario, text: TEXT, xss: XSS });
+    if (opts.scenario) await page.addInitScript(claudeStub, { scenario: opts.scenario, text: TEXT, xss: XSS, worksheet: WORKSHEET });
     await page.goto(url(), { waitUntil: 'domcontentloaded' });
     await page.waitForTimeout(700);
     return { page, errors };
