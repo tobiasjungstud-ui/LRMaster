@@ -8,7 +8,7 @@
 })(typeof self !== 'undefined' ? self : this, function () {
   'use strict';
 
-  const UNIT_HEADING = /^\s*(unit|einheit|lektion|lesson|chapter|kapitel|module|topic)\s*([0-9]+[a-z]?)?\s*[:\-–—.]?\s*(.*)$/i;
+  const UNIT_HEADING = /^\s*(unit|einheit|lektion|lesson|chapter|kapitel|module|topic)\s*([0-9]+[a-z]?)?\s*[:\-\u2013\u2014.]?\s*(.*)$/i;
   /** A line or cell only counts as vocabulary if it carries a letter or digit. */
   const HAS_WORD = /[0-9A-Za-z\u00C0-\u00FF\u0100-\u024F\u0370-\uFFFF]/;
 
@@ -32,7 +32,7 @@
 
   function splitRow(line, delimiter) {
     if (delimiter === 'dash') {
-      const m = line.split(/ [-–—] /);
+      const m = line.split(/ [-\u2013\u2014] /);
       return m.map(s => s.trim());
     }
     if (delimiter === ',' || delimiter === ';') {
@@ -100,9 +100,16 @@
       }
       seenData = true;
       const nonEmpty = cells.filter(Boolean);
-      // A unit heading row: a single cell (or first cell with rest empty) matching "Unit n …".
-      if (nonEmpty.length === 1 || (cells[0] && cells.slice(1).every(c => !c))) {
-        const m = UNIT_HEADING.exec(nonEmpty[0]);
+      /*
+       * A unit heading row: a single cell matching "Unit n …", or — because a
+       * list written with dashes splits "Unit 3 – Movies" into two cells — a
+       * row whose whole text is a unit heading *with a number*. The number is
+       * what separates "Unit 3 – Movies" from the vocabulary "unit price".
+       */
+      const joined = UNIT_HEADING.exec(nonEmpty.join(' ').trim());
+      const splitHeading = joined && joined[2] && nonEmpty.length > 1 && nonEmpty.join(' ').length < 80;
+      if (nonEmpty.length === 1 || splitHeading || (cells[0] && cells.slice(1).every(c => !c))) {
+        const m = splitHeading ? joined : UNIT_HEADING.exec(nonEmpty[0]);
         if (m) {
           const num = m[2] ? ' ' + m[2] : '';
           const label = (m[1].charAt(0).toUpperCase() + m[1].slice(1).toLowerCase()) + num;

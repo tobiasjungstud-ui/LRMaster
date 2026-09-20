@@ -148,12 +148,12 @@
    * the length rule never show two different numbers for the same text.
    */
   function countWords(text) {
-    return String(text || '').replace(/\[[a-z]+\]/gi, ' ').match(/[\p{L}\p{N}][\p{L}\p{N}'’-]*/gu) || [];
+    return String(text || '').replace(/\[[a-z]+\]/gi, ' ').match(/[\p{L}\p{N}][\p{L}\p{N}'\u2019-]*/gu) || [];
   }
 
   function tokenize(text) {
     const out = [];
-    const re = /[\p{L}][\p{L}'’-]*[\p{L}]|[\p{L}]/gu;
+    const re = /[\p{L}][\p{L}'\u2019-]*[\p{L}]|[\p{L}]/gu;
     let m;
     while ((m = re.exec(text))) {
       const raw = m[0].replace(/[\u2019]/g, "'");
@@ -169,7 +169,7 @@
 
   function sentences(text) {
     return String(text || '').replace(/\b(Mr|Mrs|Ms|Dr|St|e\.g|i\.e)\./g, '$1')
-      .split(/(?<=[.!?…])\s+(?=["“'(]?[A-Z0-9])|\n+/)
+      .split(/(?<=[.!?\u2026])\s+(?=["\u201C'(]?[A-Z0-9])|\n+/)
       .map(s => s.trim()).filter(s => tokenize(s).length > 0);
   }
 
@@ -189,7 +189,7 @@
   const INVERSION = /\b(not only|rarely|seldom|hardly|no sooner|never before|little did|only then|only when)\b/gi;
   const PHRASAL_VERBS = /\b(get|gets|got|getting|take|takes|took|taking|put|puts|putting|come|comes|came|coming|go|goes|went|going|look|looks|looked|looking|give|gives|gave|giving|make|makes|made|making|bring|brings|brought|turn|turns|turned|pick|picks|picked|set|sets|run|runs|ran|keep|keeps|kept|hold|holds|held|break|breaks|broke|carry|carries|carried|work|works|worked|end|ends|ended|hang|hangs|hung|show|shows|showed|throw|throws|threw|let|lets|cut|cuts|fall|falls|fell|find|finds|found|pass|passes|passed|sort|sorts|sorted|stick|sticks|stuck|figure|figured|catch|caught|hand|hands|handed|log|logged|sign|signed|calm|calmed|wake|woke|grow|grew|check|checked)\s+(\w+\s+)?(up|out|on|off|in|into|over|back|away|down|through|along|around|about|forward|after|across|ahead|apart|aside|behind|by|together)\b/gi;
   const IDIOMS = /\b(part of the fun|easy to get into|just one more|two in the morning|at the end of the day|a piece of cake|keep an eye on|in the long run|on the same page|hit the road|under the weather|out of the blue|over the moon|the last straw|a big deal|no big deal|the thing is|in a nutshell|to be honest|to be fair|as a matter of fact|make up your mind|change your mind|on second thoughts|for a change|in the end|so far so good|it turns out|as far as i know|at first glance|by the way|in other words|once in a while|from time to time|the point is|give it a try|get the hang of|make sense|take it easy|sooner or later|on the one hand|on the other hand|in the meantime|lost track of|can't help)\b/gi;
-  const FILLERS = /\b(well|actually|you know|i mean|sort of|kind of|like|basically|honestly|anyway|right|so|um|uh|er|hmm)\b(?=[,.…!?]|\s)/gi;
+  const FILLERS = /\b(well|actually|you know|i mean|sort of|kind of|like|basically|honestly|anyway|right|so|um|uh|er|hmm)\b(?=[,.\u2026!?]|\s)/gi;
 
   function count(re, text) { const m = String(text).match(re); return m ? m.length : 0; }
   function examples(re, text, n) { const m = String(text).match(re); return m ? [...new Set(m.map(x => x.trim()))].slice(0, n || 3) : []; }

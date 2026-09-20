@@ -45,7 +45,7 @@
 
   function isHeadingLike(t) {
     const x = String(t || '').trim();
-    return x.length > 0 && x.length <= 70 && x.split(/\s+/).length <= 9 && !/[.!?…:;,]$/.test(x) && !/^["“'(]/.test(x);
+    return x.length > 0 && x.length <= 70 && x.split(/\s+/).length <= 9 && !/[.!?\u2026:;,]$/.test(x) && !/^["\u201C'(]/.test(x);
   }
 
   function metaLine(parts) {

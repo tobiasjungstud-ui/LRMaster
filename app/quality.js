@@ -451,7 +451,7 @@
             if (!anyVocab) problems.push('no task works with the target vocabulary');
           }
           if (plan.focus !== 'vocabulary') {
-            const topic = String(ctx.plan.topic || ctx.plan.unitTopic || '').toLowerCase().split(/[^a-zäöü]+/).filter(w => w.length > 3);
+            const topic = String(ctx.plan.topic || ctx.plan.unitTopic || '').toLowerCase().split(/[^a-z\u00E4\u00F6\u00FC]+/).filter(w => w.length > 3);
             const all = got.map(preTaskText).join(' ').toLowerCase();
             if (topic.length && !topic.some(w => all.includes(w.slice(0, Math.max(4, w.length - 2))))) problems.push('no task mentions the topic');
           }

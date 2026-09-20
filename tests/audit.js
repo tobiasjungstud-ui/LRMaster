@@ -584,6 +584,32 @@ test('2.10', 'vocabulary import: header only in the first row, no separator junk
   // a large list stays fast and complete
   const big = vocab.parseText(Array.from({ length: 5000 }, (_, i) => `word${i} - Wort${i}`).join('\n'), {});
   assert.equal(vocab.allWords(big.units).length, 5000);
+  // unit headings written with a dash are headings, not vocabulary
+  const dashed = vocab.parseText('Unit 3 – Movies\nbox office - Kinokasse\nUnit 4 — Music\nband - Band', {});
+  assert.deepEqual(dashed.units.map(u => u.name), ['Unit 3', 'Unit 4'], 'a unit heading with a dash is read as vocabulary');
+  assert.deepEqual(dashed.units.map(u => u.topic), ['Movies', 'Music'], 'the topic of the unit is lost');
+  // but a word that begins with "unit" stays a word
+  const price = vocab.parseText('unit price – Stückpreis\nbox office – Kinokasse', {});
+  assert.deepEqual(vocab.allWords(price.units).map(w => w.word), ['unit price', 'box office'], 'a word was read as a unit heading');
+});
+
+test('2.11 R9', 'the page says how it is encoded, and no pattern depends on it', () => {
+  const fs = require('node:fs');
+  const html = fs.readFileSync(path.join(APP, 'index.html'), 'utf8');
+  assert.ok(/<meta\s+charset\s*=\s*"?utf-?8"?/i.test(html.slice(0, 1024)),
+    'index.html does not declare utf-8 in its first 1024 bytes — a server without a charset breaks the whole app');
+  // a character class with a literal umlaut or curly quote throws as soon as
+  // the file is decoded as latin-1; escapes survive that
+  const offenders = [];
+  for (const file of fs.readdirSync(APP).filter(f => f.endsWith('.js'))) {
+    const src = fs.readFileSync(path.join(APP, file), 'utf8');
+    src.split('\n').forEach((line, i) => {
+      if (!/(replace|match|test|exec|split)\(\/|=\s*\/[^/]/.test(line)) return;
+      const cls = line.match(/\[[^\]\n]*\]/g) || [];
+      if (cls.some(c => /[^\x00-\x7F]/.test(c))) offenders.push(`${file}:${i + 1} ${line.trim().slice(0, 70)}`);
+    });
+  }
+  assert.deepEqual(offenders, [], 'pattern with a literal non-ASCII character in a character class');
 });
 
 test('2.11', 'every element the app writes into really exists', () => {

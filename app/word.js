@@ -45,7 +45,7 @@
   }
   function isHeadingLike(text) {
     const t = String(text || '').trim();
-    return t.length > 0 && t.length <= 70 && t.split(/\s+/).length <= 9 && !/[.!?…:;,]$/.test(t) && !/^["“'(]/.test(t);
+    return t.length > 0 && t.length <= 70 && t.split(/\s+/).length <= 9 && !/[.!?\u2026:;,]$/.test(t) && !/^["\u201C'(]/.test(t);
   }
   function label(k) { const s = core.SKILLS.find(x => x.key === k); return s ? s.label : k; }
   function formatLabel(k) { const f = core.QUESTION_FORMATS.find(x => x.key === k); return f ? f.label : k; }
