@@ -552,6 +552,20 @@
         const detail = `Measured ${measured.band} (score ${measured.score}, confidence ${measured.confidence}), target ${ctx.plan.cefr}. ${dims}.` + (advice && cmp.status !== 'pass' ? ' To fix: ' + advice : '');
         return finding(this, cmp.status, detail, { measured: slimMeasurement(measured), comparison: { delta: cmp.delta, deviations: cmp.deviations } });
       } },
+    { id: 'content.dials', group: 'content', kind: 'deterministic', title: 'The text sits where the dials point inside the level', blocking: false, advisory: true,
+      check(ctx) {
+        if (ctx.plan.levelMeter === false) return finding(this, 'pass', 'Level meter switched off.', { advisory: true });
+        const measured = level.measure(ctx.content, ctx.state.kind, { seconds: ctx.plan.seconds, exclude: (ctx.plan.vocabulary || []).map(w => w.word) });
+        const words = (measured.stats && measured.stats.words) || 0;
+        if (words < 120) return finding(this, 'pass', `Zu kurz (${words} Wörter), um die Feinjustierung zu messen – ein einzelnes Wort verschiebt hier die Prozente.`, { advisory: true });
+        const rows = level.dialCheck(measured, ctx.plan.cefr, ctx.state, ctx.state.kind);
+        const off = rows.filter(r => r.off);
+        const say = (r) => `${r.label} ${r.value} ${r.unit} (Regler ${r.dialLabel} ${r.dialValue} → Ziel ${r.aim[0]}–${r.aim[1]} innerhalb ${ctx.plan.cefr})`;
+        const detail = off.length
+          ? 'Nicht dort, wohin die Regler zeigen: ' + off.map(say).join('; ') + '. Nur ein Hinweis zur Feinjustierung – ob das Niveau stimmt, prüft „Measured difficulty".'
+          : `Alle gemessenen Werte liegen dort, wohin die Regler innerhalb ${ctx.plan.cefr} zeigen.`;
+        return finding(this, off.length ? 'warn' : 'pass', detail, { advisory: true, measured: rows });
+      } },
     { id: 'content.word_count', group: 'content', kind: 'deterministic', title: 'Length matches the target', blocking: true,
       check(ctx) {
         const n = wordCount(materialText(ctx.content, ctx.state.kind).text.replace(/^[^:\n]+: /gm, ''));
@@ -1035,7 +1049,8 @@
   /** Findings the app should act on at a given level ('off' | 'fail' | 'all'). */
   function repairable(findings, level) {
     if (!level || level === 'off') return [];
-    return (findings || []).filter(f => f.status === 'fail' || (level === 'all' && f.status === 'warn'));
+    // an advisory finding tells the teacher something; it is not worth a rewrite
+    return (findings || []).filter(f => !f.advisory && (f.status === 'fail' || (level === 'all' && f.status === 'warn')));
   }
 
   /**
@@ -1079,7 +1094,8 @@
 
   /** Lower is better: failures weigh ten times a warning. */
   function problemScore(findings) {
-    const s = summarize(findings);
+    // a hint on fine-tuning must not decide whether a repair made things better
+    const s = summarize((findings || []).filter(f => !f.advisory));
     return s.fail * 10 + s.warn + s.unverified * 0.1;
   }
 

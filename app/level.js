@@ -445,5 +445,96 @@
     return lines;
   }
 
-  return { BANDS, DESCRIPTORS, DIMENSIONS, measure, compare, targetsFor, targetLines, glossaryCandidates, rankOf, rankBand, lemmaOf, tokenize, sentences, candidates, americanize, maxRankFor, hardWordsFor, stripDirections, countWords };
+  /* ------------------------------------------------------------------ */
+  /* The dials: where inside the level a text should sit                  */
+  /* ------------------------------------------------------------------ */
+
+  /*
+   * The CEFR level fixes the range a text may use. The dials (vocabulary,
+   * grammar, language complexity, idioms) do not move that range — they
+   * choose a place INSIDE it: 0 the easiest end of the level, 100 the most
+   * demanding end, never above it. Which words or structures the text uses
+   * is free; the dials only say how common or how complex they are.
+   * Each dial is tied to what the meter measures, so the place is a number.
+   */
+  const DIALS = {
+    vocabularyDifficulty: { dims: ['lexB2', 'lexC'], label: 'Wortschatz', en: 'vocabulary' },
+    grammarComplexity: { dims: ['subordination', 'grammar'], label: 'Grammatik', en: 'grammar' },
+    languageComplexity: { dims: ['sentence'], label: 'Sprachliche Komplexität', en: 'sentence length' },
+    idiomaticLanguage: { dims: ['idiom'], label: 'Idiomatik', en: 'idioms and phrasal verbs' },
+  };
+  const DIAL_KEYS = Object.keys(DIALS);
+  const WHERE = ['the easiest end', 'the easier half', 'the middle', 'the more demanding half', 'the most demanding end'];
+  const WHERE_DE = ['am leichten Ende', 'in der leichteren Hälfte', 'in der Mitte', 'in der anspruchsvolleren Hälfte', 'am anspruchsvollen Ende'];
+
+  /** Rounded to what the scale can tell apart: 0.12 stays 0.12, 9.34 becomes 9.3. */
+  const roundFor = (span) => (v) => { const k = span < 0.1 ? 1000 : span < 1 ? 100 : 10; return Math.round(v * k) / k; };
+
+  /** The level's own range of one measure, unrounded. */
+  function rawRange(dimKey, band) {
+    const d = DIMENSIONS.find(x => x.key === dimKey);
+    const i = Math.max(0, BANDS.indexOf(band));
+    const t = d.thresholds;
+    // the lowest level has no lower threshold; a real A2.1 text still has
+    // sentences of five words, not of none
+    return [i === 0 ? t[0] * 0.55 : t[i - 1], i < t.length ? t[i] : t[t.length - 1] * 1.3];
+  }
+
+  /** The part of the level's range one dial position aims at (always inside it). */
+  function dialAim(range, dial) {
+    const [lo, hi] = range;
+    const span = Math.max(0, hi - lo);
+    const r = roundFor(span);
+    const d = Math.max(0, Math.min(100, Number(dial)));
+    const centre = lo + span * (0.15 + 0.7 * (Number.isFinite(d) ? d : 50) / 100);
+    const half = span * 0.18;
+    return [r(Math.max(lo, centre - half)), r(Math.min(hi, centre + half))];
+  }
+
+  function whereIndex(dial) { return Math.min(4, Math.floor(Math.max(0, Math.min(100, Number(dial) || 0)) / 20)); }
+
+  /**
+   * For every dial: where inside the level it points, and the measured
+   * values that correspond to it — what the prompt asks for and what the
+   * check compares with.
+   */
+  function dialTargets(band, state, kind) {
+    const out = [];
+    for (const key of DIAL_KEYS) {
+      const value = state && Number.isFinite(Number(state[key])) ? Number(state[key]) : 50;
+      const dims = DIALS[key].dims.map(k => {
+        const def = DIMENSIONS.find(d => d.key === k);
+        const range = rawRange(k, band);
+        const r = roundFor(range[1] - range[0]);
+        return { key: k, label: def.label, unit: def.unit, range: range.map(r), aim: dialAim(range, value) };
+      }).filter(d => kind === 'listening' || !(DIMENSIONS.find(x => x.key === d.key) || {}).listeningOnly);
+      out.push({ key, value, label: DIALS[key].label, en: DIALS[key].en, where: WHERE[whereIndex(value)], whereDe: WHERE_DE[whereIndex(value)], dims });
+    }
+    return out;
+  }
+
+  /**
+   * How a measured text sits against the dials. A value counts as on target
+   * when it lies in the aim or within one aim-width of it — short texts are
+   * noisy, a miss by a hair is not a miss. Rare words and idioms are only
+   * judged in texts long enough to count them.
+   */
+  function dialCheck(measured, band, state, kind) {
+    const words = (measured && measured.stats && measured.stats.words) || 0;
+    const res = [];
+    for (const dial of dialTargets(band, state, kind)) {
+      for (const d of dial.dims) {
+        const m = (measured.dimensions || []).find(x => x.key === d.key);
+        if (!m) continue;
+        if ((d.key === 'lexC' || d.key === 'idiom') && words < 250) continue;
+        const width = Math.max((d.range[1] - d.range[0]) * 0.1, d.aim[1] - d.aim[0]);
+        const off = m.value < d.aim[0] - width ? 'below' : m.value > d.aim[1] + width ? 'above' : '';
+        res.push({ dial: dial.key, dialLabel: dial.label, dialValue: dial.value, key: d.key, label: d.label, unit: d.unit, value: m.value, aim: d.aim, range: d.range, off });
+      }
+    }
+    return res;
+  }
+
+  return { DIALS, DIAL_KEYS, dialAim, dialTargets, dialCheck,
+    BANDS, DESCRIPTORS, DIMENSIONS, measure, compare, targetsFor, targetLines, glossaryCandidates, rankOf, rankBand, lemmaOf, tokenize, sentences, candidates, americanize, maxRankFor, hardWordsFor, stripDirections, countWords };
 });

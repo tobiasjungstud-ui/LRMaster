@@ -879,6 +879,44 @@
     } });
   add({ id: 'S34.descriptors', section: 34, title: 'Jede Stufe A2.1–B2.2 ist mit Hör-/Lese-Deskriptor (GER-Begleitband) und sprachlichen Merkmalen hinterlegt', kind: 'function',
     check(env) { return ok(env.level.BANDS.every(b => env.level.DESCRIPTORS[b] && env.level.DESCRIPTORS[b].listening && env.level.DESCRIPTORS[b].reading && env.level.DESCRIPTORS[b].language)); } });
+  add({ id: 'S34.dials', section: 34, title: 'Die Regler für Wortschatz, Grammatik, Komplexität und Idiomatik stellen den Text INNERHALB seines CEFR-Niveaus ein (leichtes bis anspruchsvolles Ende, nie darüber) – mit messbarem Zielbereich; welche Wörter vorkommen, ist frei', kind: 'rule', ruleId: 'content.dials',
+    extra(env) {
+      const problems = [];
+      const L = env.level;
+      // every dial position of every level lies inside that level, and a higher dial never aims lower
+      for (const band of L.BANDS) {
+        let prev = null;
+        for (const v of [0, 25, 50, 75, 100]) {
+          const t = L.dialTargets(band, { vocabularyDifficulty: v, grammarComplexity: v, languageComplexity: v, idiomaticLanguage: v }, 'listening');
+          for (const dial of t) for (const d of dial.dims) {
+            const [a, b] = d.aim, [lo, hi] = d.range, eps = 1e-9;
+            if (!(lo - eps <= a && a < b && b <= hi + eps)) problems.push(`${band} ${dial.key}=${v}: ${d.key} aims at ${a}–${b}, not a place inside ${lo}–${hi}`);
+            // the ends of the dial are the ends of the level
+            if (v === 0 && Math.abs(a - lo) > (hi - lo) * 0.05 + 0.011) problems.push(`${band}: dial 0 of ${d.key} does not start at the easy end of the level`);
+            if (v === 100 && Math.abs(b - hi) > (hi - lo) * 0.05 + 0.011) problems.push(`${band}: dial 100 of ${d.key} does not reach the demanding end of the level`);
+          }
+          const lex = t.find(x => x.key === 'vocabularyDifficulty').dims[0].aim[0];
+          if (prev !== null && lex < prev) problems.push(band + ': a higher vocabulary dial aims at easier words');
+          prev = lex;
+        }
+      }
+      // the prompt says it: free choice of words, the dial is about how common, inside the level, as numbers
+      const st = env.state({ cefr: 'B1.1', vocabularyDifficulty: 80 });
+      const p = env.prompts.buildContentPrompt(st, env.core.buildPlan(st, env.ctx));
+      const aim = L.dialTargets('B1.1', st, st.kind).find(x => x.key === 'vocabularyDifficulty').dims[0].aim;
+      if (!/Which words and structures you use is up to you/.test(p)) problems.push('the prompt does not leave the choice of words free');
+      if (!/always inside B1\.1/.test(p) || !/never above it/.test(p)) problems.push('the prompt does not bind the dials inside the level');
+      if (!p.includes(`${aim[0]}–${aim[1]}`)) problems.push('the prompt gives no measurable aim for the vocabulary dial');
+      // the question level stays out of the text
+      const a = env.prompts.buildContentPrompt(env.state({ cefr: 'B1.1', questionLevel: 'A' }), env.core.buildPlan(env.state({ cefr: 'B1.1', questionLevel: 'A' }), env.ctx));
+      const b = env.prompts.buildContentPrompt(env.state({ cefr: 'B1.1', questionLevel: 'B' }), env.core.buildPlan(env.state({ cefr: 'B1.1', questionLevel: 'B' }), env.ctx));
+      if (a !== b) problems.push('the question level (A/B) changes the text prompt');
+      // the check is a hint: it never starts a rewrite and never decides whether a rewrite was better
+      const hint = { id: 'content.dials', status: 'warn', advisory: true, title: 'x' };
+      if (env.quality.repairable([hint], 'all').length) problems.push('a hint on fine-tuning starts a rewrite');
+      if (env.quality.problemScore([hint]) !== 0) problems.push('a hint on fine-tuning counts as a problem');
+      return ok(!problems.length, problems.slice(0, 3).join(' | '));
+    } });
   add({ id: 'S34.rule', section: 34, title: 'Quality Check – gemessene Schwierigkeit gegen das Ziel-Niveau (Warnung bei 1 Stufe, Fehler ab 2 Stufen, mit konkreten Korrekturhinweisen)', kind: 'rule', ruleId: 'content.level_measured',
     extra(env) {
       const m = env.fixture.material({ cefr: 'B2.2' }, 'listening');

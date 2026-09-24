@@ -2,7 +2,7 @@
 
 Erzeugt von `npm run coverage`. Jede Zeile ist eine Anforderung aus `docs/Konzept_Listening_Reading_Creator.md`, gebunden an die Stelle im Code, die sie umsetzt, und das Ergebnis der automatischen Prüfung (`npm test`).
 
-**Ergebnis: 318 von 318 Anforderungen bestanden.**
+**Ergebnis: 319 von 319 Anforderungen bestanden.**
 
 Prüfarten: **setting** – Steuerelement vorhanden und Änderung des Werts verändert nachweislich den Prompt an Claude · **function** – Verhalten wird mit echten Eingaben ausgeführt und verglichen · **rule** – Qualitätsregel existiert als Messung oder Claude-Review-Kriterium · **render** – Ausgabe wird auf einer Fixture gerendert und inhaltlich geprüft · **ui** – Navigations-/Strukturelement existiert.
 
@@ -388,7 +388,7 @@ Prüfarten: **setting** – Steuerelement vorhanden und Änderung des Werts ver�
 | ✅ | `S33.lesson_order` | Reihenfolge der Stunde in jeder Ausgabe: Pre-Task und Vokabular stehen vor dem Text, Fragen und Post-Task danach (Bildschirm, Markdown, Word) | function | Funktion (siehe Check im Manifest) |
 | ✅ | `S33.html_matches` | Die Bildschirmvorschau zeigt denselben Texttyp-Aufbau wie das Word-Dokument | function | Funktion (siehe Check im Manifest) |
 
-## §34 Schwierigkeitsmesser & Niveau der Fragen (13/13)
+## §34 Schwierigkeitsmesser & Niveau der Fragen (14/14)
 
 | Status | ID | Anforderung | Art | Umsetzung |
 |---|---|---|---|---|
@@ -396,6 +396,7 @@ Prüfarten: **setting** – Steuerelement vorhanden und Änderung des Werts ver�
 | ✅ | `S34.dimensions` | Messer bewertet Satzlänge, Wortschatz (>2000 / >3500 Häufigkeitsrang), Nebensätze, anspruchsvolle Grammatik, Idiomatik und Beitragslänge | function | Funktion (siehe Check im Manifest) |
 | ✅ | `S34.anchor` | Kalibrierung: das Podcast-Skript „Screen Time“ misst B1.2 (Ankerpunkt), A2- und B2-Beispiele ordnen sich monoton ein | function | Funktion (siehe Check im Manifest) |
 | ✅ | `S34.descriptors` | Jede Stufe A2.1–B2.2 ist mit Hör-/Lese-Deskriptor (GER-Begleitband) und sprachlichen Merkmalen hinterlegt | function | Funktion (siehe Check im Manifest) |
+| ✅ | `S34.dials` | Die Regler für Wortschatz, Grammatik, Komplexität und Idiomatik stellen den Text INNERHALB seines CEFR-Niveaus ein (leichtes bis anspruchsvolles Ende, nie darüber) – mit messbarem Zielbereich; welche Wörter vorkommen, ist frei | rule | Quality rule `content.dials` (gemessen in quality.js) |
 | ✅ | `S34.rule` | Quality Check – gemessene Schwierigkeit gegen das Ziel-Niveau (Warnung bei 1 Stufe, Fehler ab 2 Stufen, mit konkreten Korrekturhinweisen) | rule | Quality rule `content.level_measured` (gemessen in quality.js) |
 | ✅ | `S34.repair` | Abweichungen des Messers fliessen als Korrekturauftrag in die Textüberarbeitung ein (automatische Korrektur) | function | Funktion (siehe Check im Manifest) |
 | ✅ | `S34.output` | Messung wird im Quality-Tab, in der Lehrerversion (HTML, Markdown, Word) ausgewiesen | render | render.js (renderStudentHTML / renderTeacherHTML) |
@@ -614,6 +615,7 @@ Prüfarten: **setting** – Steuerelement vorhanden und Änderung des Werts ver�
 | `content.natural` | content | llm | nein | Conversation/text sounds natural |
 | `content.level` | content | llm | ja | Language matches the CEFR level |
 | `content.level_measured` | content | deterministic | nein | Measured difficulty matches the CEFR level |
+| `content.dials` | content | deterministic | nein | The text sits where the dials point inside the level |
 | `content.word_count` | content | deterministic | ja | Length matches the target |
 | `content.meta_fields` | content | deterministic | nein | Document details for the text type are complete |
 | `listening.shares` | listening | deterministic | ja | Speaking shares match the settings |

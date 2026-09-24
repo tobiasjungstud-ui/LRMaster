@@ -106,13 +106,35 @@
       + level.targetLines(plan.cefr, state.kind).map(l => '- ' + l).join('\n');
   }
 
+  /**
+   * Where inside the level the text should sit. The dials never move the
+   * level; they pick a place within it, and each place is a measurable
+   * number (what the level meter checks afterwards).
+   */
+  function dialLines(state, plan) {
+    const band = plan.cefr;
+    const t = level.dialTargets(band, state, state.kind);
+    const fmt = (d) => `${d.aim[0]}–${d.aim[1]} ${d.unit.replace('% der Inhaltswörter', '% of the content words').replace('Wörter/Satz', 'words per sentence').replace('pro Satz', 'per sentence').replace('pro 100 Wörter', 'per 100 words').replace('Wörter/Beitrag', 'words per turn')} (${band} allows ${d.range[0]}–${d.range[1]})`;
+    const by = (key) => t.find(x => x.key === key);
+    const dim = (dial, key) => dial.dims.find(d => d.key === key);
+    const voc = by('vocabularyDifficulty'), gra = by('grammarComplexity'), lang = by('languageComplexity'), idi = by('idiomaticLanguage');
+    const umbrella = `Language complexity, the overall dial`;
+    const lines = [
+      `Which words and structures you use is up to you: use whatever the text needs, far beyond the unit's target words. The dials below never change the level — they only say HOW COMMON OR COMPLEX the words and structures are, always inside ${band}. 0 means the easiest end of ${band}, 100 the most demanding end of ${band}, never above it.`,
+      `Vocabulary (dial ${voc.value}/100 → ${voc.where} of ${band}): about ${fmt(dim(voc, 'lexB2'))} outside the 2000 most frequent English words, and rare words (outside the 3500 most frequent) about ${fmt(dim(voc, 'lexC'))}. The target words do not count here.`,
+      `Grammar (dial ${gra.value}/100 → ${gra.where} of ${band}): subordinate or relative clauses about ${fmt(dim(gra, 'subordination'))}; advanced structures (passive, perfect, conditionals, cleft sentences, comparisons) about ${fmt(dim(gra, 'grammar'))}.`,
+      `Language complexity, the overall dial (dial ${lang.value}/100 → ${lang.where} of ${band}): it governs sentence length (average about ${fmt(dim(lang, 'sentence'))}), grammatical complexity, idiomatic expressions, the use of synonyms, natural conversational language and how explicitly information is stated — all within ${band}. The dials for vocabulary, grammar and idioms fine-tune their part of it.`,
+      `Idioms and phrasal verbs (dial ${idi.value}/100 → ${idi.where} of ${band}): about ${fmt(dim(idi, 'idiom'))}.`,
+    ];
+    // the overall dial stands right after the rule, before the dials it governs
+    const i = lines.findIndex(l => l.startsWith(umbrella));
+    return [lines[0], lines[i]].concat(lines.filter((_, k) => k !== 0 && k !== i));
+  }
+
   function languageBlock(state, plan) {
     return [
       `CEFR level of the language: ${plan.cefr}. Stay inside this level even where the settings ask for natural or idiomatic speech.`,
-      `Language complexity: ${scale(state.languageComplexity, ['very simple', 'simple', 'medium', 'complex', 'very complex'])} — this governs sentence length, grammatical complexity, idiomatic expressions, use of synonyms, natural conversational language and how explicitly information is stated.`,
-      `Grammar complexity: ${scale(state.grammarComplexity, ['elementary structures only', 'mostly simple structures', 'level-typical mix', 'richer structures', 'full range of the level'])}.`,
-      `Vocabulary difficulty (beyond the target words): ${scale(state.vocabularyDifficulty, ['very frequent words only', 'frequent words', 'level-typical', 'some less frequent words', 'demanding'])}.`,
-      `Idiomatic language: ${scale(state.idiomaticLanguage, ['none', 'rare', 'occasional', 'frequent', 'very frequent'])}.`,
+      ...dialLines(state, plan),
       `Information explicitness: ${scale(state.explicitness, ['very explicit — facts are stated directly', 'mostly explicit', 'mixed', 'often implicit — facts must be pieced together', 'highly implicit'])}. Example of explicit: "I didn't go to the party because I was sick." Less explicit: "Everyone was posting pictures from the party. I spent the evening on the sofa with a fever."`,
       levelTargetBlock(state, plan),
     ].filter(Boolean).join('\n');
