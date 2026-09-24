@@ -827,6 +827,17 @@
     return out;
   }
 
+  /** Who took the photographs in the picture of the medium (licences ask for it). */
+  function creditBlocks(ctx) {
+    const list = quality.photoCredits(ctx.m);
+    if (!list.length) return [];
+    return [
+      SP(12),
+      P('Picture credits', { after: 3, keepNext: true, run: { font: WS.display, size: 12, bold: true, color: INK } }),
+    ].concat(list.map(c => P(c.credit + (c.license ? ' · ' + c.license : '') + (c.url ? ' · ' + c.url : ''),
+      { after: 2, run: { font: WS.body, size: 8.5, color: GREY } })));
+  }
+
   function qualityBlocks(ctx) {
     const { m } = ctx;
     const findings = (m.quality && m.quality.findings) || [];
@@ -923,6 +934,7 @@
     const rest = (material.worksheet ? keyBlocks(wsCtx) : [])
       .concat(material.worksheet && (material.worksheet.postTasks || []).length ? [SP(14)].concat(preTaskTableBlocks(wsCtx, 'post')) : [])
       .concat(levelBlocks(wsCtx))
+      .concat(creditBlocks(wsCtx))
       .concat(qualityBlocks(wsCtx));
     const sections = [
       { blocks: head, props: { margins: M_DOC, type: 'nextPage' } },

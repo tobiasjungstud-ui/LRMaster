@@ -1622,6 +1622,49 @@
       return ok(!problems.length, problems.slice(0, 3).join(' | '));
     } });
 
+  add({ id: 'S37.photo_library', section: 37, title: 'Echte Fotos, wo die App welche mitbringt: frei lizenziert, mit Bildnachweis unter dem Bild und in der Lehrerversion; Porträts erfundener Personen nur aus Stockfotos; sonst gezeichnete Szene', kind: 'function',
+    check(env) {
+      const photo = env.photo;
+      if (!photo || !photo.useLibrary) return 'the photo library is not wired into the picture engine';
+      const before = photo.library();
+      const problems = [];
+      try {
+        // what the fetcher writes is checked again when the app loads it
+        const bad = photo.useLibrary({ photos: [
+          { id: 'a', subject: 'market', file: '../secret.jpg', credit: 'x', license: 'CC0' },
+          { id: 'b', subject: 'invented', file: 'photos/b.jpg', credit: 'x', license: 'CC0' },
+          { id: 'c', subject: 'market', file: 'photos/c.jpg', credit: '', license: 'CC0' },
+          { id: 'd', subject: 'market', file: 'photos/d.jpg', credit: 'Foto: D', license: '' },
+        ] });
+        if (bad !== 0) problems.push('an entry without a safe file, a known subject, a credit and a licence is taken');
+        photo.useLibrary({ photos: [
+          { id: 'm1', subject: 'market', file: 'photos/m1.jpg', credit: 'Foto: Real Person / Pexels', license: 'Pexels License', persona: false },
+          { id: 'p1', subject: 'portrait', file: 'photos/p1.jpg', credit: 'Foto: Archive / Wikimedia (CC BY 4.0)', license: 'CC BY 4.0', persona: false },
+          { id: 'p2', subject: 'portrait', file: 'photos/p2.jpg', credit: 'Foto: Model / Pexels', license: 'Pexels License', persona: true },
+        ] });
+        const m = layoutMaterial(env, { textType: 'News Article', layoutMedium: 'paper' });
+        m.layout.chrome = Object.assign({}, m.layout.chrome, { photoSubject: 'market', captionCredit: 'Invented Photographer' });
+        const model = env.quality.layoutModel(m);
+        const lead = model.blocks.find(x => x.type === 'photo' && x.subject === 'market');
+        if (!lead || lead.photoId !== 'm1') problems.push('the lead picture does not use the photograph the app has');
+        const texts = model.blocks.filter(x => x.type === 'text').map(x => x.text).join(' | ');
+        if (!texts.includes('Foto: Real Person / Pexels')) problems.push('the real photograph is not credited under the picture');
+        if (texts.includes('Invented Photographer')) problems.push('an invented credit stands under a real photograph');
+        if (!env.render.renderTeacherHTML(m, {}).includes('Foto: Real Person / Pexels')) problems.push('the teacher version does not list the picture credits');
+        // an invented person never gets the face of a real one from an archive
+        const blog = env.quality.layoutModel(layoutMaterial(env, { textType: 'Blog Post', layoutMedium: 'screen' }));
+        const faces = blog.blocks.filter(x => x.type === 'photo' && x.subject === 'portrait');
+        if (faces.some(x => x.photoId === 'p1')) problems.push('an archive portrait of a real person stands in for an invented one');
+        if (!faces.some(x => x.photoId === 'p2')) problems.push('a stock portrait is not used for an invented person');
+        // without a photograph of that subject: the drawn scene, nothing breaks
+        const sea = env.quality.layoutModel(layoutMaterial(env, { textType: 'Blog Post', layoutMedium: 'screen' }));
+        if (env.mock.validate(sea).length) problems.push('a picture with the library in place cannot be drawn');
+      } finally { photo.useLibrary({ photos: before }); }
+      const src = env.uiSource || '';
+      if (src && !/photo\.preload\(\)/.test(src)) problems.push('the photographs are not loaded before the picture is drawn');
+      return ok(!problems.length, problems.slice(0, 3).join(' | '));
+    } });
+
   add({ id: 'S37.modules', section: 37, title: 'Um den Text steht, was auf so einer Seite wirklich steht: Werbung, Umfrage, Meistgelesen, Anmeldekasten, Kleinanzeigen – Claude wählt aus dem Katalog und darf Eigenes ergänzen', kind: 'function',
     check(env) {
       const problems = [];

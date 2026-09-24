@@ -1253,6 +1253,9 @@
     };
     paint();
     if (document.fonts && document.fonts.ready) document.fonts.ready.then(paint).catch(() => {});
+    // the photographs that ship with the app arrive a moment later; the
+    // picture is drawn again once they are there (until then: drawn scenes)
+    if (window.LR.photo) window.LR.photo.preload().then((n) => { if (n) paint(); }).catch(() => {});
     return canvas;
   }
 

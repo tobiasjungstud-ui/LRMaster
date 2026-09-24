@@ -922,6 +922,20 @@
     return mock.buildModel(material, chrome, opts);
   }
 
+  /**
+   * The photographs the picture of this material uses, with their credits.
+   * Measured like the drawn picture (in the browser with the real fonts), so
+   * the list names exactly what the teacher hands out.
+   */
+  function photoCredits(material) {
+    if (!material || !material.layout || !material.layout.chrome) return [];
+    try {
+      const measure = (typeof document !== 'undefined' && document.createElement)
+        ? mock.canvasMeasure(document.createElement('canvas')) : undefined;
+      return mock.credits(layoutModel(material, measure ? { measure } : undefined));
+    } catch (e) { return []; }
+  }
+
   /** Longest run of words that a string shares with the material. */
   function sharedRun(text, source) {
     const a = normalizeForSearch(text).split(' ').filter(Boolean);
@@ -1119,7 +1133,7 @@
     repairable, repairPlan, problemScore, applyQuestionPatch, applyTaskPatch, applyPreTaskPatch, applyPostTaskPatch,
     changedQuestions, changedTasks, changedPreTasks, changedPostTasks, STRUCTURAL, applicableRules, runDeterministic,
     normalizePreTask, preTaskText, socialLabel, taskRules, normalizeChrome, mergeChrome, layoutModel, sharedRun,
-    runContentChecks, llmRules, mergeReview, verdictSupported, blockingFailures, summarize,
+    photoCredits, runContentChecks, llmRules, mergeReview, verdictSupported, blockingFailures, summarize,
     chronologyReport, enforceChronology, normalizeGlossary, slimMeasurement,
   };
 });

@@ -2,7 +2,7 @@
 
 Erzeugt von `npm run coverage`. Jede Zeile ist eine Anforderung aus `docs/Konzept_Listening_Reading_Creator.md`, gebunden an die Stelle im Code, die sie umsetzt, und das Ergebnis der automatischen Prüfung (`npm test`).
 
-**Ergebnis: 316 von 316 Anforderungen bestanden.**
+**Ergebnis: 317 von 317 Anforderungen bestanden.**
 
 Prüfarten: **setting** – Steuerelement vorhanden und Änderung des Werts verändert nachweislich den Prompt an Claude · **function** – Verhalten wird mit echten Eingaben ausgeführt und verglichen · **rule** – Qualitätsregel existiert als Messung oder Claude-Review-Kriterium · **render** – Ausgabe wird auf einer Fixture gerendert und inhaltlich geprüft · **ui** – Navigations-/Strukturelement existiert.
 
@@ -477,7 +477,7 @@ Prüfarten: **setting** – Steuerelement vorhanden und Änderung des Werts ver�
 | ✅ | `S36.repair` | Beanstandete Post-Task wird gezielt neu erstellt, Fragen und Pre-Task bleiben unverändert | function | Funktion (siehe Check im Manifest) |
 | ✅ | `S36.output` | Post-Task steht nach den Fragen auf dem Arbeitsblatt (Bildschirm, Word, Markdown) mit Sozialform, Arbeitsweise, Zeit, Produkt und Kriterien; Lehrerversion mit Übersicht | render | render.js (renderStudentHTML / renderTeacherHTML) |
 
-## §37 Authentisches Layout (Screenshot des Mediums) (18/18)
+## §37 Authentisches Layout (Screenshot des Mediums) (19/19)
 
 | Status | ID | Anforderung | Art | Umsetzung |
 |---|---|---|---|---|
@@ -496,6 +496,7 @@ Prüfarten: **setting** – Steuerelement vorhanden und Änderung des Werts ver�
 | ✅ | `S37.rule_invented` | Kontrolle: die Oberfläche erzählt den Text nicht nach | rule | Quality rule `layout.no_invented_text` (gemessen in quality.js) |
 | ✅ | `S37.rule_image` | Kontrolle: das Bild ist zeichenbar und wird nur dann ausgeliefert | rule | Quality rule `layout.image_valid` (gemessen in quality.js) |
 | ✅ | `S37.pictures` | Das Medium zeigt echte Bilder: Aufmacher, Porträts statt Initialen, Vorschaubilder – gezeichnet aus einem Motiv, das Claude wählt und die App prüft | function | Funktion (siehe Check im Manifest) |
+| ✅ | `S37.photo_library` | Echte Fotos, wo die App welche mitbringt: frei lizenziert, mit Bildnachweis unter dem Bild und in der Lehrerversion; Porträts erfundener Personen nur aus Stockfotos; sonst gezeichnete Szene | function | Funktion (siehe Check im Manifest) |
 | ✅ | `S37.modules` | Um den Text steht, was auf so einer Seite wirklich steht: Werbung, Umfrage, Meistgelesen, Anmeldekasten, Kleinanzeigen – Claude wählt aus dem Katalog und darf Eigenes ergänzen | function | Funktion (siehe Check im Manifest) |
 | ✅ | `S37.rule_proportions` | Kontrolle: das Bild ist proportioniert – die Spalten tragen gleich viel, keine bleibt fast leer, und die Seite endet kurz nach dem Text | rule | Quality rule `layout.proportions` (gemessen in quality.js) |
 | ✅ | `S37.rule_authentic` | Kontrolle (Claude): das Medium wirkt echt und passt zum Text | rule | Quality rule `layout.authentic` (Claude-Review über buildReviewPrompt) |

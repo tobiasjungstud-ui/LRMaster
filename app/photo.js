@@ -17,9 +17,9 @@
  * No text of the material is ever drawn here; a picture carries no words.
  */
 (function (root, factory) {
-  if (typeof module === 'object' && module.exports) module.exports = factory();
-  else { root.LR = root.LR || {}; root.LR.photo = factory(); }
-})(typeof self !== 'undefined' ? self : this, function () {
+  if (typeof module === 'object' && module.exports) module.exports = factory(require('./photolib.js'));
+  else { root.LR = root.LR || {}; root.LR.photo = factory(root.LR.photolib); }
+})(typeof self !== 'undefined' ? self : this, function (photolib) {
   'use strict';
 
   /* ------------------------------------------------------------------ */
@@ -748,6 +748,15 @@
   function finish(ctx, box, r, light, opts) {
     const { x, y, w, h } = box;
     const o = opts || {};
+    if (o.real) {
+      ctx.fillStyle = 'rgba(25,25,25,.06)';
+      for (let yy = y; yy < y + h; yy += 3) {
+        for (let xx = x + (Math.round(yy) % 6 === 0 ? 0 : 1.5); xx < x + w; xx += 3) {
+          ctx.beginPath(); ctx.arc(xx, yy, 0.6, 0, Math.PI * 2); ctx.fill();
+        }
+      }
+      return;
+    }
     // colour grade: a warm or cool cast over everything
     ctx.fillStyle = withAlpha(light.sun, Math.min(0.16, light.warm * 0.5));
     ctx.fillRect(x, y, w, h);
@@ -791,13 +800,120 @@
     ctx.globalCompositeOperation = 'source-over';
   }
 
+  /* ------------------------------------------------------------------ */
+  /* Real photographs                                                     */
+  /* ------------------------------------------------------------------ */
+
+  /*
+   * Where a real photograph of a subject ships with the app (app/photos/,
+   * listed in photolib.js with author, source and licence), it is used
+   * instead of the drawn scene. The drawn scene stays the fallback: when the
+   * library has nothing for a subject, when a file fails to load, and in the
+   * tests. Photographs travel WITH the app — a picture from a foreign server
+   * is blocked by the page and would make the PNG export fail.
+   */
+  let LIBRARY = [];
+  const IMAGES = new Map();   // file -> loaded image
+  const FAILED = new Set();   // files that did not load
+
+  /** Take a library manifest; everything that is not usable is left out. */
+  function useLibrary(lib) {
+    const list = (lib && Array.isArray(lib.photos)) ? lib.photos : [];
+    const seen = new Set();
+    LIBRARY = list.filter(e => e && typeof e === 'object' && isSubject(e.subject) && typeof e.file === 'string' && e.file
+      && /^[a-z0-9_\-./]+\.(jpe?g|png|webp)$/i.test(e.file) && !/\.\./.test(e.file)
+      && typeof e.credit === 'string' && e.credit.trim() && typeof e.license === 'string' && e.license.trim()
+      && !seen.has(e.id) && seen.add(e.id))
+      .map(e => ({
+        id: String(e.id), subject: e.subject, file: e.file, credit: e.credit.trim(), license: e.license.trim(),
+        author: String(e.author || ''), source: String(e.source || ''), url: String(e.url || ''),
+        // a photograph of a real person only stands in for an invented one when
+        // it is a stock picture meant for that (a model, a released portrait)
+        persona: e.persona === true,
+        focus: Array.isArray(e.focus) && e.focus.length === 2 ? e.focus.map(v => Math.max(0, Math.min(1, Number(v) || 0.5))) : [0.5, 0.4],
+        w: Number(e.w) || 0, h: Number(e.h) || 0,
+      }));
+    IMAGES.clear(); FAILED.clear();
+    return LIBRARY.length;
+  }
+
+  /** All photographs of one subject that may be used here. */
+  function photosFor(subject, opts) {
+    const o = opts || {};
+    return LIBRARY.filter(e => e.subject === subject && (!o.persona || e.persona));
+  }
+
+  /**
+   * The photograph a picture uses, chosen from the seed so the same material
+   * always shows the same photo and two materials rarely show the same one.
+   */
+  function pick(subject, seed, opts) {
+    const list = photosFor(subject, opts);
+    if (!list.length) return null;
+    const n = typeof seed === 'number' ? Math.abs(Math.round(seed)) : hashOf(String(seed || ''));
+    return list[n % list.length];
+  }
+
+  function byId(id) { return LIBRARY.find(e => e.id === id) || null; }
+
+  /** Load every photograph once (browser only); resolves when all have answered. */
+  function preload(base) {
+    if (typeof Image === 'undefined') return Promise.resolve(0);
+    const prefix = base || '';
+    return Promise.all(LIBRARY.map(e => new Promise((resolve) => {
+      if (IMAGES.has(e.file) || FAILED.has(e.file)) return resolve();
+      const img = new Image();
+      img.decoding = 'async';
+      img.onload = () => { IMAGES.set(e.file, img); resolve(); };
+      img.onerror = () => { FAILED.add(e.file); resolve(); };
+      img.src = prefix + e.file;
+    }))).then(() => IMAGES.size);
+  }
+
+  /** The loaded image of an entry, or null if it is not (yet) there. */
+  function imageFor(entry) {
+    const img = entry && IMAGES.get(entry.file);
+    return img && img.naturalWidth > 0 ? img : null;
+  }
+
+  /** Put an image into a box the way a layout does: fill it, crop the rest. */
+  function drawCover(ctx, img, box, focus) {
+    const iw = img.naturalWidth || img.width, ih = img.naturalHeight || img.height;
+    const scale = Math.max(box.w / iw, box.h / ih);
+    const sw = box.w / scale, sh = box.h / scale;
+    const fx = focus ? focus[0] : 0.5, fy = focus ? focus[1] : 0.4;
+    const sx = Math.max(0, Math.min(iw - sw, iw * fx - sw / 2));
+    const sy = Math.max(0, Math.min(ih - sh, ih * fy - sh / 2));
+    ctx.drawImage(img, sx, sy, sw, sh, box.x, box.y, box.w, box.h);
+  }
+
   /**
    * Draw one picture. `b` is the block from the drawing model:
-   * {x, y, w, h, subject, seed, colour, tint, round}.
+   * {x, y, w, h, subject, seed, colour, tint, round, photoId}.
    */
   function draw(ctx, b) {
     const box = { x: b.x, y: b.y, w: b.w, h: b.h };
     if (!(box.w > 0) || !(box.h > 0)) return;
+    const real = b.photoId ? imageFor(byId(b.photoId)) : null;
+    if (real) {
+      const entry = byId(b.photoId);
+      ctx.save();
+      ctx.beginPath();
+      if (b.round) ctx.ellipse(box.x + box.w / 2, box.y + box.h / 2, box.w / 2, box.h / 2, 0, 0, Math.PI * 2);
+      else ctx.rect(box.x, box.y, box.w, box.h);
+      ctx.clip();
+      drawCover(ctx, real, box, entry.focus);
+      if (b.colour === false) desaturate(ctx, box, 1);
+      // a real photograph needs no invented light — only the screen of the
+      // print where the page is paper
+      if (b.halftone) finish(ctx, box, rng(7), LIGHTS.grey, { halftone: true, real: true });
+      ctx.restore();
+      if (!b.round && b.frame !== false) {
+        ctx.strokeStyle = 'rgba(0,0,0,.18)'; ctx.lineWidth = 1;
+        ctx.strokeRect(box.x + 0.5, box.y + 0.5, box.w - 1, box.h - 1);
+      }
+      return;
+    }
     const seedNum = typeof b.seed === 'number' ? b.seed : hashOf(String(b.seed || ''));
     const r = rng(seedNum + 1);
     const scene = SCENES[b.subject] || SCENES[subjectFor('', 'city')];
@@ -826,5 +942,10 @@
     return Math.abs(h % 100000);
   }
 
-  return { SUBJECTS, SCENES, subjectFor, subjectHints, isSubject, draw, hashOf, LIGHTS, SKIN, HAIR, CLOTHES };
+  useLibrary(photolib);
+
+  return {
+    SUBJECTS, SCENES, subjectFor, subjectHints, isSubject, draw, hashOf, LIGHTS, SKIN, HAIR, CLOTHES,
+    useLibrary, photosFor, pick, byId, preload, imageFor, library: () => LIBRARY.slice(),
+  };
 });

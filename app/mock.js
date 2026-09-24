@@ -906,7 +906,13 @@
       photo(x, y, w, h, o) {
         const spec = Object.assign({ type: 'photo', x, y, w, h, seed: 7 }, o || {});
         if (!photo.isSubject(spec.subject)) spec.subject = photo.isSubject(api.subject) ? api.subject : 'city';
+        // a real photograph where the app has one of this subject; its credit
+        // travels with the block, because an invented credit under a real
+        // photo would be a false attribution
+        const hit = photo.pick(spec.subject, spec.seed, { persona: spec.subject === 'portrait' });
+        if (hit) { spec.photoId = hit.id; spec.credit = hit.credit; }
         blocks.push(spec);
+        api.last = spec;
         return api;
       },
       /** A filled polygon, e.g. the tail of a chat bubble or a vote arrow. */
@@ -1134,10 +1140,11 @@
     if (d.kicker || d.sidebar) {
       const ph = Math.round(colW * 0.46);
       b.photo(PAD, y, colW, ph, { seed: photo.hashOf(m.content.title || 'lead'), subject: chrome.photoSubject, colour: true });
+      const leadCredit = (b.last && b.last.credit) || chrome.captionCredit;
       y += ph + 18;
-      if (chrome.photoCaption) {
-        y = b.para(PAD, y, chrome.photoCaption, ui(12), colW - 110, { color: MUTED, lineHeight: 17 });
-        if (chrome.captionCredit) b.text(PAD + colW, y - 12, chrome.captionCredit, ui(10.5), { color: '#94A3B8', align: 'right' });
+      if (chrome.photoCaption || leadCredit) {
+        y = b.para(PAD, y, chrome.photoCaption || '', ui(12), colW - 170, { color: MUTED, lineHeight: 17 });
+        if (leadCredit) b.text(PAD + colW, y - 12, leadCredit, ui(10.5), { color: '#94A3B8', align: 'right' });
         y += 16;
       }
     }
@@ -1771,12 +1778,13 @@
     if (d.photo !== false) {
       const photoW = cols >= 3 ? colW * 2 + gutter : inner;
       const photoH = Math.round(photoW * 0.44);
-      b.photo(L, y, photoW, photoH, { seed: photo.hashOf(m.content.title || 'lead'), subject: chrome.photoSubject, colour: d.photoColour !== false, print: true });
+      b.photo(L, y, photoW, photoH, { seed: photo.hashOf(m.content.title || 'lead'), subject: chrome.photoSubject, colour: d.photoColour !== false, print: true, halftone: true });
+      const leadCredit = (b.last && b.last.credit) || chrome.captionCredit;
       let cy = y + photoH + 12;
       const capFont = { family: SANS, size: 11.5 };
-      const capLines = wrap(chrome.photoCaption || '', capFont, photoW - 120, measure);
+      const capLines = wrap(chrome.photoCaption || '', capFont, photoW - 170, measure);
       capLines.forEach((l, i) => b.text(L, cy + i * 15, l, capFont, { color: '#44403C' }));
-      if (chrome.captionCredit) b.text(L + photoW, cy, '| ' + chrome.captionCredit, { family: SANS, size: 10, style: 'italic' }, { color: '#78716C', align: 'right' });
+      if (leadCredit) b.text(L + photoW, cy, '| ' + leadCredit, { family: SANS, size: 10, style: 'italic' }, { color: '#78716C', align: 'right' });
       photoBottom = cy + Math.max(capLines.length * 15, 15) + 14;
     }
 
@@ -2171,6 +2179,22 @@
     return fitModel(model);
   }
 
+  /**
+   * The photographs a picture uses, once each, with author, source and
+   * licence — what the teacher version lists as picture credits.
+   */
+  function credits(model) {
+    const out = [];
+    const seen = new Set();
+    for (const x of (model && model.blocks) || []) {
+      if (x.type !== 'photo' || !x.photoId || seen.has(x.photoId)) continue;
+      seen.add(x.photoId);
+      const e = photo.byId(x.photoId);
+      if (e) out.push({ id: e.id, subject: e.subject, credit: e.credit, author: e.author, source: e.source, license: e.license, url: e.url });
+    }
+    return out;
+  }
+
   /** Everything the picture shows of the generated text itself. */
   function bodyText(model) {
     const parts = (model.blocks || []).filter(x => x.type === 'text' && x.role === 'body');
@@ -2494,6 +2518,6 @@
   }
 
   return { LAYOUTS, CHROME_SPECS, ICONS, MAX_SIDE,
-    SUBJECTS: photo.SUBJECTS, isSubject: photo.isSubject, subjectFor: photo.subjectFor, subjectHints: photo.subjectHints, hashOf: photo.hashOf, layoutFor, chromeSpec, fallbackChrome, buildModel, fitModel, canvasScale, drawPhoto, drawIcon, bodyText, chromeText, validate, proportions, draw,
+    credits, SUBJECTS: photo.SUBJECTS, isSubject: photo.isSubject, subjectFor: photo.subjectFor, subjectHints: photo.subjectHints, hashOf: photo.hashOf, layoutFor, chromeSpec, fallbackChrome, buildModel, fitModel, canvasScale, drawPhoto, drawIcon, bodyText, chromeText, validate, proportions, draw,
     MODULES, MODULE_KEYS, SHAPES, SHAPE_KEYS, MEDIUM_SLOTS, shapeOf, moduleRenderer, moduleHints, modulesFor, placeModules, moduleStyle, canvasMeasure, approxMeasure, wrap, fontString };
 });

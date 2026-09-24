@@ -36,6 +36,24 @@ function findChromium() {
   return null;
 }
 
+/** A PNG of one colour, written by hand (zlib + CRC), so no image library is needed. */
+function solidPng(w, h, rgb) {
+  const zlib = require('node:zlib');
+  const crcTable = Array.from({ length: 256 }, (_, n) => { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; return c >>> 0; });
+  const crc = (buf) => { let c = 0xFFFFFFFF; for (const b of buf) c = crcTable[(c ^ b) & 0xFF] ^ (c >>> 8); return (c ^ 0xFFFFFFFF) >>> 0; };
+  const chunk = (type, data) => {
+    const len = Buffer.alloc(4); len.writeUInt32BE(data.length);
+    const td = Buffer.concat([Buffer.from(type, 'ascii'), data]);
+    const c = Buffer.alloc(4); c.writeUInt32BE(crc(td));
+    return Buffer.concat([len, td, c]);
+  };
+  const ihdr = Buffer.alloc(13);
+  ihdr.writeUInt32BE(w, 0); ihdr.writeUInt32BE(h, 4); ihdr[8] = 8; ihdr[9] = 2; ihdr[10] = 0; ihdr[11] = 0; ihdr[12] = 0;
+  const row = Buffer.concat([Buffer.from([0]), Buffer.from(Array.from({ length: w }, () => rgb).flat())]);
+  const raw = Buffer.concat(Array.from({ length: h }, () => row));
+  return Buffer.concat([Buffer.from([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]), chunk('IHDR', ihdr), chunk('IDAT', zlib.deflateSync(raw)), chunk('IEND', Buffer.alloc(0))]);
+}
+
 let failures = 0, passes = 0;
 const out = [];
 function check(name, ok, detail) {
@@ -143,7 +161,11 @@ const SETTINGS = (extra) => `(() => {
     console.log('\nBrowser audit skipped: ' + (playwright ? 'no Chromium found under /opt/pw-browsers' : 'Playwright is not installed') + '.');
     process.exit(0);
   }
+  // a photograph that only this test serves: one solid colour, so the test
+  // can see on the canvas whether the real picture or a drawn scene was used
+  const PROBE = solidPng(24, 16, [214, 38, 196]);
   const server = http.createServer((req, res) => {
+    if (req.url.split('?')[0] === '/photos/__probe__.png') { res.writeHead(200, { 'content-type': 'image/png' }); res.end(PROBE); return; }
     const file = path.join(APP, decodeURIComponent(req.url.split('?')[0]).replace(/^\/+/, '') || 'index.html');
     if (!file.startsWith(APP) || !fs.existsSync(file) || fs.statSync(file).isDirectory()) { res.writeHead(404); res.end('no'); return; }
     res.writeHead(200, { 'content-type': TYPES[path.extname(file)] || 'application/octet-stream', 'cache-control': 'no-store' });
@@ -284,6 +306,33 @@ const SETTINGS = (extra) => `(() => {
       return { subject: pic.subject, tones: tones.size, w: canvas.width, h: canvas.height };
     });
     check('the lead picture of a page really shows something', !lead.none && lead.tones >= 14, JSON.stringify(lead));
+    // a real photograph from the library: it lands on the canvas, the canvas
+    // stays exportable, and without the file the drawn scene takes over
+    const real = await page.evaluate(async () => {
+      const { photo, mock } = window.LR;
+      const before = photo.library();
+      photo.useLibrary({ photos: [{ id: 'probe', subject: 'market', file: 'photos/__probe__.png', credit: 'Foto: Probe / Test', license: 'CC0 1.0', persona: false },
+        { id: 'missing', subject: 'sea', file: 'photos/__missing__.jpg', credit: 'Foto: Missing / Test', license: 'CC0 1.0' }] });
+      await photo.preload();
+      const shot = (subject) => {
+        const canvas = document.createElement('canvas');
+        canvas.width = 200; canvas.height = 120;
+        const ctx = canvas.getContext('2d');
+        const hit = photo.pick(subject, 3);
+        mock.draw(ctx, { width: 200, height: 120, blocks: [{ type: 'photo', x: 0, y: 0, w: 200, h: 120, subject, seed: 3, photoId: hit && hit.id }] });
+        const d = ctx.getImageData(100, 60, 1, 1).data;
+        let exportable = true;
+        try { canvas.toDataURL('image/png'); } catch (e) { exportable = false; }
+        return { rgb: [d[0], d[1], d[2]], exportable, picked: hit && hit.id };
+      };
+      const market = shot('market'), sea = shot('sea');
+      photo.useLibrary({ photos: before });
+      return { market, sea };
+    });
+    const near = (a, b) => a.every((v, i) => Math.abs(v - b[i]) < 30);
+    check('a real photograph from the library is what the picture shows', real.market.picked === 'probe' && near(real.market.rgb, [214, 38, 196]), JSON.stringify(real.market));
+    check('a picture with a real photograph can still be downloaded as PNG', real.market.exportable, JSON.stringify(real.market));
+    check('a photograph that fails to load falls back to the drawn scene', real.sea.picked === 'missing' && !near(real.sea.rgb, [214, 38, 196]) && real.sea.exportable, JSON.stringify(real.sea));
     check('drawing the pictures raises no page error', errors.length === 0, errors[0]);
     await page.close();
   }

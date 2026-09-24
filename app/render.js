@@ -410,6 +410,13 @@
     }
 
     if (m.level) html += '<section class="block level"><h2>Difficulty meter</h2>' + levelMeterHTML(m.level, m.plan.cefr, { compact: true }) + '</section>';
+    // who took the photographs in the picture of the medium — required by the
+    // licences, and the teacher has to be able to name them when handing out
+    const credits = quality.photoCredits(m);
+    if (credits.length) {
+      html += '<section class="block credits"><h2>Picture credits</h2><ul class="credit-list">' + credits.map(c =>
+        `<li>${esc(c.credit)}${c.license ? ` · <span class="muted">${esc(c.license)}</span>` : ''}${c.url ? ` · <span class="muted">${esc(c.url)}</span>` : ''}</li>`).join('') + '</ul></section>';
+    }
     if (m.quality && (m.quality.findings || m.quality.repairs)) {
       const s = quality.summarize(m.quality.findings || []);
       html += `<section class="block qc"><h2>Quality check</h2><p class="stats">${s.pass} passed · ${s.warn} warnings · ${s.fail} failed · ${s.unverified} unverified</p>`;
@@ -494,6 +501,8 @@
       for (const q of v.worksheet.questions) out.push(`Q${q.n} · Skill: ${skillLabel(q.skill)} · Difficulty: ${q.difficulty} · Answer: ${answerText(q).replace(/<[^>]+>/g, '')} · Evidence ${q.evidenceRef}: "${q.evidenceQuote}"${q.rationale ? ' · ' + q.rationale : ''}`);
       for (const h of v.worksheet.higherOrder || []) out.push(`HOT ${h.n} · ${hoLabel(h.type)} · Model answer: ${typeof h.answer === 'string' ? h.answer : JSON.stringify(h.answer)}`);
     }
+    const creditList = quality.photoCredits(m);
+    if (creditList.length) out.push('', '### Picture credits', ...creditList.map(c => `- ${c.credit}${c.license ? ' · ' + c.license : ''}${c.url ? ' · ' + c.url : ''}`));
     if (m.quality && m.quality.findings) {
       out.push('', '### Quality check');
       for (const f of m.quality.findings) out.push(`- [${f.status}] ${f.title}${f.detail ? ' — ' + f.detail : ''}`);

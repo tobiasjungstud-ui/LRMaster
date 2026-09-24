@@ -456,6 +456,90 @@ console.log('\nAudit: hostile and extreme content');
 const HOSTILE = 'A & B <tag> "q" \'s\' </w:t> ]]> <script>alert(1)</script> émoji 🎬 RTL مرحبا';
 const LONG_WORD = 'Donaudampfschifffahrtsgesellschaftskapitaensmuetzenhalter'.repeat(2);
 
+test('2.4 2.10', 'real photographs: only licences fit for class, portraits only from stock, every photo credited', () => {
+  const fs = require('node:fs');
+  const os = require('node:os');
+  const { spawn, execFileSync } = require('node:child_process');
+  const fetcher = require(path.join(__dirname, '..', 'scripts', 'fetch-photos.js'));
+  const photo = require(path.join(APP, 'photo.js'));
+  const original = require(path.join(APP, 'photolib.js'));
+
+  // the licence filter on its own
+  for (const ok of ['cc0', 'pdm', 'by', 'by-sa', 'pexels', 'CC0']) assert.ok(fetcher.acceptLicense(ok), ok + ' is refused although it allows class use');
+  for (const no of ['by-nc', 'by-nd', 'by-nc-sa', 'by-nc-nd', 'all rights reserved', '']) assert.ok(!fetcher.acceptLicense(no), no + ' is accepted although it forbids class use');
+
+  // the whole fetcher against a stand-in for Openverse and Pexels
+  const port = 18000 + Math.floor(Math.random() * 1000);
+  const server = spawn(process.execPath, [path.join(__dirname, 'fake-photo-server.js'), String(port)], { stdio: 'ignore' });
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'lr-photos-'));
+  const lib = path.join(tmp, 'photolib.js');
+  try {
+    let up = false;
+    for (let i = 0; i < 60 && !up; i++) {
+      try { execFileSync('curl', ['-sS', '--fail', '--max-time', '1', `http://127.0.0.1:${port}/ready`], { stdio: 'pipe' }); up = true; }
+      catch (e) { execFileSync(process.execPath, ['-e', 'setTimeout(()=>{},100)']); }
+    }
+    assert.ok(up, 'the stand-in server did not start');
+    const run = (args, env) => execFileSync(process.execPath, [path.join(__dirname, '..', 'scripts', 'fetch-photos.js')].concat(args),
+      { env: Object.assign({}, process.env, env || {}), stdio: 'pipe' });
+    run(['--source', 'openverse', '--base', `http://127.0.0.1:${port}`, '--out', path.join(tmp, 'photos'), '--lib', lib, '--subjects', 'market,portrait', '--per', '4', '--quiet'], { PEXELS_API_KEY: '' });
+    delete require.cache[require.resolve(lib)];
+    let got = require(lib).photos;
+    assert.ok(got.length >= 2, 'nothing was fetched: ' + got.length);
+    assert.ok(got.every(p => p.subject === 'market'), 'an archive portrait was taken although archive people must not stand in for invented ones');
+    assert.ok(!got.some(p => /^ov-nc-/.test(p.id)), 'a non-commercial picture was taken');
+    assert.ok(!got.some(p => /^ov-html-/.test(p.id)), 'something that is not a JPEG was kept');
+    for (const p of got) {
+      assert.ok(fs.existsSync(path.join(tmp, p.file)), p.id + ': the file is missing');
+      assert.ok(p.credit && p.license && p.author, p.id + ': a photograph without author, licence or credit');
+      assert.equal(p.persona, false, p.id + ': an archive photo may never stand in for an invented person');
+    }
+    const byEntry = got.find(p => /^ov-by-/.test(p.id));
+    assert.ok(byEntry && /Ben Credit/.test(byEntry.credit) && /CC BY 4\.0/.test(byEntry.credit), 'a CC BY photo is not credited with author and licence');
+
+    // Pexels: only with a key, and then portraits are allowed
+    assert.throws(() => run(['--source', 'pexels', '--base', `http://127.0.0.1:${port}`, '--out', path.join(tmp, 'photos'), '--lib', lib, '--quiet'], { PEXELS_API_KEY: '' }), 'Pexels runs without a key');
+    run(['--source', 'pexels', '--base', `http://127.0.0.1:${port}`, '--out', path.join(tmp, 'photos'), '--lib', lib, '--subjects', 'portrait', '--per', '2', '--quiet'], { PEXELS_API_KEY: 'test-key' });
+    delete require.cache[require.resolve(lib)];
+    got = require(lib).photos;
+    const portraits = got.filter(p => p.subject === 'portrait');
+    assert.ok(portraits.length >= 2, 'no stock portraits fetched');
+    assert.ok(portraits.every(p => p.persona === true && /Pexels/.test(p.credit)), 'stock portraits are not marked and credited');
+    assert.ok(got.some(p => p.subject === 'market'), 'a second run threw away what the first one fetched');
+
+    // the app uses them: the picture takes the photo, the credit follows it
+    const lead = got.find(p => p.subject === 'market');
+    const libObj = require(lib);
+    libObj.photos = libObj.photos.map(p => Object.assign({}, p, { file: 'photos/' + path.basename(p.file) }));
+    assert.ok(photo.useLibrary(libObj) >= 3, 'the app does not take the fetched library');
+    const m = goodMaterial({ textType: 'News Article', layoutMedium: 'paper', authenticLayout: true }, 'reading');
+    m.layout.chrome = Object.assign({}, m.layout.chrome, { photoSubject: 'market', captionCredit: 'Invented Photographer' });
+    const model = quality.layoutModel(m);
+    const pic = model.blocks.find(x => x.type === 'photo' && x.subject === 'market');
+    assert.ok(pic && pic.photoId && pic.credit, 'the lead picture does not use the real photograph');
+    const texts = model.blocks.filter(x => x.type === 'text').map(x => x.text).join(' | ');
+    assert.ok(texts.includes(pic.credit), 'the real photograph is not credited under the picture');
+    assert.ok(!texts.includes('Invented Photographer'), 'an invented photographer is credited under a real photograph');
+    const credits = quality.photoCredits(m);
+    assert.ok(credits.some(c => c.id === pic.photoId), 'the teacher version does not list the photograph');
+    assert.ok(render.renderTeacherHTML(m, {}).includes('Picture credits'), 'the teacher HTML has no picture credits');
+    assert.ok(render.renderMarkdown(m, {}).includes('### Picture credits'), 'the Markdown has no picture credits');
+    const doc = word.partsFor(m, 'teacher').find(pp => pp.name === 'word/document.xml');
+    assert.ok(String(doc.data).includes('Picture credits'), 'the Word teacher version has no picture credits');
+    assert.ok(!render.renderStudentHTML(m, {}).includes('Picture credits'), 'the student sheet lists picture credits');
+    // an invented person gets a stock portrait, never an archive one
+    const avatars = quality.layoutModel(goodMaterial({ textType: 'Blog Post', layoutMedium: 'screen', authenticLayout: true }, 'reading')).blocks.filter(x => x.type === 'photo' && x.subject === 'portrait' && x.photoId);
+    for (const a of avatars) assert.ok(photo.byId(a.photoId).persona, 'a portrait that may not stand in for a person was used as an avatar');
+    // a broken manifest does not break the picture
+    assert.equal(photo.useLibrary({ photos: [{ id: 'x', subject: 'nope', file: '../../etc/passwd', credit: '', license: '' }, null, 'junk'] }), 0, 'a broken manifest entry is taken');
+    assert.deepEqual(mock.validate(quality.layoutModel(m)), [], 'without a library the picture cannot be drawn any more');
+  } finally {
+    photo.useLibrary(original);
+    server.kill();
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
 test('2.4 R3', 'the medium is furnished: pictures with subjects, and whatever else that page carries', () => {
   const FULL = [
     { type: 'cookie', slot: 'top', heading: 'We use cookies on this site.', cta: 'Accept all', meta: 'Settings', lines: [], items: [], subject: '', shape: '' },
