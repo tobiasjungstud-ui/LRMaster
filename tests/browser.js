@@ -142,7 +142,19 @@ function claudeStub({ scenario, text, xss, worksheet }) {
     return {};
   };
   sample.limits = async () => ({ maxPromptBytes: 65536 });
-  window.claude = { use: async (n) => (n === 'sample' ? sample : null) };
+  // the upload store (assets): only in the scenario that asks for it
+  window.__uploads = [];
+  window.__deleted = [];
+  const assets = {
+    upload: async (blob, opts) => {
+      window.__uploads.push({ size: blob.size, type: (opts && opts.type) || blob.type });
+      const id = ('probe' + window.__uploads.length).padEnd(32, 'x');
+      return { id, url: '/_blob/' + id, sizeBytes: blob.size, contentType: 'image/jpeg' };
+    },
+    delete: async (id) => { window.__deleted.push(id); return { deleted: true }; },
+    list: async () => ({ assets: [], usage: { files: 0, bytes: 0, maxFiles: 1000, maxBytes: 1e9 } }),
+  };
+  window.claude = { use: async (n) => (n === 'sample' ? sample : n === 'assets' && scenario === 'assets' ? assets : null) };
 }
 
 const SETTINGS = (extra) => `(() => {
@@ -165,7 +177,7 @@ const SETTINGS = (extra) => `(() => {
   // can see on the canvas whether the real picture or a drawn scene was used
   const PROBE = solidPng(24, 16, [214, 38, 196]);
   const server = http.createServer((req, res) => {
-    if (req.url.split('?')[0] === '/photos/__probe__.png') { res.writeHead(200, { 'content-type': 'image/png' }); res.end(PROBE); return; }
+    if (req.url.split('?')[0] === '/photos/__probe__.png' || /^\/_blob\/[A-Za-z0-9_-]+$/.test(req.url.split('?')[0])) { res.writeHead(200, { 'content-type': 'image/png' }); res.end(PROBE); return; }
     const file = path.join(APP, decodeURIComponent(req.url.split('?')[0]).replace(/^\/+/, '') || 'index.html');
     if (!file.startsWith(APP) || !fs.existsSync(file) || fs.statSync(file).isDirectory()) { res.writeHead(404); res.end('no'); return; }
     res.writeHead(200, { 'content-type': TYPES[path.extname(file)] || 'application/octet-stream', 'cache-control': 'no-store' });
@@ -334,6 +346,74 @@ const SETTINGS = (extra) => `(() => {
     check('a picture with a real photograph can still be downloaded as PNG', real.market.exportable, JSON.stringify(real.market));
     check('a photograph that fails to load falls back to the drawn scene', real.sea.picked === 'missing' && !near(real.sea.rgb, [214, 38, 196]) && real.sea.exportable, JSON.stringify(real.sea));
     check('drawing the pictures raises no page error', errors.length === 0, errors[0]);
+    await page.close();
+  }
+
+  console.log('\nBrowser audit: the teacher puts in her own pictures (2.4, 2.11)');
+  for (const scenario of ['ok', 'assets']) {
+    const { page, errors } = await open({ scenario });
+    await run(page);
+    const r = await page.evaluate(async (scenario) => {
+      const ui = window.LR.ui, m = ui.app.material;
+      if (!m || !m.layout) return { error: 'no material with a medium' };
+      ui.renderLayout(m);
+      const spots = Array.from(document.querySelectorAll('#out-layout .photo-hotspot'));
+      if (!spots.length) return { error: 'no picture can be replaced' };
+      const canvas = document.querySelector('#out-layout canvas');
+      const model = canvas._lrModel;
+      // the largest picture: drop a file on it, as a teacher drags one in
+      const target = spots.map(b => ({ b, blk: model.blocks.find(x => x.type === 'photo' && x.slot === b.dataset.slot) }))
+        .sort((a, b) => b.blk.w * b.blk.h - a.blk.w * a.blk.h)[0];
+      const slot = target.blk.slot;
+      const bytes = await (await fetch('/photos/__probe__.png')).blob();
+      const dt = new DataTransfer();
+      dt.items.add(new File([bytes], 'my-photo.png', { type: 'image/png' }));
+      target.b.dispatchEvent(new DragEvent('drop', { dataTransfer: dt, bubbles: true, cancelable: true }));
+      for (let i = 0; i < 60 && !(m.layout.images && m.layout.images[slot]); i++) await new Promise(r => setTimeout(r, 100));
+      const entry = m.layout.images && m.layout.images[slot];
+      await new Promise(r => setTimeout(r, 600));
+      const c2 = document.querySelector('#out-layout canvas');
+      const md2 = c2._lrModel;
+      const blk = md2.blocks.find(x => x.type === 'photo' && x.slot === slot);
+      const k = c2.width / md2.width;
+      const d = c2.getContext('2d').getImageData(Math.round((blk.x + blk.w / 2) * k), Math.round((blk.y + blk.h / 2) * k), 1, 1).data;
+      let exportable = true;
+      try { c2.toDataURL('image/png'); } catch (e) { exportable = false; }
+      const teacher = window.LR.render.renderTeacherHTML(m, {});
+      const stored = (await window.LR.ui.store.list('materials')).find(x => x.id === m.id);
+      // the editor: open it, set a credit, save
+      document.querySelector(`#out-layout .photo-hotspot[data-slot="${slot}"]`).click();
+      const dlg = document.querySelector('#picture-editor');
+      const opened = !!(dlg && dlg.open);
+      dlg.querySelector('input[name=credit]').value = 'Foto: eigene Aufnahme';
+      dlg.querySelector('[data-pe="apply"]').click();
+      for (let i = 0; i < 30 && dlg.open; i++) await new Promise(r => setTimeout(r, 100));
+      const credited = window.LR.render.renderTeacherHTML(m, {}).includes('Foto: eigene Aufnahme');
+      // and back to the picture the app chose
+      document.querySelector(`#out-layout .photo-hotspot[data-slot="${slot}"]`).click();
+      const reset = document.querySelector('#picture-editor [data-pe="reset"]');
+      if (reset) reset.click();
+      for (let i = 0; i < 30 && m.layout.images && m.layout.images[slot]; i++) await new Promise(r => setTimeout(r, 100));
+      // the upload is removed only after the material no longer points at it
+      if (scenario === 'assets') for (let i = 0; i < 30 && !window.__deleted.length; i++) await new Promise(r => setTimeout(r, 100));
+      return {
+        spots: spots.length, slot, kind: entry ? (entry.asset ? 'asset' : entry.src ? 'inline' : 'none') : 'none',
+        rgb: [d[0], d[1], d[2]], exportable, teacherCredit: teacher.includes('Eigenes Bild der Lehrperson'),
+        storedWithMaterial: !!(stored && stored.layout && stored.layout.images && stored.layout.images[slot]),
+        opened, credited, resetDone: !(m.layout.images && m.layout.images[slot]),
+        uploads: window.__uploads.length, deleted: window.__deleted.length,
+        labelled: spots.every(b => /Bild ersetzen/.test(b.getAttribute('aria-label') || '')),
+      };
+    }, scenario);
+    const near = (a, b) => a.every((v, i) => Math.abs(v - b[i]) < 40);
+    const tag = scenario === 'assets' ? 'with the upload store' : 'without the upload store';
+    check(`every picture of the medium can be replaced, and says so (${tag})`, !r.error && r.spots >= 3 && r.labelled, JSON.stringify(r));
+    check(`a picture dropped onto the medium replaces it there (${tag})`, !r.error && near(r.rgb, [214, 38, 196]) && r.exportable, JSON.stringify(r));
+    check(`the picture is kept with the material (${tag})`, !r.error && r.storedWithMaterial && r.kind === (scenario === 'assets' ? 'asset' : 'inline'), JSON.stringify(r));
+    check(`the teacher version names the teacher's picture and its credit (${tag})`, !r.error && r.teacherCredit && r.credited, JSON.stringify(r));
+    check(`the picture can be put back to the automatic one (${tag})`, !r.error && r.opened && r.resetDone && (scenario !== 'assets' || r.deleted >= 1), JSON.stringify(r));
+    if (scenario === 'assets') check('with the upload store only the id is kept in the material', r.uploads >= 1 && r.kind === 'asset', JSON.stringify(r));
+    check(`replacing pictures raises no page error (${tag})`, errors.length === 0, errors[0]);
     await page.close();
   }
 

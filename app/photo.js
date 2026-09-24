@@ -876,6 +876,33 @@
     return img && img.naturalWidth > 0 ? img : null;
   }
 
+  /*
+   * A picture the teacher put in herself: addressed by its source — the
+   * stored upload ("/_blob/<id>") or, where the page cannot store uploads,
+   * the downscaled image itself. Only these two kinds of source are drawn.
+   */
+  const OWN_SOURCE = /^(\/_blob\/[A-Za-z0-9_-]{8,64}|data:image\/(png|jpeg|webp|gif);base64,[A-Za-z0-9+/=]+)$/;
+  function isOwnSource(src) { return typeof src === 'string' && src.length < 3000000 && OWN_SOURCE.test(src); }
+
+  /** Load one of the teacher's pictures (browser only); resolves true when it is there. */
+  function loadSrc(src) {
+    if (typeof Image === 'undefined' || !isOwnSource(src)) return Promise.resolve(false);
+    if (IMAGES.has(src)) return Promise.resolve(true);
+    if (FAILED.has(src)) return Promise.resolve(false);
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.decoding = 'async';
+      img.onload = () => { IMAGES.set(src, img); resolve(true); };
+      img.onerror = () => { FAILED.add(src); resolve(false); };
+      img.src = src;
+    });
+  }
+
+  function imageForSrc(src) {
+    const img = src && IMAGES.get(src);
+    return img && img.naturalWidth > 0 ? img : null;
+  }
+
   /** Put an image into a box the way a layout does: fill it, crop the rest. */
   function drawCover(ctx, img, box, focus) {
     const iw = img.naturalWidth || img.width, ih = img.naturalHeight || img.height;
@@ -894,9 +921,10 @@
   function draw(ctx, b) {
     const box = { x: b.x, y: b.y, w: b.w, h: b.h };
     if (!(box.w > 0) || !(box.h > 0)) return;
-    const real = b.photoId ? imageFor(byId(b.photoId)) : null;
+    const own = b.own ? imageForSrc(b.own) : null;
+    const real = own || (b.photoId ? imageFor(byId(b.photoId)) : null);
     if (real) {
-      const entry = byId(b.photoId);
+      const entry = own ? { focus: Array.isArray(b.focus) ? b.focus : [0.5, b.subject === 'portrait' ? 0.35 : 0.45] } : byId(b.photoId);
       ctx.save();
       ctx.beginPath();
       if (b.round) ctx.ellipse(box.x + box.w / 2, box.y + box.h / 2, box.w / 2, box.h / 2, 0, 0, Math.PI * 2);
@@ -947,5 +975,6 @@
   return {
     SUBJECTS, SCENES, subjectFor, subjectHints, isSubject, draw, hashOf, LIGHTS, SKIN, HAIR, CLOTHES,
     useLibrary, photosFor, pick, byId, preload, imageFor, library: () => LIBRARY.slice(),
+    isOwnSource, loadSrc, imageForSrc,
   };
 });

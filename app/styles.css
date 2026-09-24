@@ -428,6 +428,38 @@ mark.vocab { background: var(--mark); color: inherit; border-radius: 3px; paddin
 .layout-actions { margin-bottom: .8rem; }
 .layout-shot { overflow: auto; background: var(--ground); border: 1px solid var(--line); border-radius: 10px; padding: 1rem; }
 .layout-shot canvas { display: block; margin: 0 auto; box-shadow: 0 8px 30px rgba(15, 23, 42, .18); border-radius: 6px; max-width: 100%; height: auto; }
+/* the teacher's own pictures: a button over every picture of the medium */
+.shot-frame { position: relative; width: fit-content; max-width: 100%; margin: 0 auto; }
+.shot-frame canvas { margin: 0; }
+.photo-hotspots { position: absolute; inset: 0; pointer-events: none; }
+.photo-hotspot { position: absolute; pointer-events: auto; margin: 0; padding: 0; border: 2px solid transparent; border-radius: 4px;
+  background: transparent; cursor: pointer; display: flex; align-items: flex-end; justify-content: flex-end; transition: border-color .12s, background .12s; }
+.photo-hotspot.is-round { border-radius: 50%; }
+.photo-hotspot span { margin: 6px; padding: 3px 9px; border-radius: 999px; font: 600 .74rem/1.4 var(--font-ui, system-ui, sans-serif);
+  background: rgba(15, 23, 42, .82); color: #fff; opacity: 0; transform: translateY(2px); transition: opacity .12s, transform .12s; white-space: nowrap; }
+.photo-hotspot.is-small span { display: none; }
+.photo-hotspot:hover, .photo-hotspot:focus-visible, .photo-hotspot.is-drop { border-color: var(--accent, #2563eb); background: rgba(37, 99, 235, .10); outline: none; }
+.photo-hotspot:hover span, .photo-hotspot:focus-visible span, .photo-hotspot.is-drop span { opacity: 1; transform: none; }
+.photo-hotspot.is-own::after { content: ""; position: absolute; top: 6px; left: 6px; width: 9px; height: 9px; border-radius: 50%; background: var(--accent, #2563eb); box-shadow: 0 0 0 2px #fff; }
+.photo-hotspot.is-small.is-own::after { top: 1px; left: 1px; width: 7px; height: 7px; }
+@media (hover: none) { .photo-hotspot span { opacity: .9; transform: none; } }
+@media print { .photo-hotspots { display: none; } }
+
+.picture-editor { border: 1px solid var(--line); border-radius: 14px; padding: 0; width: min(520px, calc(100vw - 32px)); background: var(--surface, #fff); color: inherit; box-shadow: 0 24px 60px rgba(15, 23, 42, .28); }
+.picture-editor::backdrop { background: rgba(15, 23, 42, .45); }
+.pe-form { padding: 1.1rem 1.2rem 1rem; display: grid; gap: .7rem; }
+.pe-form h3 { margin: 0; font-size: 1.1rem; }
+.pe-where { margin: -.3rem 0 0; font-size: .85rem; }
+.pe-drop { border: 2px dashed var(--line); border-radius: 12px; padding: 1rem; text-align: center; display: grid; gap: .6rem; justify-items: center; }
+.pe-drop:focus-visible, .pe-drop.is-drop { border-color: var(--accent, #2563eb); background: rgba(37, 99, 235, .06); outline: none; }
+.pe-hint { margin: 0; font-size: .9rem; }
+.pe-preview img { display: block; max-width: 100%; max-height: 220px; border-radius: 8px; }
+.pe-credit { display: grid; gap: .3rem; font-size: .85rem; font-weight: 600; }
+.pe-credit input { font: inherit; font-weight: 400; padding: .45rem .6rem; border: 1px solid var(--line); border-radius: 8px; background: transparent; color: inherit; }
+.pe-note { margin: 0; font-size: .78rem; }
+.pe-error { margin: 0; font-size: .85rem; color: var(--bad, #b91c1c); }
+.pe-actions { display: flex; gap: .5rem; align-items: center; flex-wrap: wrap; }
+.pe-spacer { flex: 1; }
 
 /* Template bar: whole ready-made configurations */
 .setup-bar { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: .8rem 1rem 1rem; box-shadow: var(--shadow); }

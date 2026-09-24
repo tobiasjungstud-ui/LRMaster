@@ -15,11 +15,11 @@
   /* Capabilities                                                         */
   /* ------------------------------------------------------------------ */
 
-  const caps = { sample: null, db: null, downloads: null, ready: false };
+  const caps = { sample: null, db: null, downloads: null, assets: null, ready: false };
   async function loadCapabilities() {
     const use = async (name) => { try { return window.claude && window.claude.use ? await window.claude.use(name) : null; } catch (e) { return null; } };
-    const [sample, db, downloads] = await Promise.all([use('sample'), use('db'), use('downloads')]);
-    caps.sample = sample; caps.db = db; caps.downloads = downloads; caps.ready = true;
+    const [sample, db, downloads, assets] = await Promise.all([use('sample'), use('db'), use('downloads'), use('assets')]);
+    caps.sample = sample; caps.db = db; caps.downloads = downloads; caps.assets = assets; caps.ready = true;
     updateClaudeStatus();
     await store.init();
     await refreshTextbooks();
@@ -1230,6 +1230,284 @@
     return `<p class="layout-proportions qc-${state}">Proportionen geprüft: ${esc(cols)}${even ? ' — ' + esc(even) : ''}; die Seite endet ${pct(p.tail)} ihrer Höhe unter dem letzten Element.</p>`;
   }
 
+  /* ------------------------------------------------------------------ */
+  /* The teacher's own pictures                                           */
+  /* ------------------------------------------------------------------ */
+
+  /*
+   * Every picture in the medium can be replaced the way a teacher replaces a
+   * picture on a worksheet: choose a file, paste one (Ctrl+V) or drag one in.
+   * The picture is downscaled in the browser, stored in the page's upload
+   * store (assets) and the material keeps only its id, by the place of the
+   * picture — so the author's face in the byline and in the author box is
+   * replaced together, and the replacement survives a new drawing.
+   */
+  const SUBJECT_LABEL = {
+    portrait: 'Porträt', people: 'Menschen', crowd: 'Menschenmenge', classroom: 'Klassenzimmer', school: 'Schule', city: 'Stadt',
+    street: 'Strasse', home: 'Wohnung', office: 'Büro', desk: 'Schreibtisch', phone: 'Handy', sport: 'Sport', park: 'Park',
+    mountain: 'Berge', sea: 'Meer', food: 'Essen', market: 'Markt', animal: 'Tier', transport: 'Verkehr', concert: 'Konzert',
+    lab: 'Labor', building: 'Gebäude', still: 'Gegenstand', sky: 'Himmel',
+  };
+
+  /** Buttons over the pictures of the drawn medium — one per picture. */
+  function renderHotspots(m, canvas, model) {
+    let frame = canvas.parentElement;
+    if (!frame) return;
+    if (!frame.classList.contains('shot-frame')) {
+      const wrap = document.createElement('div');
+      wrap.className = 'shot-frame';
+      frame.insertBefore(wrap, canvas);
+      wrap.appendChild(canvas);
+      frame = wrap;
+    }
+    let layer = frame.querySelector('.photo-hotspots');
+    if (!layer) { layer = document.createElement('div'); layer.className = 'photo-hotspots'; frame.appendChild(layer); }
+    layer.innerHTML = '';
+    const pics = model.blocks.filter(b => b.type === 'photo' && b.w >= 18 && b.h >= 18);
+    const count = {};
+    for (const b of pics) count[b.slot] = (count[b.slot] || 0) + 1;
+    for (const b of pics) {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'photo-hotspot' + (b.own ? ' is-own' : '') + (b.round ? ' is-round' : '') + (b.w < 90 || b.h < 60 ? ' is-small' : '');
+      btn.style.left = (b.x / model.width * 100) + '%';
+      btn.style.top = (b.y / model.height * 100) + '%';
+      btn.style.width = (b.w / model.width * 100) + '%';
+      btn.style.height = (b.h / model.height * 100) + '%';
+      btn.dataset.slot = b.slot;
+      const what = SUBJECT_LABEL[b.subject] || b.subject;
+      btn.setAttribute('aria-label', `Bild ersetzen: ${what}${b.own ? ' (eigenes Bild)' : ''}`);
+      btn.title = `Bild ersetzen (${what}) – klicken, einfügen oder Bild hierher ziehen`;
+      btn.innerHTML = `<span>${b.own ? 'Eigenes Bild ändern' : 'Bild ersetzen'}</span>`;
+      btn.addEventListener('click', () => openPictureEditor(m, b, count[b.slot]));
+      btn.addEventListener('dragover', (e) => { e.preventDefault(); btn.classList.add('is-drop'); });
+      btn.addEventListener('dragleave', () => btn.classList.remove('is-drop'));
+      btn.addEventListener('drop', async (e) => {
+        e.preventDefault();
+        btn.classList.remove('is-drop');
+        const file = firstImage(e.dataTransfer && e.dataTransfer.files);
+        if (!file) { toast('Das war kein Bild (PNG, JPEG, WebP oder GIF).'); return; }
+        try { await replacePicture(m, b.slot, await prepareImage(file), { name: file.name }); }
+        catch (err) { toast(pictureError(err)); }
+      });
+      layer.appendChild(btn);
+    }
+  }
+
+  function firstImage(list) {
+    return Array.from(list || []).find(f => f && /^image\/(png|jpeg|webp|gif)$/.test(f.type)) || null;
+  }
+
+  /**
+   * Make a picture fit to travel: at most 1600 px on the long side (1000 px
+   * where it has to live inside the material itself), JPEG, on white — a
+   * phone photo of 8 MB becomes a few hundred KB.
+   */
+  async function prepareImage(file, opts) {
+    if (!file || !/^image\/(png|jpeg|webp|gif)$/.test(file.type)) throw { code: 'not_image' };
+    if (file.size > 30 * 1024 * 1024) throw { code: 'too_large' };
+    const url = URL.createObjectURL(file);
+    try {
+      const img = await new Promise((resolve, reject) => {
+        const i = new Image();
+        i.onload = () => resolve(i);
+        i.onerror = () => reject({ code: 'not_image' });
+        i.src = url;
+      });
+      const max = (opts && opts.max) || 1600;
+      const k = Math.min(1, max / Math.max(img.naturalWidth, img.naturalHeight));
+      const c = document.createElement('canvas');
+      c.width = Math.max(1, Math.round(img.naturalWidth * k));
+      c.height = Math.max(1, Math.round(img.naturalHeight * k));
+      const g = c.getContext('2d');
+      g.fillStyle = '#FFFFFF';
+      g.fillRect(0, 0, c.width, c.height);
+      g.drawImage(img, 0, 0, c.width, c.height);
+      const quality = (opts && opts.quality) || 0.86;
+      const blob = await new Promise(res => c.toBlob(res, 'image/jpeg', quality));
+      if (!blob) throw { code: 'not_image' };
+      return { blob, dataUrl: (opts && opts.inline) ? c.toDataURL('image/jpeg', quality) : '', width: c.width, height: c.height };
+    } finally { URL.revokeObjectURL(url); }
+  }
+
+  function pictureError(e) {
+    const code = e && e.code;
+    if (code === 'not_image') return 'Das Bild konnte nicht gelesen werden. Erlaubt sind PNG, JPEG, WebP und GIF.';
+    if (code === 'too_large') return 'Das Bild ist zu gross (höchstens 30 MB).';
+    if (code === 'no_store') return 'Eigene Bilder brauchen den Bildspeicher dieser Seite – er ist in dieser Ansicht nicht verfügbar (nur mit Bearbeitungsrecht).';
+    if (code === 'quota_or_state') return 'Der Bildspeicher dieser Seite ist voll. Entferne eigene Bilder aus alten Materialien.';
+    if (code === 'rate_limited') return 'Zu viele Bilder auf einmal – bitte kurz warten.';
+    if (code === 'store_unavailable') return 'Der Bildspeicher antwortet gerade nicht. Bitte nochmals versuchen.';
+    return 'Das Bild konnte nicht gespeichert werden' + (e && e.message ? ': ' + e.message : '.');
+  }
+
+  /**
+   * Put a prepared picture into one place of the medium and save the
+   * material. With the upload store, only the id is kept in the material;
+   * without it (a local copy of the app), the picture itself is kept, smaller.
+   */
+  async function replacePicture(m, slot, prepared, meta) {
+    const previous = ((m.layout && m.layout.images) || {})[slot];
+    let entry;
+    if (caps.assets) {
+      let res;
+      try { res = await caps.assets.upload(prepared.blob, { type: 'image/jpeg' }); }
+      catch (e) {
+        if (e && e.code === 'store_unavailable') res = await caps.assets.upload(prepared.blob, { type: 'image/jpeg' });
+        else throw e;
+      }
+      entry = { asset: res.id };
+    } else if (store.backend === 'local') {
+      // no upload store here: the picture lives in the material, kept small
+      const small = prepared.dataUrl && prepared.dataUrl.length < 400000 ? prepared.dataUrl : '';
+      entry = { src: small };
+      if (!small) {
+        const again = await new Promise((resolve) => {
+          const img = new Image();
+          img.onload = () => {
+            const k = Math.min(1, 1000 / Math.max(img.naturalWidth, img.naturalHeight));
+            const c = document.createElement('canvas');
+            c.width = Math.round(img.naturalWidth * k); c.height = Math.round(img.naturalHeight * k);
+            c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+            resolve(c.toDataURL('image/jpeg', 0.8));
+          };
+          img.onerror = () => resolve('');
+          img.src = URL.createObjectURL(prepared.blob);
+        });
+        entry.src = again;
+      }
+      if (!entry.src) throw { code: 'not_image' };
+    } else {
+      throw { code: 'no_store' };
+    }
+    entry.credit = String((meta && meta.credit) || (previous && previous.credit) || '').trim().slice(0, 120);
+    entry.name = String((meta && meta.name) || '').slice(0, 80);
+    m.layout.images = Object.assign({}, m.layout.images || {}, { [slot]: entry });
+    await saveMaterial(m);
+    // the old upload is no longer pointed at by anything: remove it
+    if (previous && previous.asset && caps.assets && previous.asset !== entry.asset) {
+      try { await caps.assets.delete(previous.asset); } catch (e) { /* stays as an orphan; harmless */ }
+    }
+    repaintMedium(m);
+    toast('Bild ersetzt.');
+  }
+
+  /** Back to the picture the app chose itself. */
+  async function resetPicture(m, slot) {
+    const images = Object.assign({}, (m.layout && m.layout.images) || {});
+    const previous = images[slot];
+    if (!previous) return;
+    delete images[slot];
+    m.layout.images = images;
+    await saveMaterial(m);
+    if (previous.asset && caps.assets) {
+      try { await caps.assets.delete(previous.asset); } catch (e) { /* harmless orphan */ }
+    }
+    repaintMedium(m);
+    toast('Automatisches Bild wiederhergestellt.');
+  }
+
+  async function setPictureCredit(m, slot, credit) {
+    const images = Object.assign({}, (m.layout && m.layout.images) || {});
+    if (!images[slot]) return;
+    images[slot] = Object.assign({}, images[slot], { credit: String(credit || '').trim().slice(0, 120) });
+    m.layout.images = images;
+    await saveMaterial(m);
+    repaintMedium(m);
+  }
+
+  async function saveMaterial(m) {
+    if (!m || !m.id) return;
+    await store.put('materials', m);
+    app.materials = (app.materials || []).filter(x => x.id !== m.id).concat([m]);
+  }
+
+  /** Draw the medium again wherever it is shown (Layout tab, viewer). */
+  function repaintMedium(m) {
+    if ($('#view-viewer') && !$('#view-viewer').hidden && viewer && viewer.material === m) { renderViewer(); return; }
+    if ($('#out-layout')) renderLayout(m);
+  }
+
+  /** The dialog to replace one picture: choose, paste or drop; credit; reset. */
+  function openPictureEditor(m, block, uses) {
+    if (!$('#picture-editor')) document.body.insertAdjacentHTML('beforeend', '<dialog id="picture-editor" class="picture-editor" aria-label="Bild ersetzen"></dialog>');
+    const dlg = $('#picture-editor');
+    const current = ((m.layout && m.layout.images) || {})[block.slot] || null;
+    const what = SUBJECT_LABEL[block.subject] || block.subject;
+    dlg.innerHTML = `<form method="dialog" class="pe-form">
+        <h3>Bild ersetzen</h3>
+        <p class="muted pe-where">${esc(what)}${uses > 1 ? ` · kommt ${uses}× im Bild vor und wird überall ersetzt` : ''}${current ? ' · zurzeit ein eigenes Bild' : ''}</p>
+        <div class="pe-drop" tabindex="0" role="button" aria-label="Bild hierher ziehen, einfügen oder Datei wählen">
+          <div class="pe-preview" hidden><img alt="Vorschau des neuen Bildes"></div>
+          <p class="pe-hint">Bild <strong>hierher ziehen</strong>, mit <strong>Strg+V</strong> einfügen oder
+            <button type="button" class="btn tiny" data-pe="pick">Datei wählen …</button></p>
+          <input type="file" accept="image/png,image/jpeg,image/webp,image/gif" hidden>
+        </div>
+        <label class="pe-credit">Bildnachweis <input type="text" name="credit" maxlength="120" placeholder="z. B. Foto: eigene Aufnahme · oder Quelle des Bildes" value="${esc((current && current.credit) || '')}"></label>
+        <p class="pe-note muted">Das Bild wird verkleinert und mit dem Material gespeichert. Der Nachweis steht in der Lehrerversion. Im eigenen Unterricht ist vieles erlaubt – veröffentlichst du das Material, brauchst du die Rechte am Bild.</p>
+        <p class="pe-error" role="alert" hidden></p>
+        <div class="pe-actions">
+          ${current ? '<button type="button" class="btn" data-pe="reset">Automatisches Bild</button>' : '<span></span>'}
+          <span class="pe-spacer"></span>
+          <button type="button" class="btn" data-pe="cancel">Abbrechen</button>
+          <button type="button" class="btn primary" data-pe="apply">${current ? 'Speichern' : 'Übernehmen'}</button>
+        </div>
+      </form>`;
+    const input = dlg.querySelector('input[type=file]');
+    const drop = dlg.querySelector('.pe-drop');
+    const preview = dlg.querySelector('.pe-preview');
+    const err = dlg.querySelector('.pe-error');
+    const credit = dlg.querySelector('input[name=credit]');
+    let pending = null, pendingName = '', previewUrl = '';
+    const showError = (msg) => { err.textContent = msg; err.hidden = !msg; };
+    const take = async (file) => {
+      showError('');
+      if (!file) { showError('Das war kein Bild (PNG, JPEG, WebP oder GIF).'); return; }
+      try {
+        pending = await prepareImage(file, { inline: !caps.assets });
+        pendingName = file.name || '';
+        if (previewUrl) URL.revokeObjectURL(previewUrl);
+        previewUrl = URL.createObjectURL(pending.blob);
+        preview.querySelector('img').src = previewUrl;
+        preview.hidden = false;
+        dlg.querySelector('[data-pe="apply"]').focus();
+      } catch (e) { pending = null; showError(pictureError(e)); }
+    };
+    dlg.querySelector('[data-pe="pick"]').addEventListener('click', () => input.click());
+    drop.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); input.click(); } });
+    input.addEventListener('change', () => take(firstImage(input.files)));
+    drop.addEventListener('dragover', (e) => { e.preventDefault(); drop.classList.add('is-drop'); });
+    drop.addEventListener('dragleave', () => drop.classList.remove('is-drop'));
+    drop.addEventListener('drop', (e) => { e.preventDefault(); drop.classList.remove('is-drop'); take(firstImage(e.dataTransfer && e.dataTransfer.files)); });
+    dlg.onpaste = (e) => {
+      const items = Array.from((e.clipboardData && e.clipboardData.items) || []);
+      const item = items.find(i => i.kind === 'file' && /^image\//.test(i.type));
+      if (!item) return;
+      e.preventDefault();
+      take(item.getAsFile());
+    };
+    const close = () => { if (previewUrl) URL.revokeObjectURL(previewUrl); dlg.close(); };
+    dlg.querySelector('[data-pe="cancel"]').addEventListener('click', close);
+    const resetBtn = dlg.querySelector('[data-pe="reset"]');
+    if (resetBtn) resetBtn.addEventListener('click', async () => {
+      try { await resetPicture(m, block.slot); close(); } catch (e) { showError(pictureError(e)); }
+    });
+    dlg.querySelector('[data-pe="apply"]').addEventListener('click', async (ev) => {
+      const btn = ev.currentTarget;
+      showError('');
+      if (!pending && !current) { showError('Wähle zuerst ein Bild, füge eines ein oder ziehe es hierher.'); return; }
+      btn.disabled = true;
+      try {
+        if (pending) await replacePicture(m, block.slot, pending, { credit: credit.value, name: pendingName });
+        else await setPictureCredit(m, block.slot, credit.value);
+        close();
+      } catch (e) { showError(pictureError(e)); }
+      finally { btn.disabled = false; }
+    });
+    if (typeof dlg.showModal === 'function') dlg.showModal(); else dlg.setAttribute('open', '');
+    drop.focus();
+  }
+
   /**
    * Draw the picture of the medium onto a canvas — used by the Layout tab and
    * by the viewer. A very long text gives a very tall picture; browsers
@@ -1250,6 +1528,12 @@
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       ctx.scale(dpr, dpr);
       mock.draw(ctx, model);
+      canvas._lrModel = model;
+      renderHotspots(m, canvas, model);
+      // the teacher's own pictures load once; the picture is drawn again when
+      // one arrives that was not there yet (never in a loop)
+      const missing = [...new Set(model.blocks.filter(b => b.type === 'photo' && b.own && !window.LR.photo.imageForSrc(b.own)).map(b => b.own))];
+      if (missing.length) Promise.all(missing.map(src => window.LR.photo.loadSrc(src))).then(r => { if (r.some(Boolean)) paint(); });
     };
     paint();
     if (document.fonts && document.fonts.ready) document.fonts.ready.then(paint).catch(() => {});
@@ -1923,5 +2207,5 @@
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init); else init();
 
-  window.LR.ui = { app, generate, produceWorksheet, openViewer, renderViewer, markPageBreaks, syncViewerOffsets, buildViewerRail, buildViewerDownloads, paintLayoutCanvas, proportionNote, viewer, store, caps, showView, openCreator, importState, detectUnits, fetchTopics, confirmImport, newTextbook, askText, askConfirm, clone, parsePasted, initLevelPage, download, renderOutput, renderQualityPanel, renderTaskPreview, refreshDerived, renderLayout, renderSetupBar, openCustomSetup, backToTemplates, redrawTemplate, templateState, buildForm };
+  window.LR.ui = { app, generate, produceWorksheet, openViewer, renderViewer, markPageBreaks, syncViewerOffsets, buildViewerRail, buildViewerDownloads, paintLayoutCanvas, proportionNote, renderHotspots, openPictureEditor, replacePicture, resetPicture, prepareImage, viewer, store, caps, showView, openCreator, importState, detectUnits, fetchTopics, confirmImport, newTextbook, askText, askConfirm, clone, parsePasted, initLevelPage, download, renderOutput, renderQualityPanel, renderTaskPreview, refreshDerived, renderLayout, renderSetupBar, openCustomSetup, backToTemplates, redrawTemplate, templateState, buildForm };
 })();

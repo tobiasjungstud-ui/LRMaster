@@ -1665,6 +1665,41 @@
       return ok(!problems.length, problems.slice(0, 3).join(' | '));
     } });
 
+  add({ id: 'S37.own_pictures', section: 37, title: 'Jedes Bild im Medium lässt sich durch ein eigenes ersetzen (Datei wählen, Strg+V, hineinziehen) – mit Bildnachweis, gespeichert mit dem Material, jederzeit zurück zum automatischen Bild', kind: 'function',
+    check(env) {
+      const problems = [];
+      const m = layoutMaterial(env, { textType: 'Blog Post', layoutMedium: 'screen' });
+      const before = env.quality.layoutModel(m);
+      const pics = before.blocks.filter(x => x.type === 'photo');
+      if (!pics.length || pics.some(x => !x.slot)) return 'a picture of the medium has no place it can be addressed by';
+      // the same person in two places is one place to replace
+      const face = pics.find(x => x.subject === 'portrait');
+      const uses = pics.filter(x => x.slot === face.slot).length;
+      m.layout.images = { [face.slot]: { asset: 'a'.repeat(32), credit: 'Foto: privat' } };
+      const after = env.quality.layoutModel(m);
+      const replaced = after.blocks.filter(x => x.type === 'photo' && x.own);
+      if (replaced.length !== uses) problems.push('the own picture does not stand everywhere that place appears (' + replaced.length + ' of ' + uses + ')');
+      if (!replaced.every(x => x.own === '/_blob/' + 'a'.repeat(32))) problems.push('an uploaded picture is not drawn from its stored id');
+      if (env.quality.normalizeForSearch(env.mock.bodyText(after)) !== env.quality.normalizeForSearch(env.mock.bodyText(before))) problems.push('replacing a picture changes the text of the picture');
+      const credits = env.quality.photoCredits(m);
+      if (!credits.some(c => c.own && c.credit === 'Foto: privat')) problems.push('the teacher version does not credit the own picture');
+      m.layout.images[face.slot].credit = '';
+      if (!env.quality.photoCredits(m).some(c => c.own && /Lehrperson/.test(c.credit))) problems.push('an own picture without a credit is not named as the teacher\'s');
+      // a stored source is outside data: only an upload id or an image is drawn
+      for (const bad of [{ src: 'javascript:alert(1)' }, { src: 'https://elsewhere.example/x.jpg' }, { src: 'data:text/html;base64,PGI+' }, { asset: '../../x' }]) {
+        m.layout.images = { [face.slot]: bad };
+        if (env.quality.layoutModel(m).blocks.some(x => x.type === 'photo' && x.own)) problems.push('an unsafe picture source is drawn: ' + JSON.stringify(bad));
+      }
+      m.layout.images = {};
+      if (env.quality.layoutModel(m).blocks.some(x => x.type === 'photo' && x.own)) problems.push('the automatic picture does not come back');
+      // the controls exist in the page
+      const src = env.uiSource || '';
+      if (src && !(/function renderHotspots/.test(src) && /photo-hotspot/.test(src) && /onpaste/.test(src) && /'drop'/.test(src) && /assets\.upload/.test(src) && /function resetPicture/.test(src))) {
+        problems.push('the page has no way to choose, paste or drop an own picture, or to put the automatic one back');
+      }
+      return ok(!problems.length, problems.slice(0, 3).join(' | '));
+    } });
+
   add({ id: 'S37.modules', section: 37, title: 'Um den Text steht, was auf so einer Seite wirklich steht: Werbung, Umfrage, Meistgelesen, Anmeldekasten, Kleinanzeigen – Claude wählt aus dem Katalog und darf Eigenes ergänzen', kind: 'function',
     check(env) {
       const problems = [];

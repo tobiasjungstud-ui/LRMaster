@@ -355,12 +355,18 @@
         const items = mod.items.slice(0, 4);
         b.text(x + 16, y + 26, upper(mod.label || 'Reader poll'), S.ui(10, 800), { color: S.accent, letterSpacing: 1 });
         let iy = b.para(x + 16, y + 48, mod.heading || '', S.title(15, 700), w - 32, { color: INK, lineHeight: 20 }) + 8;
-        const shares = items.map((_, i) => 0.62 - i * 0.16);
+        // a poll adds up to 100 %: the first answer leads, the others follow,
+        // and the rounding error goes to the leader
+        const weights = items.map((_, i) => [52, 29, 13, 6][i] || 4);
+        const total = weights.reduce((a, v) => a + v, 0) || 1;
+        const pcts = weights.map(v => Math.round(v / total * 100));
+        if (pcts.length) pcts[0] += 100 - pcts.reduce((a, v) => a + v, 0);
+        const shares = pcts.map(v => v / 100);
         items.forEach((it, i) => {
           b.rect(x + 16, iy, w - 32, 26, { fill: '#EEF2F6', radius: 13 });
           b.rect(x + 16, iy, Math.max(30, (w - 32) * Math.min(0.78, Math.max(0.08, shares[i]))), 26, { fill: i === 0 ? S.accent : '#CBD5E1', radius: 13 });
           b.text(x + 28, iy + 18, clipText(String(it), 34), S.ui(12, 600), { color: i === 0 ? '#FFFFFF' : '#334155' });
-          b.text(x + w - 26, iy + 18, Math.round(Math.max(8, shares[i] * 100)) + '%', S.ui(11, 700), { color: '#475569', align: 'right' });
+          b.text(x + w - 26, iy + 18, pcts[i] + '%', S.ui(11, 700), { color: '#475569', align: 'right' });
           iy += 34;
         });
         b.text(x + 16, iy + 14, mod.meta || '', S.ui(11), { color: MUTED });
@@ -881,6 +887,7 @@
       y: 0,
       blocks,
       subject: 'city',   // what a picture shows when nothing else says
+      images: null,      // the teacher's own pictures, by place
       rect(x, y, w, h, o) { blocks.push(Object.assign({ type: 'rect', x, y, w, h, fill: '#FFFFFF' }, o || {})); return api; },
       line(x1, y1, x2, y2, o) { blocks.push(Object.assign({ type: 'line', x1, y1, x2, y2, color: '#E2E8F0', width: 1 }, o || {})); return api; },
       circle(x, y, r, o) { blocks.push(Object.assign({ type: 'circle', x, y, r, fill: '#CBD5E1' }, o || {})); return api; },
@@ -906,11 +913,24 @@
       photo(x, y, w, h, o) {
         const spec = Object.assign({ type: 'photo', x, y, w, h, seed: 7 }, o || {});
         if (!photo.isSubject(spec.subject)) spec.subject = photo.isSubject(api.subject) ? api.subject : 'city';
-        // a real photograph where the app has one of this subject; its credit
-        // travels with the block, because an invented credit under a real
-        // photo would be a false attribution
-        const hit = photo.pick(spec.subject, spec.seed, { persona: spec.subject === 'portrait' });
-        if (hit) { spec.photoId = hit.id; spec.credit = hit.credit; }
+        // The place of the picture, stable across drawings: what it shows and
+        // what it is seeded from (a name, a headline). The same person's face
+        // in the byline and in the author box is one place — replaced once,
+        // replaced everywhere.
+        spec.slot = spec.slot || spec.subject + ':' + spec.seed;
+        // 1. a picture the teacher put in herself
+        const own = ownPicture(api.images, spec.slot);
+        if (own) {
+          spec.own = own.src;
+          spec.credit = own.credit;
+          if (own.focus) spec.focus = own.focus;
+        } else {
+          // 2. a real photograph the app ships with; its credit travels with
+          // the block, because an invented credit under a real photo would
+          // be a false attribution. 3. otherwise the drawn scene.
+          const hit = photo.pick(spec.subject, spec.seed, { persona: spec.subject === 'portrait' });
+          if (hit) { spec.photoId = hit.id; spec.credit = hit.credit; }
+        }
         blocks.push(spec);
         api.last = spec;
         return api;
@@ -1060,6 +1080,7 @@
     const W = 1040;
     const b = builder(W, measure);
     b.subject = autoSubject(m);
+    b.images = (m.layout && m.layout.images) || null;
     const meta = m.content.meta || {};
     const hasSide = d.sidebar && list(chrome.sidebarItems).length;
     const PAD = 56;
@@ -1275,6 +1296,7 @@
     const W = 1040;
     const b = builder(W, measure);
     b.subject = autoSubject(m);
+    b.images = (m.layout && m.layout.images) || null;
     const meta = m.content.meta || {};
     const SIDE = 220, PAD = 34;
     const ui = (size, weight) => ({ family: d.ui, size, weight: weight || 400 });
@@ -1395,6 +1417,7 @@
     const W = 1040;
     const b = builder(W, measure);
     b.subject = autoSubject(m);
+    b.images = (m.layout && m.layout.images) || null;
     const meta = m.content.meta || {};
     const PAD = 48;
     const ui = (size, weight) => ({ family: d.ui, size, weight: weight || 400 });
@@ -1517,6 +1540,7 @@
     const W = 560;
     const b = builder(W, measure);
     b.subject = autoSubject(m);
+    b.images = (m.layout && m.layout.images) || null;
     const ui = (size, weight) => ({ family: d.ui, size, weight: weight || 400 });
     const HEAD = '#075E54', BAR = '#054A42', MINE = '#DCF8C6', THEIRS = '#FFFFFF', TICK = '#34B7F1';
     b.rect(0, 0, W, 4000, { fill: '#ECE5DD' });
@@ -1687,6 +1711,7 @@
     const W = 1080;
     const b = builder(W, measure);
     b.subject = autoSubject(m);
+    b.images = (m.layout && m.layout.images) || null;
     const meta = m.content.meta || {};
     const P = PAGE_PAD, M = 48;
     const pageW = W - 2 * P, inner = pageW - 2 * M;
@@ -1920,6 +1945,7 @@
     const W = 720;
     const b = builder(W, measure);
     b.subject = autoSubject(m);
+    b.images = (m.layout && m.layout.images) || null;
     const P = PAGE_PAD, M = 92, GUT = 116;
     const L = P + GUT, R = W - P - M;
     const inner = R - L;
@@ -1968,6 +1994,7 @@
     const W = 780;
     const b = builder(W, measure);
     b.subject = autoSubject(m);
+    b.images = (m.layout && m.layout.images) || null;
     const P = PAGE_PAD, M = 86;
     const L = P + M, R = W - P - 42;
     const inner = R - L;
@@ -2024,6 +2051,7 @@
     const W = 840;
     const b = builder(W, measure);
     b.subject = autoSubject(m);
+    b.images = (m.layout && m.layout.images) || null;
     const meta = m.content.meta || {};
     const P = PAGE_PAD, M = 64;
     const L = P + M, R = W - P - M;
@@ -2159,6 +2187,22 @@
   }
 
   /** The drawing model of the screenshot; `opts.measure` defaults to the metric estimate. */
+  /**
+   * The teacher's own picture for one place, if there is a usable one: an
+   * uploaded file ("/_blob/<id>") or, where uploads cannot be stored, the
+   * downscaled image itself. Anything else is ignored — a stored source is
+   * outside data and is never drawn blindly.
+   */
+  function ownPicture(images, slot) {
+    const e = images && typeof images === 'object' && !Array.isArray(images) ? images[slot] : null;
+    if (!e || typeof e !== 'object') return null;
+    const src = e.asset && /^[A-Za-z0-9_-]{8,64}$/.test(String(e.asset)) ? '/_blob/' + e.asset : e.src;
+    if (!photo.isOwnSource(src)) return null;
+    const credit = String(e.credit == null ? '' : e.credit).replace(/\s+/g, ' ').trim().slice(0, 120);
+    const focus = Array.isArray(e.focus) && e.focus.length === 2 ? e.focus.map(v => Math.max(0, Math.min(1, Number(v) || 0.5))) : null;
+    return { src, credit, focus, name: String(e.name || '').slice(0, 80) };
+  }
+
   function buildModel(material, chrome, opts) {
     opts = opts || {};
     const measure = opts.measure || approxMeasure;
@@ -2187,7 +2231,14 @@
     const out = [];
     const seen = new Set();
     for (const x of (model && model.blocks) || []) {
-      if (x.type !== 'photo' || !x.photoId || seen.has(x.photoId)) continue;
+      if (x.type !== 'photo') continue;
+      if (x.own) {
+        if (seen.has('own:' + x.slot)) continue;
+        seen.add('own:' + x.slot);
+        out.push({ id: x.slot, subject: x.subject, credit: x.credit || 'Eigenes Bild der Lehrperson', author: '', source: '', license: '', url: '', own: true });
+        continue;
+      }
+      if (!x.photoId || seen.has(x.photoId)) continue;
       seen.add(x.photoId);
       const e = photo.byId(x.photoId);
       if (e) out.push({ id: e.id, subject: e.subject, credit: e.credit, author: e.author, source: e.source, license: e.license, url: e.url });
@@ -2221,6 +2272,7 @@
       } else if (x.type === 'rect' || x.type === 'photo' || x.type === 'wallpaper' || x.type === 'gradient') {
         if (!(x.w > 0) || !(x.h > 0)) problems.push('block without size');
         if (x.type === 'photo' && !photo.isSubject(x.subject)) problems.push('picture without a subject that can be drawn: ' + x.subject);
+        if (x.type === 'photo' && x.own && !photo.isOwnSource(x.own)) problems.push('a picture of the teacher from a source that is not allowed');
       } else if (x.type === 'icon') {
         if (!ICONS[x.name]) problems.push('unknown icon: ' + x.name);
         if (!(x.size > 0)) problems.push('icon without size: ' + x.name);
@@ -2518,6 +2570,6 @@
   }
 
   return { LAYOUTS, CHROME_SPECS, ICONS, MAX_SIDE,
-    credits, SUBJECTS: photo.SUBJECTS, isSubject: photo.isSubject, subjectFor: photo.subjectFor, subjectHints: photo.subjectHints, hashOf: photo.hashOf, layoutFor, chromeSpec, fallbackChrome, buildModel, fitModel, canvasScale, drawPhoto, drawIcon, bodyText, chromeText, validate, proportions, draw,
+    credits, ownPicture, SUBJECTS: photo.SUBJECTS, isSubject: photo.isSubject, subjectFor: photo.subjectFor, subjectHints: photo.subjectHints, hashOf: photo.hashOf, layoutFor, chromeSpec, fallbackChrome, buildModel, fitModel, canvasScale, drawPhoto, drawIcon, bodyText, chromeText, validate, proportions, draw,
     MODULES, MODULE_KEYS, SHAPES, SHAPE_KEYS, MEDIUM_SLOTS, shapeOf, moduleRenderer, moduleHints, modulesFor, placeModules, moduleStyle, canvasMeasure, approxMeasure, wrap, fontString };
 });
