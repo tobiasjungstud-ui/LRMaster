@@ -19,7 +19,8 @@ const server = http.createServer((req, res) => {
     const q = u.searchParams.get('q');
     return json(200, { results: [
       { id: 'cc0-' + q.length, title: 'Open picture', creator: 'Ada Free', license: 'cc0', license_version: '1.0', source: 'wikimedia', url: base + '/img/good.jpg', thumbnail: base + '/img/good.jpg', foreign_landing_url: 'https://example.org/cc0', width: 1200, height: 800 },
-      { id: 'nc-' + q.length, title: 'Not for class', creator: 'No Body', license: 'by-nc', license_version: '2.0', source: 'flickr', url: base + '/img/good.jpg', width: 1200, height: 800 },
+      { id: 'nc-' + q.length, title: 'Fine for class, not for sale', creator: 'Nia Class', license: 'by-nc', license_version: '2.0', source: 'flickr', url: base + '/img/good.jpg', foreign_landing_url: 'https://example.org/nc', width: 1200, height: 800 },
+      { id: 'nd-' + q.length, title: 'May not be cropped', creator: 'No Body', license: 'by-nd', license_version: '4.0', source: 'flickr', url: base + '/img/good.jpg', width: 1200, height: 800 },
       { id: 'by-' + q.length, title: 'Credit needed', creator: 'Ben Credit', license: 'by', license_version: '4.0', source: 'flickr', url: base + '/img/huge.jpg', thumbnail: base + '/img/good.jpg', foreign_landing_url: 'https://example.org/by', width: 4000, height: 3000 },
       { id: 'html-' + q.length, title: 'Not an image', creator: 'Broken', license: 'cc0', source: 'flickr', url: base + '/img/notjpeg.jpg', width: 800, height: 600 },
     ] });

@@ -456,7 +456,7 @@ console.log('\nAudit: hostile and extreme content');
 const HOSTILE = 'A & B <tag> "q" \'s\' </w:t> ]]> <script>alert(1)</script> émoji 🎬 RTL مرحبا';
 const LONG_WORD = 'Donaudampfschifffahrtsgesellschaftskapitaensmuetzenhalter'.repeat(2);
 
-test('2.4 2.10', 'real photographs: only licences fit for class, portraits only from stock, every photo credited', () => {
+test('2.4 2.10', 'real photographs: only licences fit for class use, portraits only from stock, every photo credited', () => {
   const fs = require('node:fs');
   const os = require('node:os');
   const { spawn, execFileSync } = require('node:child_process');
@@ -465,8 +465,12 @@ test('2.4 2.10', 'real photographs: only licences fit for class, portraits only 
   const original = require(path.join(APP, 'photolib.js'));
 
   // the licence filter on its own
-  for (const ok of ['cc0', 'pdm', 'by', 'by-sa', 'pexels', 'CC0']) assert.ok(fetcher.acceptLicense(ok), ok + ' is refused although it allows class use');
-  for (const no of ['by-nc', 'by-nd', 'by-nc-sa', 'by-nc-nd', 'all rights reserved', '']) assert.ok(!fetcher.acceptLicense(no), no + ' is accepted although it forbids class use');
+  // own teaching is non-commercial: NC licences fit; cropping is adapting, so ND never does
+  for (const ok of ['cc0', 'pdm', 'by', 'by-sa', 'by-nc', 'by-nc-sa', 'pexels', 'CC0']) assert.ok(fetcher.acceptLicense(ok), ok + ' is refused although it allows use in one\'s own lessons');
+  for (const no of ['by-nd', 'by-nc-nd', 'all rights reserved', '']) assert.ok(!fetcher.acceptLicense(no), no + ' is accepted although it forbids cropping or any use');
+  // material that is sold: --strict leaves the non-commercial ones out
+  for (const no of ['by-nc', 'by-nc-sa']) assert.ok(!fetcher.acceptLicense(no, { strict: true }), no + ' is accepted in strict mode');
+  for (const ok of ['cc0', 'by', 'by-sa', 'pexels']) assert.ok(fetcher.acceptLicense(ok, { strict: true }), ok + ' is refused in strict mode');
 
   // the whole fetcher against a stand-in for Openverse and Pexels
   const port = 18000 + Math.floor(Math.random() * 1000);
@@ -487,7 +491,10 @@ test('2.4 2.10', 'real photographs: only licences fit for class, portraits only 
     let got = require(lib).photos;
     assert.ok(got.length >= 2, 'nothing was fetched: ' + got.length);
     assert.ok(got.every(p => p.subject === 'market'), 'an archive portrait was taken although archive people must not stand in for invented ones');
-    assert.ok(!got.some(p => /^ov-nc-/.test(p.id)), 'a non-commercial picture was taken');
+    assert.ok(got.some(p => /^ov-nc-/.test(p.id)), 'a non-commercial picture was refused although the use is non-commercial');
+    assert.ok(!got.some(p => /^ov-nd-/.test(p.id)), 'a no-derivatives picture was taken although the worksheet crops it');
+    const nc = got.find(p => /^ov-nc-/.test(p.id));
+    assert.ok(/CC BY-NC 2\.0/.test(nc.credit) && /Nia Class/.test(nc.credit), 'a CC BY-NC photo is not credited with author and licence');
     assert.ok(!got.some(p => /^ov-html-/.test(p.id)), 'something that is not a JPEG was kept');
     for (const p of got) {
       assert.ok(fs.existsSync(path.join(tmp, p.file)), p.id + ': the file is missing');
@@ -496,6 +503,12 @@ test('2.4 2.10', 'real photographs: only licences fit for class, portraits only 
     }
     const byEntry = got.find(p => /^ov-by-/.test(p.id));
     assert.ok(byEntry && /Ben Credit/.test(byEntry.credit) && /CC BY 4\.0/.test(byEntry.credit), 'a CC BY photo is not credited with author and licence');
+
+    // strict (material that is sold): the same search without the NC picture
+    const strictLib = path.join(tmp, 'strict.js');
+    run(['--source', 'openverse', '--strict', '--base', `http://127.0.0.1:${port}`, '--out', path.join(tmp, 'strict'), '--lib', strictLib, '--subjects', 'market', '--per', '4', '--quiet'], { PEXELS_API_KEY: '' });
+    const strictGot = require(strictLib).photos;
+    assert.ok(strictGot.length && !strictGot.some(p => /^ov-nc-/.test(p.id)), 'strict mode still takes a non-commercial picture');
 
     // Pexels: only with a key, and then portraits are allowed
     assert.throws(() => run(['--source', 'pexels', '--base', `http://127.0.0.1:${port}`, '--out', path.join(tmp, 'photos'), '--lib', lib, '--quiet'], { PEXELS_API_KEY: '' }), 'Pexels runs without a key');

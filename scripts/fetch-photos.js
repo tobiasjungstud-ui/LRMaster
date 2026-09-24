@@ -12,10 +12,13 @@
  * travel with the app, each with its author, source and licence.
  *
  * What is taken, and what is not:
- * - Only licences that allow printing and handing out in class: the Pexels
- *   licence, CC0, public domain, and CC BY / CC BY-SA with the credit kept.
- *   Anything "non-commercial" or "no derivatives" is left out — a worksheet
- *   crops and screens the picture, and schools are not always non-commercial.
+ * - Licences that allow printing and handing out in one's own lessons: the
+ *   Pexels licence, CC0, public domain, CC BY / CC BY-SA and — because the
+ *   material is used in class, not sold — CC BY-NC / CC BY-NC-SA, always with
+ *   the credit kept. `--strict` leaves the non-commercial ones out, for the
+ *   day material is sold or published by a publisher.
+ * - Never "no derivatives" (ND): a worksheet crops and screens the picture,
+ *   and that is an adaptation. Non-commercial use does not change that.
  * - Portraits only from stock sources (Pexels), where the people are models
  *   who posed for such use. A photograph of a real, identifiable person from
  *   an archive never stands in for an invented author or character.
@@ -67,11 +70,17 @@ const SUBJECT_QUERIES = {
   sky: ['cloudy sky', 'storm clouds', 'sunset sky'],
 };
 
-/** Licences a worksheet may use (printed, cropped, handed out). */
-function acceptLicense(license, version) {
+/**
+ * Licences a worksheet may use (printed, cropped, handed out in class).
+ * Non-commercial ones are fine for one's own teaching; `strict` is for
+ * material that is sold. "No derivatives" never is: cropping is adapting.
+ */
+function acceptLicense(license, opts) {
+  const strict = !!(opts && opts.strict);
   const l = String(license || '').toLowerCase().replace(/^cc[\s-]?/, '');
   if (['0', 'cc0', 'pdm', 'publicdomain', 'public domain', 'pexels', 'unsplash'].includes(l)) return true;
-  if (/nc|nd/.test(l)) return false;              // non-commercial / no derivatives
+  if (/nd/.test(l)) return false;
+  if (/nc/.test(l)) return !strict && (l === 'by-nc' || l === 'by-nc-sa');
   return l === 'by' || l === 'by-sa';
 }
 
@@ -103,9 +112,9 @@ function fromPexels(json, subject) {
 }
 
 /** An Openverse search result → library entries (without the file yet). */
-function fromOpenverse(json, subject) {
+function fromOpenverse(json, subject, opts) {
   const results = (json && Array.isArray(json.results)) ? json.results : [];
-  return results.filter(r => r && r.id && acceptLicense(r.license, r.license_version) && (r.url || r.thumbnail)).map(r => {
+  return results.filter(r => r && r.id && acceptLicense(r.license, opts) && (r.url || r.thumbnail)).map(r => {
     const creator = String(r.creator || '').trim() || 'unbekannt';
     const source = String(r.source || r.provider || 'Openverse').replace(/^\w/, c => c.toUpperCase());
     const label = licenseLabel(r.license, r.license_version);
@@ -131,14 +140,15 @@ function curl(args) {
   return execFileSync('curl', ['-sS', '--fail', '--max-time', '40', '-L'].concat(args), { maxBuffer: 32 * 1024 * 1024 });
 }
 
-function search(source, base, subject, query, key) {
+function search(source, base, subject, query, key, opts) {
   if (source === 'pexels') {
     const u = `${base}/v1/search?query=${encodeURIComponent(query)}&orientation=landscape&per_page=15`;
     return fromPexels(JSON.parse(curl(['-H', 'Authorization: ' + key, u]).toString('utf8')), subject);
   }
-  const u = `${base}/v1/images/?q=${encodeURIComponent(query)}&license=cc0,pdm,by,by-sa&category=photograph&mature=false&page_size=20`
+  const licences = (opts && opts.strict) ? 'cc0,pdm,by,by-sa' : 'cc0,pdm,by,by-sa,by-nc,by-nc-sa';
+  const u = `${base}/v1/images/?q=${encodeURIComponent(query)}&license=${licences}&category=photograph&mature=false&page_size=20`
     + (subject === 'portrait' ? '' : '&aspect_ratio=wide');
-  return fromOpenverse(JSON.parse(curl([u]).toString('utf8')), subject);
+  return fromOpenverse(JSON.parse(curl([u]).toString('utf8')), subject, opts);
 }
 
 /** Is this buffer a JPEG of a sensible size? */
@@ -175,11 +185,12 @@ function readLibrary(file) {
 }
 
 function parseArgs(argv) {
-  const o = { per: 4, refresh: false, subjects: null, source: null, base: null, out: DEFAULTS.out, lib: DEFAULTS.lib, quiet: false };
+  const o = { per: 4, refresh: false, strict: false, subjects: null, source: null, base: null, out: DEFAULTS.out, lib: DEFAULTS.lib, quiet: false };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--per') o.per = Math.max(1, Math.min(10, Number(argv[++i]) || 4));
     else if (a === '--refresh') o.refresh = true;
+    else if (a === '--strict') o.strict = true;
     else if (a === '--subjects') o.subjects = String(argv[++i] || '').split(',').map(s => s.trim()).filter(Boolean);
     else if (a === '--source') o.source = argv[++i];
     else if (a === '--base') o.base = argv[++i];
@@ -216,7 +227,7 @@ function main(argv) {
     for (const query of queries) {
       if (got >= want) break;
       let hits = [];
-      try { hits = search(source, base, subject, query, key); } catch (e) { log(`  ! ${subject} / "${query}": ${String(e.message || e).split('\n')[0]}`); continue; }
+      try { hits = search(source, base, subject, query, key, o); } catch (e) { log(`  ! ${subject} / "${query}": ${String(e.message || e).split('\n')[0]}`); continue; }
       for (const hit of hits) {
         if (got >= want) break;
         if (seen.has(hit.id)) continue;
