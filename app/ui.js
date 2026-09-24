@@ -94,8 +94,32 @@
     },
     async put(coll, obj) {
       if (this.backend === 'db') {
-        try { await caps.db.doc(coll + '/' + obj.id).set(stripId(obj)); return; }
-        catch (e) { console.warn('db write failed, using local', e); this.backend = 'local'; }
+        // a document may hold at most 256 KiB: the record of the prompts gives way first
+        const fitted = coll === 'materials' ? core.fitForStore(obj, 240000) : { value: obj, trimmed: false };
+        const write = () => caps.db.doc(coll + '/' + obj.id).set(stripId(fitted.value));
+        try { await write(); return; }
+        catch (e) {
+          const code = e && e.code;
+          if (code === 'unavailable') {
+            try { await new Promise(r => setTimeout(r, 400 + Math.random() * 600)); await write(); return; } catch (e2) { /* fall through */ }
+          }
+          // One refused write is not a broken store: only when the store itself
+          // is gone does the app switch to this browser's storage for good.
+          if (['not_granted', 'revoked', 'capability_disabled', 'capability_removed'].includes(code)) {
+            console.warn('db gone, using local', e); this.backend = 'local';
+          } else {
+            console.warn('db write refused', e);
+            toast(code === 'quota_exceeded' ? 'Der Speicher dieser Seite ist voll – lösche alte Materialien.'
+              : code === 'invalid_argument' ? 'Dieses Material ist zu gross für den Speicher dieser Seite und bleibt nur in diesem Browser.'
+              : 'Speichern gerade nicht möglich – das Material bleibt vorerst nur in diesem Browser.');
+            // keep a copy here so nothing is lost, without leaving the shared store
+            try {
+              const all = JSON.parse(localStorage.getItem('lr:' + coll) || '[]').filter(x => x.id !== obj.id).concat([fitted.value]);
+              localStorage.setItem('lr:' + coll, JSON.stringify(all));
+            } catch (e3) { /* nothing more to do */ }
+            return;
+          }
+        }
       }
       const all = await this.list(coll);
       const i = all.findIndex(x => x.id === obj.id);
@@ -1008,7 +1032,8 @@
     $('#out-teacher').innerHTML = render.renderTeacherHTML(m);
     renderLayout(m);
     $('#out-quality').innerHTML = renderQualityPanel(m);
-    $('#out-prompts').innerHTML = Object.entries(m.prompts || {}).map(([k, v]) => `<details><summary>${esc(k)} (${v.length} Zeichen)</summary><pre>${esc(v)}</pre></details>`).join('') || '<p class="muted">–</p>';
+    $('#out-prompts').innerHTML = (m.promptsTrimmed ? '<p class="muted">Die Prompts wurden beim Speichern gekürzt, damit das Material in den Speicher dieser Seite passt. Text, Aufgaben und Prüfungen sind vollständig.</p>' : '')
+      + (Object.entries(m.prompts || {}).map(([k, v]) => `<details><summary>${esc(k)} (${String(v).length} Zeichen)</summary><pre>${esc(v)}</pre></details>`).join('') || '<p class="muted">–</p>');
     $('#out-json').textContent = JSON.stringify({ content: m.content, worksheet: m.worksheet, plan: m.plan }, null, 2);
     const open = $('#btn-open-viewer');
     if (open) { open.hidden = false; open.onclick = () => openViewer(m, 'creator'); }

@@ -417,6 +417,47 @@ const SETTINGS = (extra) => `(() => {
     await page.close();
   }
 
+  console.log('\nBrowser audit: the shared store (2.7)');
+  {
+    const { page, errors } = await open({});
+    const r = await page.evaluate(async () => {
+      const ui = window.LR.ui;
+      // a store that behaves like the real one: over 256 KiB is refused
+      const written = [];
+      let refuseAll = false;
+      const fakeDb = {
+        doc: (path) => ({
+          set: async (data) => {
+            const size = new TextEncoder().encode(JSON.stringify(data)).length;
+            if (refuseAll) throw { code: 'resource_exhausted', message: 'slow down' };
+            if (size > 256 * 1024) throw { code: 'invalid_argument', message: 'document over 256 KiB' };
+            written.push({ path, size, trimmed: !!data.promptsTrimmed });
+          },
+          delete: async () => {},
+        }),
+        collection: () => ({ get: async () => ({ docs: [] }) }),
+      };
+      const savedCaps = ui.caps.db, savedBackend = ui.store.backend;
+      ui.caps.db = fakeDb; ui.store.backend = 'db';
+      const m = window.LR.fixture.material({ createWorksheet: true }, 'reading');
+      m.id = 'mat_big';
+      m.prompts = { content: 'C'.repeat(150000), review1: 'R'.repeat(150000) };
+      await ui.store.put('materials', m);
+      const afterBig = { backend: ui.store.backend, written: written.slice() };
+      // a refused write (e.g. too many at once) does not leave the shared store
+      refuseAll = true;
+      await ui.store.put('materials', Object.assign({}, m, { id: 'mat_two', prompts: {} }));
+      const afterRefused = ui.store.backend;
+      ui.caps.db = savedCaps; ui.store.backend = savedBackend;
+      return { afterBig, afterRefused, inMemory: m.prompts.content.length };
+    });
+    check('a large material is stored in the shared store, its prompts shortened', r.afterBig.written.length === 1 && r.afterBig.written[0].size <= 256 * 1024 && r.afterBig.written[0].trimmed, JSON.stringify(r));
+    check('the material on screen keeps its full prompts', r.inMemory === 150000, JSON.stringify(r));
+    check('one refused write does not switch the app away from the shared store', r.afterBig.backend === 'db' && r.afterRefused === 'db', JSON.stringify(r));
+    check('storing raises no page error', errors.length === 0, errors[0]);
+    await page.close();
+  }
+
   console.log('\nBrowser audit: hostile text in the interface (2.10)');
   {
     const { page, errors } = await open({ scenario: 'xss' });

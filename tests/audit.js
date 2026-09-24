@@ -846,6 +846,32 @@ test('2.11 R9', 'the page says how it is encoded, and no pattern depends on it',
   assert.deepEqual(offenders, [], 'pattern with a literal non-ASCII character in a character class');
 });
 
+test('2.7', 'a stored material always fits into one document of the store — the prompts give way, never the lesson', () => {
+  const m = goodMaterial({ createWorksheet: true, preTask: true, postTask: true }, 'reading');
+  m.id = 'big';
+  m.prompts = {
+    content: 'C'.repeat(90000), questions: 'Q'.repeat(70000), review1: 'R'.repeat(60000), layout: 'L'.repeat(40000), odd: 42,
+  };
+  const before = JSON.stringify({ content: m.content, worksheet: m.worksheet, quality: m.quality, plan: m.plan, settings: m.settings });
+  assert.ok(core.storedSize(m) > 256 * 1024, 'the test material is not too large to begin with');
+  const r = core.fitForStore(m, 240000);
+  assert.ok(r.trimmed && r.size <= 240000, 'the material still does not fit: ' + r.size);
+  assert.ok(core.storedSize(r.value) <= 256 * 1024, 'the stored document is over the limit of the store');
+  assert.equal(JSON.stringify({ content: r.value.content, worksheet: r.value.worksheet, quality: r.value.quality, plan: r.value.plan, settings: r.value.settings }), before, 'fitting touched the lesson itself');
+  assert.ok(r.value.promptsTrimmed === true, 'a shortened record is not marked as such');
+  assert.ok(r.value.prompts.content.startsWith('CCCC') && /gekürzt beim Speichern/.test(r.value.prompts.content), 'a shortened prompt loses its beginning or its note');
+  assert.equal(r.value.prompts.odd, 42, 'a value that is not text is changed');
+  assert.ok(m.prompts.content.length === 90000 && !m.promptsTrimmed, 'fitting changed the material in memory instead of a copy');
+  // a small material stays as it is, and the same object
+  const small = goodMaterial({}, 'reading');
+  small.prompts = { content: 'short' };
+  assert.equal(core.fitForStore(small, 240000).value, small, 'a material that fits is copied or changed');
+  // when shortening is not enough, the record is left out — still not the lesson
+  const tight = core.fitForStore(m, core.storedSize(Object.assign({}, m, { prompts: {} })) + 2000);
+  assert.ok(Object.values(tight.value.prompts).every(v => typeof v !== 'string' || v.length < 200 || /gekürzt/.test(v)), 'an oversize record survives');
+  assert.equal(tight.value.content, m.content, 'the lesson was dropped to make room');
+});
+
 test('2.11', 'every element the app writes into really exists', () => {
   const fs = require('node:fs');
   const ui = fs.readFileSync(path.join(APP, 'ui.js'), 'utf8');

@@ -1386,7 +1386,51 @@
 
   const SIMPLE_MODE_KEYS = SCHEMA.filter(s => s.simple).map(s => s.key);
 
+  /* ------------------------------------------------------------------ */
+  /* Keeping a stored material inside what the store accepts              */
+  /* ------------------------------------------------------------------ */
+
+  /** Bytes of a value as the store counts them (UTF-8 JSON). */
+  function storedSize(v) {
+    const json = JSON.stringify(v === undefined ? null : v);
+    if (typeof TextEncoder !== 'undefined') return new TextEncoder().encode(json).length;
+    return Buffer.byteLength(json, 'utf8');
+  }
+
+  /**
+   * A copy of a material that fits into one stored document. The store takes
+   * at most 256 KiB per document; a material that is larger is refused, and
+   * with it the whole lesson. What can give way is the record of the prompts
+   * sent to Claude (kept for transparency, often more than half the size):
+   * the longest ones are shortened first, keeping their beginning, until the
+   * material fits; only if that is not enough are they left out. The text,
+   * the worksheet, the checks and the pictures are never touched.
+   */
+  function fitForStore(material, budget) {
+    const limit = budget || 240000;
+    if (!material || typeof material !== 'object') return { value: material, trimmed: false, size: storedSize(material) };
+    let size = storedSize(material);
+    if (size <= limit || !material.prompts || typeof material.prompts !== 'object') return { value: material, trimmed: false, size };
+    const copy = Object.assign({}, material, { prompts: Object.assign({}, material.prompts) });
+    const cut = (text, keep) => text.slice(0, keep) + `\n\n[… gekürzt beim Speichern: ${text.length - keep} von ${text.length} Zeichen weggelassen]`;
+    for (let guard = 0; guard < 200 && size > limit; guard++) {
+      const [key, text] = Object.entries(copy.prompts).filter(([, v]) => typeof v === 'string').sort((a, b) => b[1].length - a[1].length)[0] || [];
+      if (!key || text.length <= 2500) break;
+      const original = String(material.prompts[key] || text);
+      const keep = Math.max(2000, Math.floor(Math.min(text.length, original.length) * 0.5));
+      copy.prompts[key] = cut(original, Math.min(keep, original.length));
+      size = storedSize(copy);
+    }
+    if (size > limit) {
+      copy.prompts = Object.fromEntries(Object.keys(material.prompts).map(k => [k, '[beim Speichern weggelassen – das Material war sonst zu gross]']));
+      size = storedSize(copy);
+    }
+    copy.promptsTrimmed = true;
+    return { value: copy, trimmed: true, size };
+  }
+
   return {
+    storedSize, fitForStore,
     CEFR_BANDS, SKILLS, SKILL_KEYS, HIGHER_ORDER_TYPES, QUESTION_FORMATS, FORMAT_KEYS, TEXT_TYPES,
     EMOTION_TAGS, PRE_TASK_TYPES, PRE_TASK_TYPE_KEYS, POST_TASK_TYPES, POST_TASK_TYPE_KEYS, TASK_PHASES,
     SOCIAL_FORMS, SOCIAL_FORM_KEYS, PRE_TASK_MODES,
