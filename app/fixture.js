@@ -166,6 +166,7 @@
         photoSubject: 'classroom', sidebarSubjects: ['sport', 'food'], attachmentSubject: 'still',
         weatherNote: 'Cloudy, 14°C', indexItems: ['Sport 12', 'Letters 21'], portraitName: 'Fixture Reporter',
         signatureLines: ['Fixture role', 'Fixture phone'], photoAfter: '2',
+        composition: { lead: 'wide', columns: 3, pullQuote: 'She said she would trust him with anything after that day.', crossheads: [{ before: 2, text: 'A lost phone' }], figure: { after: 1, subject: 'park', caption: 'Fixture figure caption.', size: 'column' }, density: 'normal' },
         modules: [
           { type: 'cookie', slot: 'top', heading: 'Fixture consent line about cookies on this site.', cta: 'Accept all', meta: 'Settings', lines: [], items: [], subject: '', shape: '' },
           { type: 'ad_banner', slot: 'inline', label: 'Fixture Brand', heading: 'Fixture advertisement headline', lines: ['Fixture advertisement line.'], items: [], cta: 'Fixture CTA', meta: '', subject: '', shape: '' },
@@ -428,5 +429,14 @@
 };
   function levelSample(name) { return JSON.parse(JSON.stringify(LEVEL_SAMPLES[name] || LEVEL_SAMPLES.anchor)); }
 
-  return { textbooks, content, worksheet, material, meta, META, levelSample, LEVEL_SAMPLES };
+  /** A small but real PNG (2×2, opaque), for tests that embed a picture. */
+  function png() {
+    const b64 = 'iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAFklEQVQIHWP8//8/AwMDEwMDAwMDAwAkBgMB1p3sWwAAAABJRU5ErkJggg==';
+    if (typeof Buffer !== 'undefined') return new Uint8Array(Buffer.from(b64, 'base64'));
+    const bin = atob(b64); const out = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+    return out;
+  }
+
+  return { textbooks, content, worksheet, material, meta, META, levelSample, LEVEL_SAMPLES, png };
 });

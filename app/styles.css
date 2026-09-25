@@ -420,6 +420,17 @@ mark.vocab { background: var(--mark); color: inherit; border-radius: 3px; paddin
 .task-preview .bad { color: var(--bad); }
 
 /* Authentic layout: the text as a screenshot of its medium */
+/* the text as its medium, inside the sheet: one composed page, real text */
+.medium-sheet { margin: 0 0 1rem; break-inside: avoid; }
+.medium-sheet svg { display: block; width: 100%; height: auto; border-radius: 4px; }
+/* a printed page (newspaper, magazine, book) fills the sheet to its edges and,
+   when printed, gets a page of its own — the photocopy of the real thing */
+.vw-sheet .medium-sheet[data-medium="print"] { margin-left: calc(-1 * var(--paper-pad) * var(--zoom)); margin-right: calc(-1 * var(--paper-pad) * var(--zoom)); }
+@media print { .medium-sheet[data-medium="print"] { break-before: page; break-after: page; margin-left: -1.2cm; margin-right: -1.2cm; } }
+.medium-sheet[data-medium="page"] svg, .medium-sheet[data-medium="thread"] svg, .medium-sheet[data-medium="mail"] svg { box-shadow: 0 6px 24px rgba(15, 23, 42, .16); }
+.medium-sheet[data-medium="chat"] svg { max-width: 420px; margin: 0 auto; box-shadow: 0 6px 24px rgba(15, 23, 42, .16); }
+.medium-credits { font-size: .72rem; color: var(--muted); margin-top: .35rem; text-align: right; }
+@media print { .medium-sheet svg { box-shadow: none; } }
 .layout-note { color: var(--muted); font-size: .9rem; margin: 0 0 .6rem; }
 .layout-proportions { font-size: .85rem; margin: .7rem 0 0; padding: .5rem .7rem; border-radius: 8px; background: var(--panel-2, #f4f6f9); border-left: 3px solid var(--muted); }
 .layout-proportions.qc-pass { border-left-color: var(--good); }

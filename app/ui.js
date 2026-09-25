@@ -1059,6 +1059,9 @@
     document.body.dataset.kind = m.kind;
     showView('viewer');
     renderViewer();
+    // the sheet sets the medium with the fonts of the page; once they have
+    // loaded, the words are measured again so nothing overlaps
+    if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { if (viewer.material === m && app.view === 'viewer') renderViewer(); }).catch(() => {});
   }
 
   /** Everything the viewer shows: bar, rail, sheet and the picture of the medium. */
@@ -1615,21 +1618,48 @@
     return `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>${esc(title)}</title><style>${css}</style></head><body>${bodyHtml}</body></html>`;
   }
 
+  /**
+   * The page of the medium as PNG bytes for the Word export — drawn at print
+   * resolution (twice the model, within what a canvas allows), with the
+   * teacher's own pictures loaded first.
+   */
+  async function mediumPng(m) {
+    if (!m || m.kind !== 'reading' || !m.layout || !m.layout.chrome) return null;
+    try {
+      const canvas = document.createElement('canvas');
+      const model = mock.buildModel(m, m.layout.chrome, { measure: mock.canvasMeasure(canvas) });
+      if (mock.validate(model).length) return null;
+      const own = [...new Set(model.blocks.filter(b => b.type === 'photo' && b.own).map(b => b.own))];
+      if (window.LR.photo) { await window.LR.photo.preload(); await Promise.all(own.map(src => window.LR.photo.loadSrc(src))); }
+      const k = mock.canvasScale(model, 2);
+      canvas.width = Math.round(model.width * k); canvas.height = Math.round(model.height * k);
+      const ctx = canvas.getContext('2d');
+      ctx.scale(k, k);
+      mock.draw(ctx, model);
+      // JPEG at twice the size: sharp enough to print, a fraction of the PNG
+      const blob = await new Promise(res => canvas.toBlob(res, 'image/jpeg', 0.9));
+      if (!blob) return null;
+      return { png: new Uint8Array(await blob.arrayBuffer()), type: 'jpeg', width: model.width, height: model.height };
+    } catch (e) { console.warn('LRMaster: no picture of the medium for Word', e); return null; }
+  }
+
   async function download(kind, variant) {
     const m = app.material; if (!m) return;
     const slug = word.slug(m.title);
     let filename, data;
     if (kind === 'docx-student' || kind === 'docx-teacher') {
       const which = kind === 'docx-student' ? 'student' : 'teacher';
+      // the reading text goes in as the page of its medium, drawn here
+      const opts = { medium: await mediumPng(m) };
       // Never hand out a document that would open as damaged.
-      const problems = ooxml.validate(word.partsFor(m, which, variant));
+      const problems = ooxml.validate(word.partsFor(m, which, variant, opts));
       if (problems.length) {
         console.error('LRMaster: invalid Word package', problems);
         toast('Word-Datei konnte nicht erzeugt werden: ' + problems[0]);
         return;
       }
       filename = word.filename(m, which, variant);
-      data = new Blob([which === 'teacher' ? word.buildTeacher(m) : word.buildStudent(m, variant)],
+      data = new Blob([which === 'teacher' ? word.buildTeacher(m, opts) : word.buildStudent(m, variant, opts)],
         { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
     } else if (kind === 'png') {
       const canvas = $('#layout-canvas') || renderLayout(m);
@@ -2232,5 +2262,5 @@
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init); else init();
 
-  window.LR.ui = { app, generate, produceWorksheet, openViewer, renderViewer, markPageBreaks, syncViewerOffsets, buildViewerRail, buildViewerDownloads, paintLayoutCanvas, proportionNote, renderHotspots, openPictureEditor, replacePicture, resetPicture, prepareImage, viewer, store, caps, showView, openCreator, importState, detectUnits, fetchTopics, confirmImport, newTextbook, askText, askConfirm, clone, parsePasted, initLevelPage, download, renderOutput, renderQualityPanel, renderTaskPreview, refreshDerived, renderLayout, renderSetupBar, openCustomSetup, backToTemplates, redrawTemplate, templateState, buildForm };
+  window.LR.ui = { app, generate, produceWorksheet, openViewer, renderViewer, markPageBreaks, syncViewerOffsets, buildViewerRail, buildViewerDownloads, paintLayoutCanvas, proportionNote, mediumPng, renderHotspots, openPictureEditor, replacePicture, resetPicture, prepareImage, viewer, store, caps, showView, openCreator, importState, detectUnits, fetchTopics, confirmImport, newTextbook, askText, askConfirm, clone, parsePasted, initLevelPage, download, renderOutput, renderQualityPanel, renderTaskPreview, refreshDerived, renderLayout, renderSetupBar, openCustomSetup, backToTemplates, redrawTemplate, templateState, buildForm };
 })();

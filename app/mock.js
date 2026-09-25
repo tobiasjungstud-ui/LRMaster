@@ -75,6 +75,7 @@
         ['photoSubject', 'what the picture at the top shows — one key from the list of picture subjects'],
         ['sidebarSubjects', 'an array with one picture subject per headline in the box beside the text'],
         ['modules', 'everything else that stands on this page — see "The rest of the page"'],
+        ['composition', 'your plan for the page itself — see "Composition"'],
       ],
       required: ['url', 'siteName', 'navItems', 'actions', 'photoSubject'],
     },
@@ -126,6 +127,7 @@
         ['indexItems', 'an array of 2–4 pointers to other pages in the running head, e.g. "Sport 12"'],
         ['portraitName', 'the name under the small portrait beside the article, empty if the text has no author'],
         ['modules', 'everything else that stands on this page — see "The rest of the page"'],
+        ['composition', 'your plan for the page itself — see "Composition"'],
       ],
       required: ['publication', 'publicationLine', 'photoCaption', 'photoSubject'],
     },
@@ -639,7 +641,7 @@
       draw(b, x, y, w, mod, S) {
         const qf = { family: SERIF, size: 17, style: 'italic' };
         b.line(x, y + 6, x + w, y + 6, { color: S.accent, width: 3 });
-        const end = b.para(x + 16, y + 48, clipText(mod.heading || mod.lines[0] || '', 160), qf, w - 32, { color: S.accent, lineHeight: 24 });
+        const end = b.para(x + 16, y + 48, clipText(mod.heading || mod.lines[0] || '', 160), qf, w - 32, { color: S.accent, lineHeight: 24, role: 'quote' });
         b.text(x + 16, end + 18, upper(mod.meta || mod.label || ''), { family: SANS, size: 9, weight: 700 }, { color: '#B45309', letterSpacing: 1.2 });
         b.line(x, end + 30, x + w, end + 30, { color: '#C7C2B5' });
         return end + 40 - y;
@@ -1157,8 +1159,20 @@
     b.line(PAD, y, PAD + colW, y, { color: LINE });
     y += 28;
 
-    // the lead picture with its caption
-    if (d.kicker || d.sidebar) {
+    // the lead picture with its caption — across the column, or set into the
+    // first paragraphs with the text running around it, or none: the plan
+    const comp = composition(chrome, m.content.paragraphs || [], 'page');
+    let inset = null;
+    if ((d.kicker || d.sidebar) && comp.lead === 'inset') {
+      const iw = Math.round(colW * 0.46), ih = Math.round(iw * 0.72);
+      const ix = PAD + colW - iw;
+      b.photo(ix, y + 6, iw, ih, { seed: photo.hashOf(m.content.title || 'lead'), subject: chrome.photoSubject, colour: true });
+      const leadCredit = (b.last && b.last.credit) || chrome.captionCredit;
+      let cy = y + 6 + ih + 14;
+      if (chrome.photoCaption) cy = b.para(ix, cy, chrome.photoCaption, ui(11.5), iw, { color: MUTED, lineHeight: 16 });
+      if (leadCredit) { b.text(ix + iw, cy + 2, leadCredit, ui(10), { color: '#94A3B8', align: 'right' }); cy += 14; }
+      inset = { top: y, bottom: cy + 6, w: iw };
+    } else if ((d.kicker || d.sidebar) && comp.lead !== 'none') {
       const ph = Math.round(colW * 0.46);
       b.photo(PAD, y, colW, ph, { seed: photo.hashOf(m.content.title || 'lead'), subject: chrome.photoSubject, colour: true });
       const leadCredit = (b.last && b.last.credit) || chrome.captionCredit;
@@ -1179,25 +1193,57 @@
     const breakAt = paragraphs.length >= 4
       ? inlineMods.map((_, i) => Math.round((paragraphs.length * (i + 1)) / (inlineMods.length + 1)))
       : inlineMods.map(() => paragraphs.length);
+    const lineH = comp.density === 'dense' ? 25 : comp.density === 'airy' ? 30 : 27;
+    const paraGap = comp.density === 'dense' ? 14 : comp.density === 'airy' ? 22 : 18;
+    const pull = comp.pullQuote || meta.pullQuote || '';
+    // the pull quote stands in the middle of the piece, where an editor puts it
+    const pullAt = pull && paragraphs.length >= 3 ? Math.floor(paragraphs.length / 2) : -1;
+    const drawPull = () => {
+      b.text(PAD, y + 48, '\u201c', { family: d.title, size: 64, weight: 700 }, { color: d.accent + '55' });
+      y = b.para(PAD + 46, y + 34, pull, { family: d.body, size: 21, style: 'italic', weight: 600 }, colW - 60, { color: d.accent, lineHeight: 30, role: 'quote' });
+      b.line(PAD, y + 16, PAD + 70, y + 16, { color: d.accent, width: 3 });
+      y += 40;
+    };
+    let cut = inset; // a picture the text runs around
+    let pullDue = false; // the pull quote waits until the text has passed an inset picture
     paragraphs.forEach((p, i) => {
+      if (comp.heads[i]) y = b.para(PAD, y + 10, comp.heads[i], { family: d.title, size: 21, weight: 700 }, colW, { color: INK, lineHeight: 27 }) + 6;
       const heading = p.length < 60 && !/[.!?]$/.test(p.trim());
       if (heading) {
         y = b.para(PAD, y + 8, p, { family: d.title, size: 21, weight: 700 }, colW, { color: INK, role: 'body' }) + 8;
+      } else if (cut && y < cut.bottom) {
+        y = paraAround(b, PAD, y + bodyFont.size, p, bodyFont, colW, cut, { color: INK, role: 'body', lineHeight: lineH, measure }) - bodyFont.size + paraGap;
       } else if (i === 0 && d.body === SERIF && p.length > 140) {
-        y = dropCapPara(b, PAD, y, p, bodyFont, colW, d.title, measure, d.accent) + 18;
+        y = dropCapPara(b, PAD, y, p, bodyFont, colW, d.title, measure, d.accent) + paraGap;
       } else {
-        y = b.para(PAD, y, p, bodyFont, colW, { color: INK, role: 'body', lineHeight: 27 }) + 18;
+        y = b.para(PAD, y, p, bodyFont, colW, { color: INK, role: 'body', lineHeight: lineH }) + paraGap;
       }
+      if (cut && y >= cut.bottom) { y = Math.max(y, cut.bottom + 6); cut = null; }
+      // the second picture: across the column with its caption, or set in at
+      // the right with the following paragraphs running around it
+      if (comp.figure && comp.figure.after === i + 1) {
+        if (comp.figure.size === 'wide') {
+          const fh = Math.round(colW * 0.52);
+          b.photo(PAD, y + 4, colW, fh, { seed: photo.hashOf(comp.figure.subject + i), subject: comp.figure.subject, colour: true });
+          y += fh + 18;
+          if (comp.figure.caption) y = b.para(PAD, y, comp.figure.caption, ui(12), colW - 40, { color: MUTED, lineHeight: 17 }) + 10;
+        } else {
+          const fw = Math.round(colW * 0.44), fh = Math.round(fw * 0.7);
+          b.photo(PAD + colW - fw, y + 4, fw, fh, { seed: photo.hashOf(comp.figure.subject + i), subject: comp.figure.subject, colour: true });
+          let cy = y + 4 + fh + 12;
+          if (comp.figure.caption) cy = b.para(PAD + colW - fw, cy, comp.figure.caption, ui(11.5), fw, { color: MUTED, lineHeight: 16 });
+          cut = { top: y, bottom: cy + 8, w: fw };
+        }
+      }
+      if (i === pullAt) pullDue = true;
+      // the quote is set only when no picture is beside the text — a quote
+      // squeezed next to an inset picture leaves the page half empty
+      if (pullDue && !cut) { drawPull(); pullDue = false; }
       const here = inlineMods.filter((_, k) => breakAt[k] === i + 1);
-      if (here.length) y = placeModules(b, here, PAD, y + 10, colW, S, { max: 2 }) + 14;
+      if (here.length) { if (cut) { y = Math.max(y, cut.bottom + 6); cut = null; } y = placeModules(b, here, PAD, y + 10, colW, S, { max: 2 }) + 14; }
     });
-
-    if (meta.pullQuote) {
-      b.text(PAD, y + 48, '“', { family: d.title, size: 64, weight: 700 }, { color: d.accent + '55' });
-      y = b.para(PAD + 46, y + 34, meta.pullQuote, { family: d.body, size: 21, style: 'italic', weight: 600 }, colW - 60, { color: d.accent, lineHeight: 30 });
-      b.line(PAD, y + 16, PAD + 70, y + 16, { color: d.accent, width: 3 });
-      y += 40;
-    }
+    if (cut) y = Math.max(y, cut.bottom + 6);
+    if (pull && (pullAt < 0 || pullDue)) drawPull();
 
     if (list(meta.tags).length) {
       let tx = PAD;
@@ -1665,12 +1711,16 @@
    * ones under the photo, the last one at the top), filling each to the same
    * baseline — the way a page is actually made up.
    */
-  function flowUneven(paragraphs, font, colW, cols, measure, lh, tops, indent, reserve) {
+  function flowUneven(paragraphs, font, colW, cols, measure, lh, tops, indent, reserve, extras) {
     const kept = (c) => (reserve && reserve[c]) || 0;
+    const ex = extras || {};
     const items = [];
     paragraphs.forEach((p, pi) => {
+      // a crosshead the editor put before this paragraph, a figure after it
+      if (ex.heads && ex.heads[pi]) items.push({ kind: 'head', text: ex.heads[pi], h: lh * 1.9, pi });
       const ls = wrap(p, font, colW - indent, measure);
-      ls.forEach((l, i) => items.push({ text: l, first: i === 0, last: i === ls.length - 1, pi }));
+      ls.forEach((l, i) => items.push({ kind: 'line', text: l, first: i === 0, last: i === ls.length - 1, pi }));
+      if (ex.figures && ex.figures[pi]) items.push({ kind: 'figure', fig: ex.figures[pi], h: ex.figures[pi].h, pi });
       items.push({ gap: true });
     });
     while (items.length && items[items.length - 1].gap) items.pop();
@@ -1678,7 +1728,7 @@
     // the height at which the columns come out even: everything that has to be
     // set, spread over the columns, measured from where each one starts. The
     // fill starts here, so no column is left nearly empty while another is full.
-    let need = items.reduce((sum, it) => sum + (it.gap ? lh * 0.5 : lh), 0);
+    let need = items.reduce((sum, it) => sum + (it.gap ? lh * 0.5 : (it.h || lh)), 0);
     for (let c = 0; c < cols; c++) need += kept(c);
     const even = (need + tops.reduce((a, t) => a + t, 0)) / cols;
     const tryFill = (bottom) => {
@@ -1686,14 +1736,14 @@
       let col = 0, y = tops[0];
       for (let i = 0; i < items.length; i++) {
         const it = items[i];
-        const step = it.gap ? lh * 0.5 : lh;
-        if (!it.gap && y + lh > bottom - kept(col)) {
+        const h = it.gap ? lh * 0.5 : (it.h || lh);
+        if (!it.gap && y + h > bottom - kept(col)) {
           col += 1;
           if (col >= cols) return null;
           y = tops[col];
         }
-        if (!it.gap) placed.push({ text: it.text, col, y, first: it.first, last: it.last, pi: it.pi });
-        y += step;
+        if (!it.gap) placed.push({ kind: it.kind, text: it.text, fig: it.fig, h, col, y, first: it.first, last: it.last, pi: it.pi });
+        y += h;
       }
       return placed;
     };
@@ -1704,6 +1754,63 @@
       bottom += lh / 2;
     }
     return { placed: tryFill(bottom) || [], bottom };
+  }
+
+  /** Is `quote` a piece of `text`, word for word (quotes, dashes and spacing aside)? */
+  function verbatim(text, quote) {
+    const norm = (t) => String(t || '').toLowerCase().replace(/[\u2018\u2019\u201c\u201d]/g, "'").replace(/[\u2013\u2014]/g, '-').replace(/[^a-z0-9' -]+/g, ' ').replace(/\s+/g, ' ').trim();
+    const q = norm(quote);
+    return q.length >= 12 && norm(text).includes(q);
+  }
+
+  /**
+   * The editor's plan for the page (chrome.composition), checked against the
+   * text it is for: a pull quote only when it is a sentence of the text, a
+   * crosshead only before a paragraph that exists, a figure only after one.
+   * Everything else is left as the medium's default.
+   */
+  function composition(chrome, paragraphs, kind) {
+    const raw = chrome && chrome.composition && typeof chrome.composition === 'object' ? chrome.composition : {};
+    const n = list(paragraphs).length;
+    const text = list(paragraphs).join(' ');
+    const leads = kind === 'print' ? ['wide', 'column', 'none'] : ['wide', 'inset', 'none'];
+    const heads = {};
+    for (const h of list(raw.crossheads).slice(0, 3)) {
+      const before = Number(h && h.before);
+      const t = String((h && h.text) || '').replace(/\s+/g, ' ').trim();
+      if (before >= 1 && before < n && t && t.length <= 40 && t.split(' ').length <= 5) heads[before] = t;
+    }
+    const f = raw.figure && typeof raw.figure === 'object' ? raw.figure : null;
+    const figure = f && Number(f.after) >= 1 && Number(f.after) < n && photo.isSubject(String(f.subject || '').toLowerCase())
+      ? { after: Number(f.after), subject: String(f.subject).toLowerCase(), caption: String(f.caption || '').replace(/\s+/g, ' ').trim().slice(0, 140), size: f.size === 'wide' ? 'wide' : 'column' }
+      : null;
+    return {
+      lead: leads.includes(raw.lead) ? raw.lead : 'wide',
+      columns: Math.max(2, Math.min(4, Math.round(Number(raw.columns)) || 0)) || 0,
+      pullQuote: verbatim(text, raw.pullQuote) ? String(raw.pullQuote).trim() : '',
+      heads, figure,
+      density: ['dense', 'normal', 'airy'].includes(raw.density) ? raw.density : 'normal',
+    };
+  }
+
+  /**
+   * A paragraph that runs around a picture: the lines beside it are set
+   * narrower, the lines below it take the full measure again — what makes an
+   * inset picture look placed rather than dropped in.
+   */
+  function paraAround(b, x, y, text, font, colW, cut, o) {
+    const words = String(text || '').split(/\s+/).filter(Boolean);
+    const lh = (o && o.lineHeight) || font.size * 1.45;
+    const measure = (o && o.measure) || approxMeasure;
+    let line = '';
+    const widthAt = (yy) => (cut && yy - lh < cut.bottom && yy > cut.top - lh ? colW - cut.w - 22 : colW);
+    const flush = () => { if (line) { b.text(x, y, line, font, o); y += lh; line = ''; } };
+    for (const w of words) {
+      const next = line ? line + ' ' + w : w;
+      if (line && measure(next, font) > widthAt(y)) { flush(); line = w; } else line = next;
+    }
+    flush();
+    return y;
   }
 
   /** Newspaper or magazine page, in the density of a real paper. */
@@ -1720,7 +1827,10 @@
     // page, it is a mistake. So the number of columns follows the amount of
     // text: a column has to carry at least MIN_COL_LINES lines, otherwise the
     // page is set in fewer, fuller columns.
-    const cols = columnsForText(m.content.paragraphs || [], { family: SERIF, size: 14.5 }, inner, gutter, measure, d.columns || 3, 2);
+    // the editor's plan for this page, checked against the text (crossheads,
+    // a second picture, the pull quote, the number of columns)
+    const comp = composition(chrome, m.content.paragraphs || [], 'print');
+    const cols = columnsForText(m.content.paragraphs || [], { family: SERIF, size: 14.5 }, inner, gutter, measure, comp.columns || d.columns || 3, 2);
     const colW = (inner - gutter * (cols - 1)) / cols;
     const accent = d.pressAccent || '#1B4E8F';
     const warm = d.pressWarm || '#C2410C';
@@ -1800,8 +1910,8 @@
 
     // press photo with a caption bar, spanning the first columns
     let photoBottom = y;
-    if (d.photo !== false) {
-      const photoW = cols >= 3 ? colW * 2 + gutter : inner;
+    if (d.photo !== false && comp.lead !== 'none') {
+      const photoW = comp.lead === 'column' ? colW : cols >= 3 ? colW * 2 + gutter : inner;
       const photoH = Math.round(photoW * 0.44);
       b.photo(L, y, photoW, photoH, { seed: photo.hashOf(m.content.title || 'lead'), subject: chrome.photoSubject, colour: d.photoColour !== false, print: true, halftone: true });
       const leadCredit = (b.last && b.last.credit) || chrome.captionCredit;
@@ -1815,17 +1925,18 @@
 
     // body: numbered paragraphs in columns, with hairlines between them
     const font = { family: SERIF, size: 14.5 };
-    const lh = 20.5;
+    const lh = comp.density === 'dense' ? 19.5 : comp.density === 'airy' ? 22 : 20.5;
     const indent = 16;
     // the first columns start under the photo, the last one beside it
     const tops = [];
-    for (let c = 0; c < cols; c++) tops.push(cols >= 3 && c === cols - 1 ? y : photoBottom);
+    const leadCols = comp.lead === 'column' ? 1 : cols >= 3 ? cols - 1 : cols;
+    for (let c = 0; c < cols; c++) tops.push(c >= leadCols ? y : photoBottom);
     // The pull quote is not what is left over at the foot of the page; it is a
     // part of the page. Its height is kept free in the last column before the
     // text is poured, so the columns still come out even around it.
     const paras = m.content.paragraphs || [];
     const qFont = { family: SERIF, size: 17, style: 'italic' };
-    const quote = String((m.content.meta || {}).pullQuote || '');
+    const quote = comp.pullQuote || String((m.content.meta || {}).pullQuote || '');
     const qLines = quote ? wrap(quote, qFont, colW - 36, measure) : [];
     let bodyLines = 0;
     for (const p of paras) bodyLines += wrap(p, font, colW - indent, measure).length;
@@ -1841,12 +1952,32 @@
     const colH = colMods.length ? Math.min(colRoom, 340) : 0;
     const reserve = [];
     for (let c = 0; c < cols; c++) reserve.push(c === cols - 1 ? (useQuote ? quoteH : 0) + colH : 0);
-    const flow = flowUneven(paras, font, colW, cols, measure, lh, tops, indent, reserve);
+    // the second picture and the crossheads go into the flow of the columns
+    const capFont2 = { family: SANS, size: 10.5 };
+    const figures = {};
+    if (comp.figure) {
+      const capLines = comp.figure.caption ? wrap(comp.figure.caption, capFont2, colW, measure) : [];
+      figures[comp.figure.after] = { subject: comp.figure.subject, capLines, h: Math.round(colW * 0.62) + capLines.length * 14 + 26 };
+    }
+    const flow = flowUneven(paras, font, colW, cols, measure, lh, tops, indent, reserve, { heads: comp.heads, figures });
     for (const l of flow.placed) {
       const x = L + l.col * (colW + gutter);
       const yy = l.y + lh;
-      if (l.first) b.text(x, yy, String(l.pi + 1), { family: SANS, size: 11, weight: 700 }, { color: warm });
-      const lx = x + (l.first ? indent : 0), lw = colW - (l.first ? indent : 0);
+      if (l.kind === 'head') {
+        b.line(x, l.y + 6, x + 34, l.y + 6, { color: accent, width: 2 });
+        b.text(x, l.y + lh * 1.35, upper(l.text), { family: SANS, size: 11.5, weight: 700 }, { color: INK, letterSpacing: 1 });
+        continue;
+      }
+      if (l.kind === 'figure') {
+        const ph = Math.round(colW * 0.62);
+        b.photo(x, l.y + 8, colW, ph, { seed: photo.hashOf(String(l.fig.subject) + l.pi), subject: l.fig.subject, colour: d.photoColour !== false, print: true, halftone: true });
+        l.fig.capLines.forEach((cl, i) => b.text(x, l.y + 8 + ph + 16 + i * 14, cl, capFont2, { color: '#44403C' }));
+        continue;
+      }
+      // a paper indents every paragraph but the first — and numbers none of
+      // them; the numbers for the answer key stand in the teacher's copy
+      const dent = l.first && l.pi > 0 ? indent : 0;
+      const lx = x + dent, lw = colW - dent;
       if (l.last) b.text(lx, yy, l.text, font, { color: INK, role: 'body' });
       else justifyLine(b, lx, yy, l.text, font, lw, measure, { color: INK, role: 'body' });
     }
@@ -1868,7 +1999,7 @@
     if (useQuote) {
       const gx = L + lastCol * (colW + gutter), gy = bodyBottom - colH - quoteH + 16;
       b.line(gx, gy, gx + colW, gy, { color: accent, width: 3 });
-      qLines.forEach((l, i) => b.text(gx + 18, gy + 44 + i * 24, l, qFont, { color: accent }));
+      qLines.forEach((l, i) => b.text(gx + 18, gy + 44 + i * 24, l, qFont, { color: accent, role: 'quote' }));
       b.text(gx + 18, gy + 44 + qLines.length * 24 + 18, upper(chrome.publication || ''), { family: SANS, size: 9, weight: 700 }, { color: warm, letterSpacing: 1.2 });
       b.line(gx, gy + 44 + qLines.length * 24 + 30, gx + colW, gy + 44 + qLines.length * 24 + 30, { color: '#C7C2B5' });
     } else if (hole > 150 && colH === 0) {
@@ -1878,7 +2009,7 @@
       const qLines = quote ? wrap(quote, qFont, colW - 36, measure) : [];
       if (qLines.length && qLines.length * 24 + 74 <= gh) {
         b.line(gx, gy, gx + colW, gy, { color: accent, width: 3 });
-        qLines.forEach((l, i) => b.text(gx + 18, gy + 44 + i * 24, l, qFont, { color: accent }));
+        qLines.forEach((l, i) => b.text(gx + 18, gy + 44 + i * 24, l, qFont, { color: accent, role: 'quote' }));
         b.text(gx + 18, gy + 44 + qLines.length * 24 + 18, upper(chrome.publication || ''), { family: SANS, size: 9, weight: 700 }, { color: warm, letterSpacing: 1.2 });
         b.line(gx, gy + 44 + qLines.length * 24 + 30, gx + colW, gy + 44 + qLines.length * 24 + 30, { color: '#C7C2B5' });
       } else {
@@ -2125,6 +2256,158 @@
     // background blocks were drawn tall on purpose; clip them to the real height
     const blocks = b.blocks.map(x => (x.type === 'rect' && x.h > h ? Object.assign({}, x, { h }) : x));
     return { width, height: h, blocks };
+  }
+
+  /* ------------------------------------------------------------------ */
+  /* The same model as a document: SVG with real text                    */
+  /* ------------------------------------------------------------------ */
+
+  /*
+   * The picture is drawn on a canvas for the PNG. For the worksheet, the
+   * viewer and the HTML export the same model is written as SVG: every
+   * word stays text (selectable, searchable, printed as vector), every
+   * position is the one the canvas uses, and the fonts are the fonts of the
+   * page. A picture inside it is given by `opts.photo(block)` as a data URL
+   * (drawn on a canvas where there is one); without one it is an obvious
+   * placeholder that says what the picture would show — never a blank box.
+   */
+  function xmlEsc(s) {
+    return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+  const fmt = (n) => (Math.round(Number(n) * 100) / 100).toString();
+
+  /** An icon's canvas path, recorded as SVG path data. */
+  function iconPath(name) {
+    const f = ICONS[name];
+    if (!f) return '';
+    const d = [];
+    const rec = {
+      moveTo: (x, y) => d.push(`M${fmt(x)} ${fmt(y)}`),
+      lineTo: (x, y) => d.push(`L${fmt(x)} ${fmt(y)}`),
+      closePath: () => d.push('Z'),
+      quadraticCurveTo: (cx, cy, x, y) => d.push(`Q${fmt(cx)} ${fmt(cy)} ${fmt(x)} ${fmt(y)}`),
+      rect: (x, y, w, h) => d.push(`M${fmt(x)} ${fmt(y)}h${fmt(w)}v${fmt(h)}h${fmt(-w)}Z`),
+      arc: (cx, cy, r, a0, a1) => {
+        const sx = cx + r * Math.cos(a0), sy = cy + r * Math.sin(a0);
+        const full = Math.abs(a1 - a0) >= Math.PI * 2 - 1e-6;
+        if (full) {
+          d.push(`M${fmt(sx)} ${fmt(sy)}A${fmt(r)} ${fmt(r)} 0 1 1 ${fmt(cx - r * Math.cos(a0))} ${fmt(cy - r * Math.sin(a0))}A${fmt(r)} ${fmt(r)} 0 1 1 ${fmt(sx)} ${fmt(sy)}`);
+        } else {
+          const ex = cx + r * Math.cos(a1), ey = cy + r * Math.sin(a1);
+          d.push(`L${fmt(sx)} ${fmt(sy)}A${fmt(r)} ${fmt(r)} 0 ${Math.abs(a1 - a0) > Math.PI ? 1 : 0} 1 ${fmt(ex)} ${fmt(ey)}`);
+        }
+      },
+    };
+    f(rec);
+    return d.join('');
+  }
+
+  function fontAttrs(f) {
+    return `font-family="${xmlEsc(String(f.family || SANS).replace(/"/g, "'"))}" font-size="${fmt(f.size)}"`
+      + (f.weight && f.weight !== 400 ? ` font-weight="${f.weight}"` : '') + (f.style && f.style !== 'normal' ? ` font-style="${f.style}"` : '');
+  }
+
+  function toSVG(model, opts) {
+    const o = opts || {};
+    const W = model.width, H = model.height;
+    const uid = 'lr' + (o.uid || photo.hashOf(String(model.blocks.length) + W + H));
+    const defs = [];
+    const out = [];
+    let n = 0;
+    const id = (p) => `${uid}-${p}${n++}`;
+    const fin = model.finish;
+    const photoOf = typeof o.photo === 'function' ? o.photo : () => null;
+
+    defs.push(`<filter id="${uid}-soft" x="-10%" y="-10%" width="120%" height="130%"><feDropShadow dx="0" dy="1" stdDeviation="2" flood-color="#0F172A" flood-opacity=".12"/></filter>`);
+    defs.push(`<filter id="${uid}-page" x="-10%" y="-10%" width="120%" height="120%"><feDropShadow dx="0" dy="10" stdDeviation="13" flood-color="#000" flood-opacity=".35"/></filter>`);
+    if (fin && fin.grain) defs.push(`<filter id="${uid}-grain"><feTurbulence type="fractalNoise" baseFrequency=".9" numOctaves="2" stitchTiles="stitch"/><feColorMatrix type="saturate" values="0"/><feComponentTransfer><feFuncA type="linear" slope=".06"/></feComponentTransfer></filter>`);
+    if (fin && fin.vignette) defs.push(`<radialGradient id="${uid}-vig" cx="50%" cy="50%" r="72%"><stop offset="45%" stop-color="#000" stop-opacity="0"/><stop offset="100%" stop-color="#000" stop-opacity=".22"/></radialGradient>`);
+    defs.push(`<pattern id="${uid}-ph" width="14" height="14" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="14" height="14" fill="#E2E8F0"/><rect width="7" height="14" fill="#D5DBE3"/></pattern>`);
+
+    if (fin) {
+      out.push(`<rect x="0" y="0" width="${W}" height="${H}" fill="${xmlEsc(fin.surface || '#DED8CC')}"/>`);
+      out.push(`<g transform="rotate(${fmt(fin.rotate || 0)} ${fmt(W / 2)} ${fmt(H / 2)})">`);
+    } else {
+      out.push(`<rect x="0" y="0" width="${W}" height="${H}" fill="#FFFFFF"/>`);
+      out.push('<g>');
+    }
+
+    for (const b of model.blocks) {
+      if (b.type === 'rect') {
+        const filter = b.shadow === 'soft' ? ` filter="url(#${uid}-soft)"` : b.shadow ? ` filter="url(#${uid}-page)"` : '';
+        const fill = b.fill === 'none' ? 'none' : (b.fill || '#FFFFFF');
+        out.push(`<rect x="${fmt(b.x)}" y="${fmt(b.y)}" width="${fmt(b.w)}" height="${fmt(b.h)}"${b.radius ? ` rx="${fmt(Math.min(b.radius, b.w / 2, b.h / 2))}"` : ''} fill="${xmlEsc(fill)}"${b.stroke ? ` stroke="${xmlEsc(b.stroke)}" stroke-width="1"` : ''}${filter}/>`);
+      } else if (b.type === 'line') {
+        out.push(`<line x1="${fmt(b.x1)}" y1="${fmt(b.y1)}" x2="${fmt(b.x2)}" y2="${fmt(b.y2)}" stroke="${xmlEsc(b.color || '#E2E8F0')}" stroke-width="${fmt(b.width || 1)}"/>`);
+      } else if (b.type === 'circle') {
+        const fill = b.fill && b.fill !== 'none' ? b.fill : 'none';
+        out.push(`<circle cx="${fmt(b.x)}" cy="${fmt(b.y)}" r="${fmt(b.r)}" fill="${xmlEsc(fill)}"${b.stroke ? ` stroke="${xmlEsc(b.stroke)}" stroke-width="${fmt(b.width || 1.5)}"` : ''}/>`);
+      } else if (b.type === 'poly') {
+        out.push(`<polygon points="${(b.points || []).map(p => fmt(p[0]) + ',' + fmt(p[1])).join(' ')}" fill="${xmlEsc(b.fill || '#FFFFFF')}"/>`);
+      } else if (b.type === 'photo') {
+        const src = photoOf(b);
+        let clip = '';
+        if (b.round) {
+          const cid = id('clip');
+          defs.push(`<clipPath id="${cid}"><ellipse cx="${fmt(b.x + b.w / 2)}" cy="${fmt(b.y + b.h / 2)}" rx="${fmt(b.w / 2)}" ry="${fmt(b.h / 2)}"/></clipPath>`);
+          clip = ` clip-path="url(#${cid})"`;
+        }
+        if (src) {
+          out.push(`<image x="${fmt(b.x)}" y="${fmt(b.y)}" width="${fmt(b.w)}" height="${fmt(b.h)}" preserveAspectRatio="none" href="${xmlEsc(src)}"${clip}/>`);
+        } else {
+          // no canvas here: an obvious placeholder that says what the picture shows
+          const hint = (photo.SCENES[b.subject] || {}).hint || b.subject || '';
+          out.push(`<rect x="${fmt(b.x)}" y="${fmt(b.y)}" width="${fmt(b.w)}" height="${fmt(b.h)}" fill="url(#${uid}-ph)"${clip}/>`);
+          if (b.w >= 90 && b.h >= 40) {
+            const fs = Math.max(9, Math.min(13, b.w / 24));
+            out.push(`<text x="${fmt(b.x + b.w / 2)}" y="${fmt(b.y + b.h / 2 - 2)}" text-anchor="middle" font-family="${xmlEsc(SANS.replace(/"/g, "'"))}" font-size="${fmt(fs)}" font-weight="700" fill="#475569" letter-spacing="1">[PHOTO \u2014 ${xmlEsc(String(b.subject || '').toUpperCase())}]</text>`);
+            out.push(`<text x="${fmt(b.x + b.w / 2)}" y="${fmt(b.y + b.h / 2 + fs + 2)}" text-anchor="middle" font-family="${xmlEsc(SANS.replace(/"/g, "'"))}" font-size="${fmt(fs * 0.85)}" fill="#64748B">${xmlEsc(clipText(hint, Math.floor(b.w / (fs * 0.5))))}</text>`);
+          }
+        }
+        if (!b.round && b.frame !== false) out.push(`<rect x="${fmt(b.x + 0.5)}" y="${fmt(b.y + 0.5)}" width="${fmt(b.w - 1)}" height="${fmt(b.h - 1)}" fill="none" stroke="rgba(0,0,0,.2)" stroke-width="1"/>`);
+      } else if (b.type === 'icon') {
+        const d = iconPath(b.name);
+        if (!d) continue;
+        const stroke = b.stroke === false ? 'none' : (b.color || b.fill || '#334155');
+        out.push(`<path d="${d}" transform="translate(${fmt(b.x)} ${fmt(b.y)}) scale(${fmt(b.size / 24)})" fill="${xmlEsc(b.fill || 'none')}" stroke="${xmlEsc(stroke)}" stroke-width="${fmt((b.weight || 1.8) * 24 / b.size)}" stroke-linejoin="round" stroke-linecap="round"/>`);
+      } else if (b.type === 'wallpaper') {
+        out.push(`<rect x="${fmt(b.x)}" y="${fmt(b.y)}" width="${fmt(b.w)}" height="${fmt(b.h)}" fill="${xmlEsc(b.fill || '#ECE5DD')}"/>`);
+        const r = rng(b.seed || 3);
+        const col = b.doodle || 'rgba(190,180,165,.55)';
+        const parts = [];
+        for (let y = b.y; y < b.y + b.h; y += 54) {
+          for (let x = b.x; x < b.x + b.w; x += 54) {
+            const pick = Math.floor(r() * 4);
+            const cx = x + 10 + r() * 24, cy = y + 10 + r() * 24, sz = 7 + r() * 5;
+            if (pick === 0) parts.push(`<circle cx="${fmt(cx)}" cy="${fmt(cy)}" r="${fmt(sz * 0.6)}"/>`);
+            else if (pick === 1) parts.push(`<path d="M${fmt(cx - sz / 2)} ${fmt(cy - sz / 2)}L${fmt(cx + sz / 2)} ${fmt(cy + sz / 2)}M${fmt(cx + sz / 2)} ${fmt(cy - sz / 2)}L${fmt(cx - sz / 2)} ${fmt(cy + sz / 2)}"/>`);
+            else if (pick === 2) parts.push(`<rect x="${fmt(cx - sz / 2)}" y="${fmt(cy - sz / 2)}" width="${fmt(sz)}" height="${fmt(sz * 0.8)}"/>`);
+            else parts.push(`<path d="M${fmt(cx)} ${fmt(cy + sz / 2)}Q${fmt(cx - sz)} ${fmt(cy - sz / 2)} ${fmt(cx)} ${fmt(cy - sz)}Q${fmt(cx + sz)} ${fmt(cy - sz / 2)} ${fmt(cx)} ${fmt(cy + sz / 2)}"/>`);
+          }
+        }
+        const cid = id('wall');
+        defs.push(`<clipPath id="${cid}"><rect x="${fmt(b.x)}" y="${fmt(b.y)}" width="${fmt(b.w)}" height="${fmt(b.h)}"/></clipPath>`);
+        out.push(`<g clip-path="url(#${cid})" fill="none" stroke="${xmlEsc(col)}" stroke-width="1.4" opacity=".5">${parts.join('')}</g>`);
+      } else if (b.type === 'gradient') {
+        const gid = id('g');
+        const vertical = b.vertical !== false;
+        defs.push(`<linearGradient id="${gid}" x1="0" y1="0" x2="${vertical ? 0 : 1}" y2="${vertical ? 1 : 0}">${(b.stops || []).map(([off, c]) => `<stop offset="${fmt(off * 100)}%" stop-color="${xmlEsc(c)}"/>`).join('')}</linearGradient>`);
+        out.push(`<rect x="${fmt(b.x)}" y="${fmt(b.y)}" width="${fmt(b.w)}" height="${fmt(b.h)}"${b.radius ? ` rx="${fmt(b.radius)}"` : ''} fill="url(#${gid})"/>`);
+      } else if (b.type === 'text') {
+        if (!b.text) continue;
+        const anchor = b.align === 'center' ? 'middle' : b.align === 'right' ? 'end' : 'start';
+        out.push(`<text x="${fmt(b.x)}" y="${fmt(b.y)}" ${fontAttrs(b.font)} fill="${xmlEsc(b.color || INK)}"${anchor !== 'start' ? ` text-anchor="${anchor}"` : ''}${b.letterSpacing ? ` letter-spacing="${fmt(b.letterSpacing)}"` : ''}${b.role === 'body' ? ' class="body"' : ''} xml:space="preserve">${xmlEsc(b.text)}</text>`);
+      }
+    }
+    out.push('</g>');
+    if (fin && fin.gutter) {
+      const gid = id('gut');
+      defs.push(`<linearGradient id="${gid}" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="rgb(60,50,35)" stop-opacity=".3"/><stop offset=".55" stop-color="rgb(60,50,35)" stop-opacity=".08"/><stop offset="1" stop-color="rgb(60,50,35)" stop-opacity="0"/></linearGradient>`);
+      out.push(`<rect x="${fmt(fin.gutter.x)}" y="${fmt(fin.page ? fin.page.y : 0)}" width="${fmt(fin.gutter.w)}" height="${fmt(fin.page ? fin.page.h : H)}" fill="url(#${gid})"/>`);
+    }
+    if (fin && fin.grain) out.push(`<rect x="0" y="0" width="${W}" height="${H}" filter="url(#${uid}-grain)" fill="#888"/>`);
+    if (fin && fin.vignette) out.push(`<rect x="0" y="0" width="${W}" height="${H}" fill="url(#${uid}-vig)"/>`);
+    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" class="lr-medium" role="img" aria-label="${xmlEsc(o.label || model.label || 'The text as it appears in its medium')}"><defs>${defs.join('')}</defs>${out.join('')}</svg>`;
   }
 
   /* ------------------------------------------------------------------ */
@@ -2570,6 +2853,6 @@
   }
 
   return { LAYOUTS, CHROME_SPECS, ICONS, MAX_SIDE,
-    credits, ownPicture, SUBJECTS: photo.SUBJECTS, isSubject: photo.isSubject, subjectFor: photo.subjectFor, subjectHints: photo.subjectHints, hashOf: photo.hashOf, layoutFor, chromeSpec, fallbackChrome, buildModel, fitModel, canvasScale, drawPhoto, drawIcon, bodyText, chromeText, validate, proportions, draw,
+    credits, ownPicture, composition, verbatim, SUBJECTS: photo.SUBJECTS, isSubject: photo.isSubject, subjectFor: photo.subjectFor, subjectHints: photo.subjectHints, hashOf: photo.hashOf, layoutFor, chromeSpec, fallbackChrome, buildModel, fitModel, canvasScale, drawPhoto, drawIcon, bodyText, chromeText, validate, proportions, draw, toSVG, iconPath,
     MODULES, MODULE_KEYS, SHAPES, SHAPE_KEYS, MEDIUM_SLOTS, shapeOf, moduleRenderer, moduleHints, modulesFor, placeModules, moduleStyle, canvasMeasure, approxMeasure, wrap, fontString };
 });

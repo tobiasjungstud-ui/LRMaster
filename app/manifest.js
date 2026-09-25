@@ -417,7 +417,19 @@
   add({ id: 'S28.student_instruction', section: 28, title: 'Student Version: kurze Instruktion', kind: 'render', check(env) { const m = env.fixture.material(); return ok(env.render.renderStudentHTML(m).includes(env.render.esc(m.worksheet.instructions))); } });
   add({ id: 'S28.student_pretask', section: 28, title: 'Student Version: Pre-Task, falls gewählt', kind: 'render', check(env) { const m = env.fixture.material({ preTask: true }); return ok(env.render.renderStudentHTML(m).includes(env.render.esc(m.worksheet.preTasks[0].prompt))); } });
   add({ id: 'S28.student_questions', section: 28, title: 'Student Version: Fragen/Aufgaben', kind: 'render', check(env) { const m = env.fixture.material(); return ok(m.worksheet.questions.every(q => env.render.renderStudentHTML(m).includes(env.render.esc(q.prompt)))); } });
-  add({ id: 'S28.student_reading_text', section: 28, title: 'Student Version: Reading-Text enthalten', kind: 'render', check(env) { const m = env.fixture.material({}, 'reading'); return ok(env.render.renderStudentHTML(m).includes(env.render.esc(m.content.paragraphs[0]))); } });
+  add({ id: 'S28.student_reading_text', section: 28, title: 'Student Version: Reading-Text enthalten – als die Seite seines Mediums, Wort für Wort', kind: 'render', check(env) {
+    const m = env.fixture.material({ authenticLayout: true }, 'reading');
+    const html = env.render.renderStudentHTML(m);
+    // the text stands in the composed page (SVG, real text), not as headline + paragraphs
+    if (!/<svg[^>]*class="lr-medium"/.test(html) || !/class="medium-sheet"/.test(html)) return 'the student sheet does not show the text as its medium';
+    const body = [...html.matchAll(/<text [^>]*class="body"[^>]*>([^<]*)<\/text>/g)].map(x => x[1]).join(' ');
+    const want = env.quality.normalizeForSearch(m.content.paragraphs.join(' '));
+    const got = env.quality.normalizeForSearch(body.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"'));
+    if (got !== want) return 'the page does not carry the whole text word for word';
+    // without a medium (layout off) the plain text still stands there
+    const plain = env.fixture.material({ authenticLayout: false }, 'reading');
+    return ok(env.render.renderStudentHTML(plain).includes(env.render.esc(plain.content.paragraphs[0])), 'without a medium the text is missing');
+  } });
   add({ id: 'S28.student_no_script', section: 28, title: 'Student Version: beim Listening NICHT das Skript', kind: 'render', check(env) { const m = env.fixture.material(); const html = env.render.renderStudentHTML(m); return ok(!m.content.lines.some(l => html.includes(env.render.esc(l.text))), 'script leaked into student version'); } });
   add({ id: 'S28.student_no_answers', section: 28, title: 'Student Version: keine Lösungen', kind: 'render', check(env) { const m = env.fixture.material(); const html = env.render.renderStudentHTML(m); return ok(!html.includes(env.render.esc(m.worksheet.questions[0].evidenceQuote)) && !html.includes('Answer key')); } });
   add({ id: 'S28.teacher_script', section: 28, title: 'Teacher Version: vollständiges Skript/Text', kind: 'render', check(env) { const m = env.fixture.material(); const plain = env.render.renderTeacherHTML(m).replace(/<[^>]+>/g, ''); const r = env.fixture.material({}, 'reading'); const plainR = env.render.renderTeacherHTML(r).replace(/<[^>]+>/g, ''); return ok(m.content.lines.every(l => plain.includes(env.render.esc(l.text))) && r.content.paragraphs.every(p => plainR.includes(env.render.esc(p)))); } });
@@ -839,8 +851,10 @@
   add({ id: 'S33.html_matches', section: 33, title: 'Die Bildschirmvorschau zeigt denselben Texttyp-Aufbau wie das Word-Dokument', kind: 'function',
     check(env) {
       const m = env.fixture.material({ textType: 'Forum Discussion' }, 'reading');
-      const html = env.render.renderTextHTML(m, {});
-      return ok(/data-design="forum"/.test(html) && html.includes('fixture_mia') && html.includes(env.render.esc(m.content.meta.threadTitle)), 'html preview does not follow the design');
+      const plain = env.render.renderTextHTML(m, { plain: true });
+      const medium = env.render.renderTextHTML(m, {});
+      return ok(/data-design="forum"/.test(plain) && plain.includes('fixture_mia') && plain.includes(env.render.esc(m.content.meta.threadTitle))
+        && /data-medium="thread"/.test(medium) && medium.includes('fixture_mia'), 'html preview does not follow the design');
     } });
 
   /* No hard-coded content */
@@ -1735,6 +1749,55 @@
       if (src && !(/function renderHotspots/.test(src) && /photo-hotspot/.test(src) && /onpaste/.test(src) && /'drop'/.test(src) && /assets\.upload/.test(src) && /function resetPicture/.test(src))) {
         problems.push('the page has no way to choose, paste or drop an own picture, or to put the automatic one back');
       }
+      return ok(!problems.length, problems.slice(0, 3).join(' | '));
+    } });
+
+  add({ id: 'S37.composition', section: 37, title: 'Claude komponiert die Seite wie ein Editorial Designer: Aufmacher-Grösse, Spalten, ein zweites Bild im Text, Zitatkasten (nur wörtlich aus dem Text), Zwischentitel, Dichte – der Text selbst bleibt Wort für Wort unverändert', kind: 'function',
+    check(env) {
+      const problems = [];
+      const m = layoutMaterial(env, { textType: 'Blog Post', layoutMedium: 'screen' });
+      const spec = env.mock.chromeSpec(m);
+      const prompt = env.prompts.buildLayoutPrompt(m.settings, m.plan, m.content, spec);
+      if (!/## Composition/.test(prompt) || !/"pullQuote"/.test(prompt) || !/"crossheads"/.test(prompt) || !/"figure"/.test(prompt) || !/lazy fallback/.test(prompt)) problems.push('the layout prompt does not ask for a composition');
+      // what comes back is clamped, and only a sentence of the text may be the pull quote
+      const sentence = m.content.paragraphs[1];
+      const raw = { composition: { lead: 'inset', columns: 9, pullQuote: 'An invented sentence that is not in the text at all.', crossheads: [{ before: 2, text: 'A heading of my own' }, { before: 99, text: 'x' }, { before: 1, text: 'far too long a heading to be a crosshead on any page' }], figure: { after: 1, subject: 'park', caption: 'A caption.', size: 'column' }, density: 'airy' } };
+      const cleaned = env.quality.normalizeChrome(raw, spec).composition;
+      if (!cleaned || cleaned.columns !== undefined && cleaned.columns > 4) problems.push('columns are not clamped');
+      if (!cleaned || cleaned.crossheads.length !== 2) problems.push('an overlong crosshead is not dropped: ' + JSON.stringify(cleaned && cleaned.crossheads));
+      const paras = m.content.paragraphs;
+      const planBad = env.mock.composition({ composition: cleaned }, paras, 'page');
+      if (planBad.pullQuote) problems.push('an invented pull quote is accepted');
+      const planGood = env.mock.composition({ composition: Object.assign({}, cleaned, { pullQuote: sentence }) }, paras, 'page');
+      if (planGood.pullQuote !== sentence) problems.push('a sentence of the text is refused as pull quote');
+      if (planGood.lead !== 'inset' || planGood.density !== 'airy' || !planGood.figure || planGood.figure.after !== 1 || !planGood.heads[2]) problems.push('the plan does not come through');
+      if (planGood.heads[99]) problems.push('a crosshead before a paragraph that does not exist is kept');
+      // the plan is drawn, and the text stays the text
+      for (const [textType, layoutMedium, lead] of [['Blog Post', 'screen', 'inset'], ['News Article', 'paper', 'wide'], ['Article', 'paper', 'column']]) {
+        const mm = layoutMaterial(env, { textType, layoutMedium });
+        mm.content.paragraphs = mm.content.paragraphs.concat(mm.content.paragraphs, mm.content.paragraphs);
+        const sent = mm.content.paragraphs[2];
+        mm.layout.chrome = Object.assign({}, mm.layout.chrome, { composition: { lead, columns: 3, pullQuote: sent, crossheads: [{ before: 3, text: 'A crosshead' }], figure: { after: 4, subject: 'market', caption: 'The figure.', size: 'column' }, density: 'dense' } });
+        const model = env.quality.layoutModel(mm);
+        const where = textType + '/' + layoutMedium;
+        if (env.mock.validate(model).length) problems.push(where + ': not drawable with a composition');
+        if (env.quality.normalizeForSearch(env.mock.bodyText(model)) !== env.quality.normalizeForSearch(mm.content.paragraphs.join(' '))) problems.push(where + ': the composition changed the text');
+        const texts = model.blocks.filter(x => x.type === 'text');
+        if (!texts.some(x => /^a crosshead$/i.test(x.text))) problems.push(where + ': the crosshead is not drawn');
+        if (texts.some(x => x.role === 'body' && /^a crosshead$/i.test(x.text))) problems.push(where + ': the crosshead counts as text of the material');
+        if (!model.blocks.some(x => x.type === 'photo' && x.subject === 'market')) problems.push(where + ': the second picture is missing');
+        const quoteDrawn = texts.some(x => x.role !== 'body' && x.text.length > 30 && sent.startsWith(x.text.slice(0, 30)));
+        if (!quoteDrawn && layoutMedium === 'screen') problems.push(where + ': the pull quote is not set large');
+        if (env.mock.proportions(model).balance < 0.6) problems.push(where + ': the composition throws the page out of balance');
+      }
+      // the text runs around an inset picture: lines beside it are narrower
+      const blog = layoutMaterial(env, { textType: 'Blog Post', layoutMedium: 'screen' });
+      blog.content.paragraphs = blog.content.paragraphs.concat(blog.content.paragraphs);
+      blog.layout.chrome = Object.assign({}, blog.layout.chrome, { composition: { lead: 'inset' } });
+      const model = env.quality.layoutModel(blog);
+      const pic = model.blocks.find(x => x.type === 'photo' && x.subject !== 'portrait');
+      const beside = model.blocks.filter(x => x.type === 'text' && x.role === 'body' && x.y > pic.y && x.y < pic.y + pic.h);
+      if (!beside.length || beside.some(x => x.x + env.mock.approxMeasure(x.text, x.font) > pic.x + 4)) problems.push('the text does not run around the inset picture');
       return ok(!problems.length, problems.slice(0, 3).join(' | '));
     } });
 

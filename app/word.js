@@ -374,6 +374,30 @@
       { W: ctx.W, pad: 0.3, borders: { top: hairline(d.accent, 8), bottom: hairline(d.accent, 8) } });
   }
 
+  /**
+   * The page of the medium as a picture — the newspaper page, the blog post,
+   * the thread — printed the way a photocopy of the real thing would be. The
+   * words stand in the picture's alternative text, so the document stays
+   * searchable. Only when the browser could draw the picture (`ctx.medium`);
+   * the tests and a copy without a canvas keep the typed design below.
+   */
+  const MEDIUM_RID = 'rId20';
+  function mediumBlocks(ctx) {
+    const med = ctx.medium;
+    if (!med || !med.png || !(med.width > 0) || !(med.height > 0)) return [];
+    const maxW = usableWidth(M_DOC);
+    const maxH = docx.A4.h - docx.cm(M_DOC.top) - docx.cm(M_DOC.bottom) - 700; // room for the footer
+    let w = maxW, h = Math.round(maxW * med.height / med.width);
+    if (h > maxH) { h = maxH; w = Math.round(maxH * med.width / med.height); }
+    const text = (ctx.c.paragraphs || []).join('\n\n').slice(0, 6000);
+    return [P([docx.picture(MEDIUM_RID, w, h, { name: 'The text in its medium', descr: text })], { align: 'center', after: 0 })];
+  }
+  function mediumImages(ctx) {
+    const med = ctx.medium;
+    if (!med || !med.png) return [];
+    return [{ rId: MEDIUM_RID, name: med.type === 'jpeg' ? 'medium.jpg' : 'medium.png', data: med.png }];
+  }
+
   /** The reading text, laid out in the design of its text type. */
   function textBlocks(ctx) {
     const { c, d } = ctx;
@@ -888,17 +912,20 @@
   }
 
   /** Student version: reading text in its own design, then the worksheet. */
-  function studentSpec(material, variantKey) {
+  function studentSpec(material, variantKey, opts) {
     material = render.forVariant(material, variantKey);
-    const ctx = context(material);
+    const ctx = context(material, { medium: (opts && opts.medium) || null });
     const d = ctx.d;
+    const medium = mediumBlocks(ctx);
     const sections = [];
     const wsCtx = Object.assign({}, ctx, { W: usableWidth(M_DOC), margins: M_DOC });
     // the sheet follows the lesson: pre-task and the words first, then the
     // text in its own design, then everything that is done afterwards
     if (material.worksheet) sections.push({ blocks: worksheetBlocks(wsCtx, 'before'), props: { margins: M_DOC, type: 'nextPage' } });
     if (material.kind === 'reading') {
-      sections.push({ blocks: textBlocks(ctx), props: { margins: ctx.margins, cols: d.page.cols, colSep: d.page.colSep, colSpace: d.page.colSpace, type: 'nextPage' } });
+      // the page of the medium where the browser drew one, else the typed design
+      if (medium.length) sections.push({ blocks: medium, props: { margins: M_DOC, cols: 1, type: 'nextPage' } });
+      else sections.push({ blocks: textBlocks(ctx), props: { margins: ctx.margins, cols: d.page.cols, colSep: d.page.colSep, colSpace: d.page.colSpace, type: 'nextPage' } });
     }
     if (material.worksheet) {
       sections.push({ blocks: worksheetBlocks(wsCtx, 'after'), props: { margins: M_DOC } });
@@ -913,16 +940,17 @@
     if (sections.length === 1) sections[0].props = Object.assign({}, sections[0].props, { type: undefined });
     return {
       sections,
+      images: mediumImages(ctx),
       defaults: { font: d.fonts.body, size: d.sizes.body, display: d.fonts.display, accent: d.accent, color: INK },
       footer: footerBlocks(material, 'student', usableWidth(M_DOC)),
       title: material.title + (material.variantLabel ? ' — ' + material.variantLabel : ''), description: 'Student version — ' + d.label + (material.variantLabel ? ' — ' + material.variantLabel : ''), creator: 'LRMaster',
     };
   }
-  function buildStudent(material, variantKey) { return docx.build(studentSpec(material, variantKey)); }
+  function buildStudent(material, variantKey, opts) { return docx.build(studentSpec(material, variantKey, opts)); }
 
   /** Teacher version: metadata, full script/text, vocabulary, key, quality report. */
-  function teacherSpec(material) {
-    const ctx = context(material, { highlight: material.settings.highlightVocab ? (material.plan.vocabulary || []).filter(v => (material.vocabFound || []).includes(v.word)) : null, numbered: material.kind === 'reading' });
+  function teacherSpec(material, opts) {
+    const ctx = context(material, { highlight: material.settings.highlightVocab ? (material.plan.vocabulary || []).filter(v => (material.vocabFound || []).includes(v.word)) : null, numbered: material.kind === 'reading', medium: (opts && opts.medium) || null });
     const d = ctx.d;
     const wsCtx = Object.assign({}, ctx, { W: usableWidth(M_DOC), margins: M_DOC });
     // same order as the lesson: what happens before the text stands before it
@@ -930,25 +958,28 @@
       .concat(material.worksheet && (material.worksheet.preTasks || []).length ? [SP(14)].concat(preTaskTableBlocks(wsCtx, 'pre')) : [])
       .concat([SP(14)]).concat(vocabBlocks(wsCtx))
       .concat(material.glossary && material.glossary.length ? [SP(14)].concat(glossaryBlocks(wsCtx)) : []);
+    const medium = material.kind === 'reading' ? mediumBlocks(ctx) : [];
     const body = material.kind === 'listening' ? scriptBlocks(wsCtx) : textBlocks(ctx);
     const rest = (material.worksheet ? keyBlocks(wsCtx) : [])
       .concat(material.worksheet && (material.worksheet.postTasks || []).length ? [SP(14)].concat(preTaskTableBlocks(wsCtx, 'post')) : [])
       .concat(levelBlocks(wsCtx))
       .concat(creditBlocks(wsCtx))
       .concat(qualityBlocks(wsCtx));
-    const sections = [
-      { blocks: head, props: { margins: M_DOC, type: 'nextPage' } },
-      { blocks: body, props: { margins: material.kind === 'reading' ? ctx.margins : M_DOC, cols: material.kind === 'reading' ? d.page.cols : 1, colSep: d.page.colSep, type: 'nextPage' } },
-      { blocks: rest, props: { margins: M_DOC } },
-    ];
+    const sections = [{ blocks: head, props: { margins: M_DOC, type: 'nextPage' } }];
+    // the page as the students see it, then the numbered copy the key refers to
+    if (medium.length) sections.push({ blocks: medium, props: { margins: M_DOC, cols: 1, type: 'nextPage' } });
+    sections.push({ blocks: (medium.length ? [P('Text with paragraph numbers (for the key)', { after: 8, keepNext: true, run: { font: WS.display, size: 12, bold: true, color: INK } })] : []).concat(body),
+      props: { margins: material.kind === 'reading' ? ctx.margins : M_DOC, cols: material.kind === 'reading' ? d.page.cols : 1, colSep: d.page.colSep, type: 'nextPage' } });
+    sections.push({ blocks: rest, props: { margins: M_DOC } });
     return {
       sections,
+      images: mediumImages(ctx),
       defaults: { font: d.fonts.body, size: d.sizes.body, display: d.fonts.display, accent: d.accent, color: INK },
       footer: footerBlocks(material, 'teacher', usableWidth(M_DOC)),
       title: material.title + ' (teacher version)', description: 'Teacher version — ' + d.label, creator: 'LRMaster',
     };
   }
-  function buildTeacher(material) { return docx.build(teacherSpec(material)); }
+  function buildTeacher(material, opts) { return docx.build(teacherSpec(material, opts)); }
 
   function slug(s) {
     return String(s || 'material').toLowerCase()
@@ -958,8 +989,8 @@
   function filename(material, which, variantKey) { return slug(material.title) + '-' + which + (variantKey ? '-niveau-' + String(variantKey).toLowerCase() : '') + '.docx'; }
 
   /** The same documents as package parts — used by the Word-export checks. */
-  function partsFor(material, which, variantKey) {
-    const spec = which === 'teacher' ? teacherSpec(material) : studentSpec(material, variantKey);
+  function partsFor(material, which, variantKey, opts) {
+    const spec = which === 'teacher' ? teacherSpec(material, opts) : studentSpec(material, variantKey, opts);
     return docx.buildParts(spec);
   }
 

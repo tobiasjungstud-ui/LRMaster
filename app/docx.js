@@ -148,6 +148,32 @@
     return `<w:r>${pr}${body}</w:r>`;
   }
 
+  /**
+   * An inline picture: the run that shows the media part `rId` at
+   * `widthTw` × `heightTw` twips (the page of the medium, printed as a
+   * photograph). `descr` is the alternative text — for the reading text it
+   * carries the words themselves, so the document stays searchable.
+   */
+  let pictureNo = 0;
+  function picture(rId, widthTw, heightTw, opts) {
+    const o = opts || {};
+    const cx = Math.max(1, Math.round(widthTw * 635)), cy = Math.max(1, Math.round(heightTw * 635)); // 1 twip = 635 EMU
+    const n = ++pictureNo;
+    const name = esc(o.name || ('Picture ' + n));
+    const descr = esc(o.descr || '');
+    return '<w:r><w:drawing>'
+      + `<wp:inline distT="0" distB="0" distL="0" distR="0" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing">`
+      + `<wp:extent cx="${cx}" cy="${cy}"/><wp:effectExtent l="0" t="0" r="0" b="0"/>`
+      + `<wp:docPr id="${n}" name="${name}" descr="${descr}"/>`
+      + '<wp:cNvGraphicFramePr><a:graphicFrameLocks xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" noChangeAspect="1"/></wp:cNvGraphicFramePr>'
+      + '<a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture">'
+      + '<pic:pic xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture">'
+      + `<pic:nvPicPr><pic:cNvPr id="${n}" name="${name}"/><pic:cNvPicPr/></pic:nvPicPr>`
+      + `<pic:blipFill><a:blip r:embed="${esc(rId)}"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill>`
+      + `<pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr>`
+      + '</pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r>';
+  }
+
   /** A field such as PAGE or NUMPAGES. */
   function field(instr, props) {
     const pr = rPr(props);
@@ -339,11 +365,16 @@
       '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>',
     ];
     if (hasFooter) rels.push('<Relationship Id="rId7" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/footer" Target="footer1.xml"/>');
+    // pictures: one media part each, referenced from the document by its id
+    const images = (spec.images || []).filter(im => im && im.rId && im.data && im.data.length);
+    for (const im of images) rels.push(`<Relationship Id="${esc(im.rId)}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/${esc(im.name)}"/>`);
 
     const files = [
       { name: '[Content_Types].xml', data: XML_DECL + '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
         + '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'
         + '<Default Extension="xml" ContentType="application/xml"/>'
+        + (images.some(im => /\.png$/i.test(im.name)) ? '<Default Extension="png" ContentType="image/png"/>' : '')
+        + (images.some(im => /\.jpe?g$/i.test(im.name)) ? '<Default Extension="jpeg" ContentType="image/jpeg"/><Default Extension="jpg" ContentType="image/jpeg"/>' : '')
         + '<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>'
         + '<Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/>'
         + (hasFooter ? '<Override PartName="/word/footer1.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.footer+xml"/>' : '')
@@ -359,11 +390,12 @@
       { name: 'word/_rels/document.xml.rels', data: XML_DECL + `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${rels.join('')}</Relationships>` },
     ];
     if (hasFooter) files.push({ name: 'word/footer1.xml', data: XML_DECL + `<w:ftr ${NS}>${spec.footer.join('')}</w:ftr>` });
+    for (const im of images) files.push({ name: 'word/media/' + im.name, data: im.data });
     return files;
   }
 
   /** The finished .docx as bytes. */
   function build(spec) { return zipStore(buildParts(spec)); }
 
-  return { zipStore, crc32, esc, pt, cm, halfPt, run, field, para, spacer, table, sectPr, build, buildParts, rPr, pPr, borders, A4 };
+  return { zipStore, crc32, esc, pt, cm, halfPt, run, field, picture, para, spacer, table, sectPr, build, buildParts, rPr, pPr, borders, A4 };
 });

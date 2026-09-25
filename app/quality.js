@@ -811,7 +811,7 @@
       check(ctx) {
         const model = layoutModel({ settings: ctx.state, content: ctx.content, layout: ctx.layout });
         const source = (ctx.content.paragraphs || []).join(' ');
-        const copies = (model.blocks || []).filter(b => b.type === 'text' && b.role !== 'body' && b.text.split(/\s+/).length >= 5 && sharedRun(b.text, source) >= 6).map(b => b.text);
+        const copies = (model.blocks || []).filter(b => b.type === 'text' && b.role !== 'body' && b.role !== 'quote' && b.text.split(/\s+/).length >= 5 && sharedRun(b.text, source) >= 6).map(b => b.text);
         return finding(this, copies.length ? 'warn' : 'pass', copies.length ? 'Interface repeats the text: “' + copies[0].slice(0, 60) + '”.' : 'The interface adds no sentences from the text.');
       } },
     { id: 'layout.image_valid', group: 'layout', kind: 'deterministic', title: 'The picture can be drawn and handed out', needsLayout: true, blocking: true,
@@ -868,6 +868,9 @@
       // the things standing around the text: a fixed shape per entry, and only
       // the kinds the app can really draw (concept §37)
       if (key === 'modules') { out[key] = normalizeModules(v); continue; }
+      // the plan for the page: a small object, clamped here and checked against
+      // the text where it is used (mock.composition)
+      if (key === 'composition') { out[key] = normalizeComposition(v); continue; }
       // a picture subject is a key of the picture engine, not free text: an
       // invented one would leave a blank box, so it is dropped here
       if (/Subjects?$/.test(key)) {
@@ -920,6 +923,27 @@
     }).filter(Boolean);
   }
 
+  function normalizeComposition(raw) {
+    const r = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
+    const text = (v, n) => String(v == null ? '' : v).replace(/\s+/g, ' ').trim().slice(0, n);
+    const out = {};
+    if (['wide', 'inset', 'column', 'none'].includes(r.lead)) out.lead = r.lead;
+    const c = Math.round(Number(r.columns));
+    if (c >= 2 && c <= 4) out.columns = c;
+    if (text(r.pullQuote, 220)) out.pullQuote = text(r.pullQuote, 220);
+    if (['dense', 'normal', 'airy'].includes(r.density)) out.density = r.density;
+    // a crosshead is two to five words; anything longer is not a heading
+    out.crossheads = (Array.isArray(r.crossheads) ? r.crossheads : []).slice(0, 3)
+      .filter(h => h && typeof h === 'object')
+      .map(h => ({ before: Math.round(Number(h.before)) || 0, text: text(h.text, 200) }))
+      .filter(h => h.before >= 1 && h.text && h.text.length <= 40 && h.text.split(' ').length <= 5);
+    if (r.figure && typeof r.figure === 'object') {
+      out.figure = { after: Math.round(Number(r.figure.after)) || 0, subject: text(r.figure.subject, 30).toLowerCase(), caption: text(r.figure.caption, 140), size: r.figure.size === 'wide' ? 'wide' : 'column' };
+      if (!out.figure.after || !mock.isSubject(out.figure.subject)) delete out.figure;
+    }
+    return out;
+  }
+
   /** Claude's interface data over what the material itself already tells us. */
   function mergeChrome(fallback, fromClaude) {
     const out = Object.assign({}, fallback || {});
@@ -948,6 +972,41 @@
         ? mock.canvasMeasure(document.createElement('canvas')) : undefined;
       return mock.credits(layoutModel(material, measure ? { measure } : undefined));
     } catch (e) { return []; }
+  }
+
+  /**
+   * The medium as a document: the same model as the picture, written as SVG
+   * with real text. In the browser the picture parts are drawn on a canvas
+   * and embedded; elsewhere they are labelled placeholders.
+   */
+  function layoutSVG(material, opts) {
+    const o = opts || {};
+    if (!material || !material.layout || !material.layout.chrome) return '';
+    const hasCanvas = typeof document !== 'undefined' && !!document.createElement;
+    let canvas = null, measure;
+    if (hasCanvas) {
+      canvas = document.createElement('canvas');
+      measure = mock.canvasMeasure(canvas);
+    }
+    const model = layoutModel(material, measure ? { measure } : undefined);
+    const photoOf = hasCanvas ? (b) => {
+      try {
+        const scale = Math.min(2, Math.max(1, 1400 / Math.max(b.w, b.h)));
+        const c = document.createElement('canvas');
+        c.width = Math.max(1, Math.round(b.w * scale)); c.height = Math.max(1, Math.round(b.h * scale));
+        const ctx = c.getContext('2d');
+        ctx.scale(scale, scale);
+        mock.drawPhoto(ctx, Object.assign({}, b, { x: 0, y: 0, frame: false, round: false }));
+        return c.toDataURL('image/jpeg', 0.84);
+      } catch (e) { return null; }
+    } : null;
+    return mock.toSVG(model, { photo: photoOf, uid: o.uid || (String(material.id || '') + (material.settings && material.settings.layoutMedium || '')).replace(/[^a-z0-9]/gi, '').slice(0, 24), label: material.layout.label });
+  }
+
+  /** Which medium a material is shown in (page, print, thread, mail, chat). */
+  function mediumOf(material) {
+    if (!material || !material.layout || !material.layout.chrome) return '';
+    return mock.chromeSpec({ settings: material.settings, content: material.content }).kind;
   }
 
   /** Longest run of words that a string shares with the material. */
@@ -1149,7 +1208,7 @@
     repairable, repairPlan, problemScore, applyQuestionPatch, applyTaskPatch, applyPreTaskPatch, applyPostTaskPatch,
     changedQuestions, changedTasks, changedPreTasks, changedPostTasks, STRUCTURAL, applicableRules, runDeterministic,
     normalizePreTask, preTaskText, socialLabel, taskRules, normalizeChrome, mergeChrome, layoutModel, sharedRun,
-    photoCredits, runContentChecks, llmRules, mergeReview, verdictSupported, blockingFailures, summarize,
+    photoCredits, layoutSVG, mediumOf, runContentChecks, llmRules, mergeReview, verdictSupported, blockingFailures, summarize,
     chronologyReport, enforceChronology, normalizeGlossary, slimMeasurement,
   };
 });

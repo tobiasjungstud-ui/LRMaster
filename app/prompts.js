@@ -715,6 +715,11 @@
       '## The pictures\nThe app draws every picture itself, so a picture is not described but chosen: name the subject with one of these keys.\n'
         + (spec.subjects || []).map(h => '- ' + h).join('\n')
         + '\nPick the subject that a picture editor would really put next to this text — a person the text is about gets "portrait", a place gets that place. A field that asks for several subjects gets one key per entry, in the same order.',
+      (spec.kind === 'page' || spec.kind === 'print') ? ['## Composition \u2014 design the page before you place the text',
+        'You are the editorial designer of this page, not its typesetter. Before anything is placed, decide how a real ' + spec.label + ' would compose THIS piece: where the lead picture goes and how big it is, whether a second picture belongs inside the text, which sentence deserves to stand large as the pull quote, where a crosshead breaks a long run of paragraphs, how dense the page should feel. A page that is a headline, one picture and a column of paragraphs is the lazy fallback \u2014 use it only where the medium really looks like that.',
+        'Write the plan into "composition": {"lead": ' + (spec.kind === 'print' ? '"wide" (across the columns) | "column" (one column wide) | "none"' : '"wide" (across the text) | "inset" (set into the first paragraphs, the text runs around it) | "none"') + ', ' + (spec.kind === 'print' ? '"columns": 2 | 3 | 4, ' : '') + '"pullQuote": "one sentence copied EXACTLY from the text, or an empty string", "crossheads": [{"before": <paragraph number, counting from 1>, "text": "two to four words of your own"}], "figure": {"after": <paragraph number>, "subject": "<a picture subject>", "caption": "one sentence, nothing from the text", "size": "column" | "wide"}, "density": "dense" | "normal" | "airy"}.',
+        'Rules: the text is never changed, shortened or added to \u2014 a crosshead is a heading of yours, never a sentence of the text; the pull quote is a sentence of the text word for word, otherwise it is dropped. Plan pictures with intent: every picture has a role (lead, portrait, place, detail) and a caption that describes it. Use hierarchy: one thing must dominate. Match the density of the medium: a tabloid is dense, a magazine airy.',
+      ].join('\n\n') : '',
       ['## The rest of the page',
         'A real page is never one text alone. Around it stands whatever that medium lives on: advertisements, a poll, the most-read list, a sign-up box, the small ads, the weather, a promoted post, a consent banner, the comments. Decide what THIS publication would really show around THIS text and write it into "modules".',
         'These are the kinds you can use, with the places they can stand:',
@@ -731,7 +736,7 @@
         + `- Write the interface in English, as the platform itself would.\n`
         + `- Required: ${spec.required.map(r => '"' + r + '"').join(', ')}.`,
       'Reply with only a JSON object with exactly these keys: ' + spec.fields.map(f => '"' + f[0] + '"').join(', ') + '.',
-    ].join('\n\n');
+    ].filter(Boolean).join('\n\n');
   }
 
   /** Repair round for the interface: the findings in front of it, same shape back. */

@@ -56,6 +56,19 @@
   /** Student/teacher rendering of the reading text with its document details. */
   function renderTextHTML(m, opts) {
     opts = opts || {};
+    // The text as it appears in its medium: the newspaper page, the blog
+    // post, the thread — the composed page, not a headline with paragraphs
+    // under it. The plain rendering below stays for the teacher's numbered
+    // copy and for material without a medium.
+    if (!opts.plain && m.layout && m.layout.chrome && m.kind !== 'listening') {
+      const svg = quality.layoutSVG(m);
+      if (svg) {
+        const credits = quality.photoCredits(m);
+        return `<figure class="medium-sheet" data-medium="${esc(quality.mediumOf(m))}">${svg}`
+          + (credits.length ? `<figcaption class="medium-credits">${credits.map(c => esc(c.credit)).join(' · ')}</figcaption>` : '')
+          + '</figure>';
+      }
+    }
     const design = core.designIdFor(m.settings);
     const meta = (m.content && m.content.meta) || {};
     const paragraphs = (m.content && m.content.paragraphs) || [];
@@ -390,7 +403,10 @@
       const st = quality.speakerStats(m.content.lines);
       html += '<p class="stats">' + Object.keys(st.shares).map(k => `${esc(k)} ${st.shares[k]} %`).join(' · ') + ` · ${st.total} words</p>`;
     } else {
-      html += renderTextHTML(m, { numbered: true, highlight: hl ? vocabItems : null });
+      // the medium as the students see it, then the numbered copy the key refers to
+      html += renderTextHTML(m, {});
+      if (m.layout && m.layout.chrome) html += '<h3 class="sub">Text with paragraph numbers (for the key)</h3>';
+      html += renderTextHTML(m, { numbered: true, highlight: hl ? vocabItems : null, plain: true });
       html += `<p class="stats">${quality.wordCount((m.content.paragraphs || []).join(' '))} words</p>`;
     }
     html += '</section>';

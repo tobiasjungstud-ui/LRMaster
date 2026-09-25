@@ -2,7 +2,7 @@
 
 Erzeugt von `npm run coverage`. Jede Zeile ist eine Anforderung aus `docs/Konzept_Listening_Reading_Creator.md`, gebunden an die Stelle im Code, die sie umsetzt, und das Ergebnis der automatischen Prüfung (`npm test`).
 
-**Ergebnis: 319 von 319 Anforderungen bestanden.**
+**Ergebnis: 320 von 320 Anforderungen bestanden.**
 
 Prüfarten: **setting** – Steuerelement vorhanden und Änderung des Werts verändert nachweislich den Prompt an Claude · **function** – Verhalten wird mit echten Eingaben ausgeführt und verglichen · **rule** – Qualitätsregel existiert als Messung oder Claude-Review-Kriterium · **render** – Ausgabe wird auf einer Fixture gerendert und inhaltlich geprüft · **ui** – Navigations-/Strukturelement existiert.
 
@@ -258,7 +258,7 @@ Prüfarten: **setting** – Steuerelement vorhanden und Änderung des Werts ver�
 | ✅ | `S28.student_instruction` | Student Version: kurze Instruktion | render | render.js (renderStudentHTML / renderTeacherHTML) |
 | ✅ | `S28.student_pretask` | Student Version: Pre-Task, falls gewählt | render | render.js (renderStudentHTML / renderTeacherHTML) |
 | ✅ | `S28.student_questions` | Student Version: Fragen/Aufgaben | render | render.js (renderStudentHTML / renderTeacherHTML) |
-| ✅ | `S28.student_reading_text` | Student Version: Reading-Text enthalten | render | render.js (renderStudentHTML / renderTeacherHTML) |
+| ✅ | `S28.student_reading_text` | Student Version: Reading-Text enthalten – als die Seite seines Mediums, Wort für Wort | render | render.js (renderStudentHTML / renderTeacherHTML) |
 | ✅ | `S28.student_no_script` | Student Version: beim Listening NICHT das Skript | render | render.js (renderStudentHTML / renderTeacherHTML) |
 | ✅ | `S28.student_no_answers` | Student Version: keine Lösungen | render | render.js (renderStudentHTML / renderTeacherHTML) |
 | ✅ | `S28.teacher_script` | Teacher Version: vollständiges Skript/Text | render | render.js (renderStudentHTML / renderTeacherHTML) |
@@ -478,7 +478,7 @@ Prüfarten: **setting** – Steuerelement vorhanden und Änderung des Werts ver�
 | ✅ | `S36.repair` | Beanstandete Post-Task wird gezielt neu erstellt, Fragen und Pre-Task bleiben unverändert | function | Funktion (siehe Check im Manifest) |
 | ✅ | `S36.output` | Post-Task steht nach den Fragen auf dem Arbeitsblatt (Bildschirm, Word, Markdown) mit Sozialform, Arbeitsweise, Zeit, Produkt und Kriterien; Lehrerversion mit Übersicht | render | render.js (renderStudentHTML / renderTeacherHTML) |
 
-## §37 Authentisches Layout (Screenshot des Mediums) (20/20)
+## §37 Authentisches Layout (Screenshot des Mediums) (21/21)
 
 | Status | ID | Anforderung | Art | Umsetzung |
 |---|---|---|---|---|
@@ -499,6 +499,7 @@ Prüfarten: **setting** – Steuerelement vorhanden und Änderung des Werts ver�
 | ✅ | `S37.pictures` | Das Medium zeigt echte Bilder: Aufmacher, Porträts statt Initialen, Vorschaubilder – gezeichnet aus einem Motiv, das Claude wählt und die App prüft | function | Funktion (siehe Check im Manifest) |
 | ✅ | `S37.photo_library` | Echte Fotos, wo die App welche mitbringt: frei lizenziert, mit Bildnachweis unter dem Bild und in der Lehrerversion; Porträts erfundener Personen nur aus Stockfotos; sonst gezeichnete Szene | function | Funktion (siehe Check im Manifest) |
 | ✅ | `S37.own_pictures` | Jedes Bild im Medium lässt sich durch ein eigenes ersetzen (Datei wählen, Strg+V, hineinziehen) – mit Bildnachweis, gespeichert mit dem Material, jederzeit zurück zum automatischen Bild | function | Funktion (siehe Check im Manifest) |
+| ✅ | `S37.composition` | Claude komponiert die Seite wie ein Editorial Designer: Aufmacher-Grösse, Spalten, ein zweites Bild im Text, Zitatkasten (nur wörtlich aus dem Text), Zwischentitel, Dichte – der Text selbst bleibt Wort für Wort unverändert | function | Funktion (siehe Check im Manifest) |
 | ✅ | `S37.modules` | Um den Text steht, was auf so einer Seite wirklich steht: Werbung, Umfrage, Meistgelesen, Anmeldekasten, Kleinanzeigen – Claude wählt aus dem Katalog und darf Eigenes ergänzen | function | Funktion (siehe Check im Manifest) |
 | ✅ | `S37.rule_proportions` | Kontrolle: das Bild ist proportioniert – die Spalten tragen gleich viel, keine bleibt fast leer, und die Seite endet kurz nach dem Text | rule | Quality rule `layout.proportions` (gemessen in quality.js) |
 | ✅ | `S37.rule_authentic` | Kontrolle (Claude): das Medium wirkt echt und passt zum Text | rule | Quality rule `layout.authentic` (Claude-Review über buildReviewPrompt) |

@@ -458,6 +458,46 @@ const SETTINGS = (extra) => `(() => {
     await page.close();
   }
 
+  console.log('\nBrowser audit: the text is its medium, on the sheet and in Word (2.4, 2.5)');
+  {
+    const { page, errors } = await open({});
+    const r = await page.evaluate(async () => {
+      const { fixture, ui, render, word, ooxml, quality } = window.LR;
+      const m = fixture.material({ textType: 'News Article', authenticLayout: true, createWorksheet: true }, 'reading');
+      m.id = 'sheet-test';
+      ui.app.material = m; ui.openViewer(m, 'creator');
+      await new Promise(r => setTimeout(r, 400));
+      const svg = document.querySelector('#vw-sheet .medium-sheet svg');
+      const words = svg ? Array.from(svg.querySelectorAll('text.body')).map(t => t.textContent).join(' ') : '';
+      const norm = (t) => quality.normalizeForSearch(t);
+      const images = svg ? svg.querySelectorAll('image').length : 0;
+      const box = svg ? svg.getBoundingClientRect() : { width: 0 };
+      // a word of the text can be selected on the sheet, as text
+      let selectable = false;
+      if (svg) { const t = svg.querySelector('text.body'); const range = document.createRange(); range.selectNodeContents(t); const sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(range); selectable = sel.toString().trim().length > 0; sel.removeAllRanges(); }
+      // Word: the page of the medium goes in as a picture at print resolution
+      const medium = await ui.mediumPng(m);
+      const parts = word.partsFor(m, 'student', null, { medium });
+      const problems = ooxml.validate(parts);
+      const doc = String(parts.find(p => p.name === 'word/document.xml').data);
+      const media = parts.find(p => p.name.startsWith('word/media/'));
+      const teacher = String(word.partsFor(m, 'teacher', null, { medium }).find(p => p.name === 'word/document.xml').data);
+      return {
+        hasSvg: !!svg, wordsMatch: norm(words) === norm(m.content.paragraphs.join(' ')), images, width: Math.round(box.width), selectable,
+        wordValid: problems.length === 0, wordProblems: problems.slice(0, 2), drawing: /<w:drawing>/.test(doc), mediaBytes: media ? media.data.length : 0,
+        mediumW: medium && medium.width, pngBytes: medium && medium.png.length,
+        teacherHasBoth: /<w:drawing>/.test(teacher) && teacher.includes('paragraph numbers'),
+        studentPlainText: doc.includes(m.content.paragraphs[0].slice(0, 30)) && !/<w:drawing>[\s\S]*<w:t/.test(doc.split('<w:drawing>')[0]),
+      };
+    });
+    check('the sheet shows the text as the page of its medium, word for word', r.hasSvg && r.wordsMatch && r.width > 300, JSON.stringify(r));
+    check('the pictures of the medium are in the sheet, and the words are real text', r.images >= 1 && r.selectable, JSON.stringify(r));
+    check('the Word file carries the page of the medium at print resolution and stays valid', r.wordValid && r.drawing && r.mediaBytes > 20000 && r.mediaBytes === r.pngBytes && r.mediumW >= 1000, JSON.stringify(r));
+    check('the Word teacher version has the page and the numbered text', r.teacherHasBoth, JSON.stringify(r));
+    check('setting the text as its medium raises no page error', errors.length === 0, errors[0]);
+    await page.close();
+  }
+
   console.log('\nBrowser audit: hostile text in the interface (2.10)');
   {
     const { page, errors } = await open({ scenario: 'xss' });
