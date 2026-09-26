@@ -73,7 +73,8 @@
         ['captionCredit', 'the small credit beside the caption, e.g. a photographer or agency name'],
         ['footerLinks', 'an array of 3–5 very short link labels in the footer'],
         ['photoSubject', 'what the picture at the top shows — one key from the list of picture subjects'],
-        ['photoQuery', 'a search for a REAL photograph that would accompany this text in this medium, in English, 4–8 words, built from what THIS text is about: the real place, the scene, the people and the action it describes (e.g. "Zurich school street pedestrians bicycles"); name the kind of photo the medium prints — documentary news photo for a paper, location photo for travel, portrait in its setting for a profile, the lab or landscape for science; no invented names; empty if the page has no lead picture'],
+        ['photoReality', 'may a REAL photograph stand beside this text? "real-subject" when the text is about a real, general subject a photo can truly show (a city, a landscape, an animal, a sport, a technology, everyday life); "fictional-event" when the text reports an invented specific event, person, business or incident (a fire at a named hotel, a local council vote, a named pupil) — then only a general scene that cannot be mistaken for evidence of it; "none" when no real photo fits without seeming to document the story; if unsure, "none"'],
+        ['photoQuery', 'a search for a REAL photograph that would accompany this text in this medium, in English, 4–8 words, built from what THIS text is about: the real place, the scene, the people and the action it describes (e.g. "Zurich school street pedestrians bicycles"); name the kind of photo the medium prints — documentary news photo for a paper, location photo for travel, editorial photo for a magazine feature, portrait in its setting for a profile, the lab or landscape for science. For "fictional-event": only the general setting, never the invented event itself (for an invented hotel fire: "Bristol historic street facade", not "hotel fire"); no invented names; empty if the page has no lead picture or photoReality is "none"'],
         ['sidebarSubjects', 'an array with one picture subject per headline in the box beside the text'],
         ['modules', 'everything else that stands on this page — see "The rest of the page"'],
         ['composition', 'your plan for the page itself — see "Composition"'],
@@ -126,7 +127,8 @@
         ['pageLabel', 'what stands in the page footer, e.g. "Page 7" or the date'],
         ['footerNote', 'one short line at the very bottom, e.g. a website or a continuation note'],
         ['photoSubject', 'what the picture on the page shows — one key from the list of picture subjects'],
-        ['photoQuery', 'a search for a REAL photograph that would accompany this text in this medium, in English, 4–8 words, built from what THIS text is about: the real place, the scene, the people and the action it describes (e.g. "Zurich school street pedestrians bicycles"); name the kind of photo the medium prints — documentary news photo for a paper, location photo for travel, portrait in its setting for a profile, the lab or landscape for science; no invented names; empty if the page has no lead picture'],
+        ['photoReality', 'may a REAL photograph stand beside this text? "real-subject" when the text is about a real, general subject a photo can truly show (a city, a landscape, an animal, a sport, a technology, everyday life); "fictional-event" when the text reports an invented specific event, person, business or incident (a fire at a named hotel, a local council vote, a named pupil) — then only a general scene that cannot be mistaken for evidence of it; "none" when no real photo fits without seeming to document the story; if unsure, "none"'],
+        ['photoQuery', 'a search for a REAL photograph that would accompany this text in this medium, in English, 4–8 words, built from what THIS text is about: the real place, the scene, the people and the action it describes (e.g. "Zurich school street pedestrians bicycles"); name the kind of photo the medium prints — documentary news photo for a paper, location photo for travel, editorial photo for a magazine feature, portrait in its setting for a profile, the lab or landscape for science. For "fictional-event": only the general setting, never the invented event itself (for an invented hotel fire: "Bristol historic street facade", not "hotel fire"); no invented names; empty if the page has no lead picture or photoReality is "none"'],
         ['weatherNote', 'the weather line the paper prints in its running head, e.g. "Cloudy, 14°C"'],
         ['indexItems', 'an array of 2–4 pointers to other pages in the running head, e.g. "Sport 12"'],
         ['portraitName', 'the name under the small portrait beside the article, empty if the text has no author'],
@@ -1025,6 +1027,7 @@
         if (own) {
           spec.own = own.src;
           spec.credit = own.credit;
+          if (own.caption) spec.caption = own.caption;
           if (own.focus) spec.focus = own.focus;
         } else {
           // 2. a real photograph the app ships with; its credit travels with
@@ -1268,17 +1271,19 @@
       const ix = PAD + colW - iw;
       b.photo(ix, y + 6, iw, ih, { seed: photo.hashOf(m.content.title || 'lead'), subject: chrome.photoSubject, colour: true });
       const leadCredit = (b.last && b.last.credit) || chrome.captionCredit;
+      const leadCaption = (b.last && b.last.caption) || chrome.photoCaption;
       let cy = y + 6 + ih + 14;
-      if (chrome.photoCaption) cy = b.para(ix, cy, chrome.photoCaption, ui(11.5), iw, { color: MUTED, lineHeight: 16 });
+      if (leadCaption) cy = b.para(ix, cy, leadCaption, ui(11.5), iw, { color: MUTED, lineHeight: 16 });
       if (leadCredit) { b.text(ix + iw, cy + 2, leadCredit, ui(10), { color: '#94A3B8', align: 'right' }); cy += 14; }
       inset = { top: y, bottom: cy + 6, w: iw };
     } else if ((d.kicker || d.sidebar) && comp.lead !== 'none') {
       const ph = Math.round(colW * 0.46);
       b.photo(PAD, y, colW, ph, { seed: photo.hashOf(m.content.title || 'lead'), subject: chrome.photoSubject, colour: true });
       const leadCredit = (b.last && b.last.credit) || chrome.captionCredit;
+      const leadCaption = (b.last && b.last.caption) || chrome.photoCaption;
       y += ph + 18;
-      if (chrome.photoCaption || leadCredit) {
-        y = b.para(PAD, y, chrome.photoCaption || '', ui(12), colW - 170, { color: MUTED, lineHeight: 17 });
+      if (leadCaption || leadCredit) {
+        y = b.para(PAD, y, leadCaption || '', ui(12), colW - 170, { color: MUTED, lineHeight: 17 });
         if (leadCredit) b.text(PAD + colW, y - 12, leadCredit, ui(10.5), { color: '#94A3B8', align: 'right' });
         y += 16;
       }
@@ -2220,7 +2225,7 @@
       const leadCredit = (b.last && b.last.credit) || chrome.captionCredit;
       const cy = y + photoH + 14;
       const capFont = { family: SANS, size: 12.5 };
-      const capLines = wrap(chrome.photoCaption || '', capFont, photoW - 180, measure);
+      const capLines = wrap((b.last && b.last.caption) || chrome.photoCaption || '', capFont, photoW - 180, measure);
       capLines.forEach((l, i) => b.text(L, cy + i * 16, l, capFont, { color: '#3F3F46' }));
       if (leadCredit) b.text(L + photoW, cy, leadCredit, { family: SANS, size: 10.5, style: 'italic' }, { color: '#78716C', align: 'right' });
       photoBottom = cy + Math.max(capLines.length * 16, 16) + 12;
@@ -3132,7 +3137,10 @@
     if (!photo.isOwnSource(src)) return null;
     const credit = String(e.credit == null ? '' : e.credit).replace(/\s+/g, ' ').trim().slice(0, 120);
     const focus = Array.isArray(e.focus) && e.focus.length === 2 ? e.focus.map(v => Math.max(0, Math.min(1, Number(v) || 0.5))) : null;
-    return { src, credit, focus, name: String(e.name || '').slice(0, 80) };
+    // a photo found on the web carries its own caption: what its source says it
+    // shows, never Claude's words about the story (which it does not show)
+    const caption = String(e.caption == null ? '' : e.caption).replace(/\s+/g, ' ').trim().slice(0, 120);
+    return { src, credit, focus, caption, name: String(e.name || '').slice(0, 80) };
   }
 
   function buildModel(material, chrome, opts) {

@@ -815,6 +815,7 @@
   let LIBRARY = [];
   const IMAGES = new Map();   // file -> loaded image
   const FAILED = new Set();   // files that did not load
+  const PENDING_TONE = '#E7E5E4';
 
   /** Take a library manifest; everything that is not usable is left out. */
   function useLibrary(lib) {
@@ -902,6 +903,10 @@
     const img = src && IMAGES.get(src);
     return img && img.naturalWidth > 0 ? img : null;
   }
+  /** A stored photo that is still loading (neither there nor failed). */
+  function isPending(src) {
+    return !!src && typeof Image !== 'undefined' && isOwnSource(src) && !IMAGES.has(src) && !FAILED.has(src);
+  }
 
   /** Put an image into a box the way a layout does: fill it, crop the rest. */
   function drawCover(ctx, img, box, focus) {
@@ -922,6 +927,17 @@
     const box = { x: b.x, y: b.y, w: b.w, h: b.h };
     if (!(box.w > 0) || !(box.h > 0)) return;
     const own = b.own ? imageForSrc(b.own) : null;
+    // A stored photo that has not arrived yet: a quiet tone in its place, not
+    // the drawn scene — the page is drawn again the moment the photo is there
+    // (and shows the drawn scene only if it never comes).
+    if (b.own && !own && isPending(b.own)) {
+      ctx.save();
+      ctx.fillStyle = PENDING_TONE;
+      if (b.round) { ctx.beginPath(); ctx.ellipse(box.x + box.w / 2, box.y + box.h / 2, box.w / 2, box.h / 2, 0, 0, Math.PI * 2); ctx.fill(); }
+      else ctx.fillRect(box.x, box.y, box.w, box.h);
+      ctx.restore();
+      return;
+    }
     const real = own || (b.photoId ? imageFor(byId(b.photoId)) : null);
     if (real) {
       const entry = own ? { focus: Array.isArray(b.focus) ? b.focus : [0.5, b.subject === 'portrait' ? 0.35 : 0.45] } : byId(b.photoId);
@@ -980,24 +996,55 @@
    * the browser (Wikimedia Commons, then Openverse): free licences, no key,
    * CORS allowed. Nothing is invented: a picture is used only when it was
    * really found, really downloaded and really decodes. Everything else —
-   * no network, a blocked host, no match, a timeout — ends quietly in the
-   * picture the page draws itself.
+   * no network, a blocked host (a page's security policy), no match, a
+   * timeout — ends quietly in the picture the page draws itself.
+   *
+   * Every step leaves a reason code in `opts.log`, so a failure can be told
+   * apart in tests and in the stored material (never shown as a stack trace):
+   * commons-search-failed, commons-search-empty, openverse-search-failed,
+   * openverse-rate-limited, openverse-search-empty, image-cors-failed,
+   * image-load-failed, image-not-image, image-decode-failed, image-too-small,
+   * licence-rejected, metadata-incomplete, event-photo-rejected, csp-blocked,
+   * timeout, cancelled, found, fallback-used.
    */
-  const WEB_TIMEOUT = 15000;
-  const WEB_SKIP = /\b(logo|map|diagram|flag|coat of arms|chart|graph|icon|signature|seal|screenshot|poster|cover|plan|drawing|illustration|painting|svg|scan|document|text|table|emblem|banner|sticker)\b/i;
+  const WEB_TIMEOUT = 12000;          // the whole search
+  const WEB_REQUEST_TIMEOUT = 6000;   // one request, so a hanging host leaves time for the next
+  const WEB_HOSTS = /^https:\/\/([a-z0-9-]+\.)*(wikimedia\.org|openverse\.org|openverse\.engineering)\//;
+  const WEB_SKIP = /\b(logo|logos|map|maps|diagram|flag|coat of arms|chart|graph|icon|signature|seal|screenshot|poster|cover|plan|drawing|illustration|painting|svg|scan|document|text|table|emblem|banner|sticker|meme|collage|montage|clipart|cartoon|render|rendering|infographic|sketch)\b/i;
+  // a photo of a real event must never stand for an invented one
+  const WEB_EVENT = /\b(fire|fires|blaze|burning|flood|flooding|crash|accident|collision|wreck|explosion|attack|shooting|protest|protests|demonstration|riot|strike|arrest|police|funeral|memorial|election|campaign|disaster|earthquake|storm damage|rescue|evacuation|trial|court|victim|victims|war|battle|killed|injured|ceremony|award|visit of|opening of|inauguration)\b/i;
   const STOP = new Set('a an the of in on at to for and or with by from as is are was were be this that these those its it their his her our your into over under about after before during near new old one two three'.split(' '));
+  // once a page's security policy has blocked the collections, it will again
+  let webBlocked = false;
 
   /** The search for the photo, from what Claude chose for this text — or from the text itself. */
   function webQueryFor(chrome, content) {
     const c = chrome || {};
     const own = String(c.photoQuery || '').replace(/[^\p{L}\p{N}\s'-]/gu, ' ').replace(/\s+/g, ' ').trim();
-    if (own.split(' ').length >= 2) return own.split(' ').slice(0, 10).join(' ');
-    // no query from Claude: the caption and the headline of the generated text
-    const src = [c.photoCaption, content && content.title].filter(Boolean).join(' ');
+    if (own.split(' ').length >= 2) return own.split(' ').slice(0, 8).join(' ');
+    // no query from Claude: the headline, then the caption of the generated text
+    const src = [content && content.title, c.photoCaption].filter(Boolean).join(' ');
     const words = String(src).replace(/[^\p{L}\p{N}\s'-]/gu, ' ').split(/\s+/)
       .filter(w => w.length > 2 && !STOP.has(w.toLowerCase()) && !/^fixture/i.test(w));
     const seen = new Set();
     return words.filter(w => !seen.has(w.toLowerCase()) && seen.add(w.toLowerCase())).slice(0, 7).join(' ');
+  }
+
+  /**
+   * Whether a real photo may stand at all, and how. Claude says what the text
+   * is about (`photoReality`): a real, general subject (a city, an animal, a
+   * technology) may have a real photo; an invented event or person only a
+   * general scene that cannot be taken for evidence of it, captioned as an
+   * illustration; "none", or no answer at all, keeps the drawn picture.
+   */
+  function webPlan(chrome, content) {
+    const c = chrome || {};
+    const reality = String(c.photoReality || '').trim().toLowerCase();
+    if (reality === 'none') return { skip: 'no-real-photo-fits' };
+    if (reality !== 'real-subject' && reality !== 'fictional-event') return { skip: 'uncertain-subject' };
+    const query = webQueryFor(c, content);
+    if (query.split(/\s+/).filter(Boolean).length < 2) return { skip: 'no-query' };
+    return { query, fictional: reality === 'fictional-event' };
   }
 
   /** A licence a worksheet may print and hand out: free licences and CC NC for own teaching, never ND. */
@@ -1008,6 +1055,7 @@
     if (/public domain|^pd\b|pdm|cc0|cc zero|no restrictions/.test(l)) return true;
     return /^(cc )?by( sa| nc| nc sa)?( \d(\.\d)?)?/.test(l.replace(/^cc\s*/, 'cc '));
   }
+  const publicDomain = (label) => /public domain|^pd\b|pdm|cc0|cc zero|no restrictions/i.test(String(label || ''));
   const plainText = (html) => String(html || '').replace(/<[^>]*>/g, ' ').replace(/&amp;/g, '&').replace(/&nbsp;/g, ' ').replace(/&[a-z#0-9]+;/gi, ' ').replace(/\s+/g, ' ').trim();
   const overlap = (query, text) => {
     const q = String(query).toLowerCase().split(/\s+/).filter(w => w.length > 2 && !STOP.has(w));
@@ -1021,105 +1069,221 @@
     const want = aspect > 0 ? aspect : 1.6;
     return want >= 1 ? (r >= 1.15 && r <= 2.4) : (r >= 0.55 && r <= 1.05);
   }
+  /** What the source itself says the photo shows — the only thing a caption may claim. */
+  function sourceCaption(title) {
+    const t = String(title || '').replace(/\.[a-z0-9]{2,4}$/i, '').replace(/[_]+/g, ' ')
+      .replace(/\b(IMG|DSC|DSCF|P)\s?\d{3,}\b/gi, '').replace(/\(\d+\)|\b\d{6,}\b/g, '').replace(/\s+/g, ' ').trim();
+    return t.length >= 6 && /[a-z]{3}/i.test(t) ? t.slice(0, 90) : '';
+  }
+  const note = (log, code) => { if (log) log.push(code); };
 
   /** The candidates Wikimedia Commons returns, filtered and ranked. */
-  function commonsCandidates(json, query, aspect) {
+  function commonsCandidates(json, query, aspect, opts) {
+    const o = opts || {};
     const pages = json && json.query && json.query.pages ? Object.values(json.query.pages) : [];
     const out = [];
     for (const p of pages) {
       const ii = p && p.imageinfo && p.imageinfo[0];
       if (!ii) continue;
-      if (!/^image\/(jpeg|png|webp)$/.test(ii.mime || '')) continue;
+      // a photograph: JPEG (PNG and WebP on Commons are mostly graphics)
+      if (ii.mime !== 'image/jpeg') continue;
       const title = String(p.title || '').replace(/^File:/, '').replace(/\.[a-z0-9]+$/i, '').replace(/_/g, ' ');
       if (WEB_SKIP.test(title)) continue;
       if (!shapeOk(ii.width, ii.height, aspect)) continue;
       const meta = ii.extmetadata || {};
       const license = plainText(meta.LicenseShortName && meta.LicenseShortName.value);
-      if (!webLicenseOk(license)) continue;
-      const author = plainText(meta.Artist && meta.Artist.value).slice(0, 60) || 'Unknown';
+      if (!webLicenseOk(license)) { note(o.log, 'licence-rejected'); continue; }
+      const author = plainText(meta.Artist && meta.Artist.value).slice(0, 60);
       const desc = plainText(meta.ImageDescription && meta.ImageDescription.value);
+      // who made it, where it is: missing metadata is never filled in
+      if ((!author && !publicDomain(license)) || !/^https:\/\//.test(ii.descriptionurl || '')) { note(o.log, 'metadata-incomplete'); continue; }
+      if (o.fictional && WEB_EVENT.test(title + ' ' + desc)) { note(o.log, 'event-photo-rejected'); continue; }
       const src = ii.thumburl || ii.url;
       if (!/^https:\/\//.test(src || '')) continue;
-      out.push({ src, page: ii.descriptionurl || '', title, author, license, source: 'Wikimedia Commons',
+      out.push({ src, page: ii.descriptionurl, title, caption: sourceCaption(title), author: author || 'unknown author', license, source: 'Wikimedia Commons',
         score: overlap(query, title + ' ' + desc) * 3 - (p.index || 0) * 0.15 });
     }
     return out.sort((a, b) => b.score - a.score);
   }
 
   /** The candidates Openverse returns, filtered and ranked. */
-  function openverseCandidates(json, query, aspect) {
+  function openverseCandidates(json, query, aspect, opts) {
+    const o = opts || {};
     const out = [];
     ((json && json.results) || []).forEach((r, i) => {
       if (!r || !r.url) return;
       const title = String(r.title || '');
       if (WEB_SKIP.test(title)) return;
-      if (r.width && r.height && !shapeOk(r.width, r.height, aspect)) return;
-      const license = (String(r.license || '').toLowerCase() === 'cc0' ? 'CC0' : String(r.license || '').toLowerCase() === 'pdm' ? 'Public Domain' : 'CC ' + String(r.license || '').toUpperCase()) + (r.license_version ? ' ' + r.license_version : '');
-      if (!webLicenseOk(license)) return;
+      if (!(r.width && r.height) || !shapeOk(r.width, r.height, aspect)) return;
+      const lic = String(r.license || '').toLowerCase();
+      if (!lic) { note(o.log, 'licence-rejected'); return; }
+      const license = (lic === 'cc0' ? 'CC0' : lic === 'pdm' ? 'Public Domain' : 'CC ' + lic.toUpperCase()) + (r.license_version ? ' ' + r.license_version : '');
+      if (!webLicenseOk(license)) { note(o.log, 'licence-rejected'); return; }
+      const author = String(r.creator || '').trim().slice(0, 60);
+      if ((!author && !publicDomain(license)) || !/^https:\/\//.test(r.foreign_landing_url || '')) { note(o.log, 'metadata-incomplete'); return; }
+      const tags = (r.tags || []).map(t => t && t.name).join(' ');
+      if (o.fictional && WEB_EVENT.test(title + ' ' + tags)) { note(o.log, 'event-photo-rejected'); return; }
       const srcs = [r.url, r.thumbnail].filter(u => /^https:\/\//.test(u || ''));
       if (!srcs.length) return;
-      out.push({ src: srcs[0], alt: srcs[1] || '', page: r.foreign_landing_url || '', title, author: String(r.creator || 'Unknown').slice(0, 60), license,
-        source: r.source ? String(r.source).replace(/^./, c => c.toUpperCase()) + ' via Openverse' : 'Openverse', score: overlap(query, title + ' ' + (r.tags || []).map(t => t && t.name).join(' ')) * 3 - i * 0.15 });
+      out.push({ src: srcs[0], alt: srcs[1] || '', page: r.foreign_landing_url, title, caption: sourceCaption(title), author: author || 'unknown author', license,
+        source: r.source ? String(r.source).replace(/^./, c => c.toUpperCase()) + ' via Openverse' : 'Openverse', score: overlap(query, title + ' ' + tags) * 3 - i * 0.15 });
     });
     return out.sort((a, b) => b.score - a.score);
   }
 
+  /** Does the downloaded file really open as an image — and how large is it? */
+  async function decodeImage(blob) {
+    try {
+      if (typeof createImageBitmap === 'function') {
+        const bmp = await createImageBitmap(blob);
+        const size = { width: bmp.width, height: bmp.height };
+        if (bmp.close) bmp.close();
+        return size;
+      }
+      if (typeof Image === 'function' && typeof URL !== 'undefined' && URL.createObjectURL) {
+        const url = URL.createObjectURL(blob);
+        try {
+          const img = new Image();
+          img.src = url;
+          await img.decode();
+          return { width: img.naturalWidth, height: img.naturalHeight };
+        } finally { URL.revokeObjectURL(url); }
+      }
+    } catch (e) { /* not an image */ }
+    return null;
+  }
+
   /**
    * Look for a real photo and download it. Resolves `null` whenever anything
-   * is missing or fails — never throws, never invents. `opts.fetch` lets a
-   * test stand in for the network.
+   * is missing or fails — never throws, never invents. `opts.fetch` and
+   * `opts.decode` let a test stand in for the network and the decoder;
+   * `opts.log` collects the reason codes; `opts.fictional` keeps photos of
+   * real events away from an invented story.
    */
   async function findWebPicture(query, opts) {
     const o = opts || {};
+    const log = o.log || [];
     const doFetch = o.fetch || (typeof fetch === 'function' ? fetch.bind(globalThis) : null);
+    const decode = o.decode || decodeImage;
     const q = String(query || '').trim();
-    if (!doFetch || q.split(/\s+/).length < 2) return null;
+    if (!doFetch || q.split(/\s+/).length < 2) { note(log, 'no-query'); note(log, 'fallback-used'); return null; }
+    if (webBlocked && !o.fetch) { note(log, 'csp-blocked'); note(log, 'fallback-used'); return null; }
     const ctl = typeof AbortController === 'function' ? new AbortController() : null;
-    const stop = () => ctl && ctl.abort();
-    const timer = setTimeout(stop, o.timeout || WEB_TIMEOUT);
-    if (o.signal) { if (o.signal.aborted) stop(); else o.signal.addEventListener('abort', stop, { once: true }); }
-    const get = async (url, as) => {
-      const res = await doFetch(url, { mode: 'cors', credentials: 'omit', signal: ctl ? ctl.signal : undefined });
-      if (!res || !res.ok) throw new Error('HTTP ' + (res && res.status));
-      return as === 'blob' ? res.blob() : res.json();
+    let why = '';
+    const stop = (reason) => { if (!why) why = reason; if (ctl) ctl.abort(); };
+    const timer = setTimeout(() => stop('timeout'), o.timeout || WEB_TIMEOUT);
+    const onCancel = () => stop('cancelled');
+    if (o.signal) { if (o.signal.aborted) onCancel(); else o.signal.addEventListener('abort', onCancel, { once: true }); }
+    // A page whose security policy forbids these hosts tells us so: then
+    // nothing else is tried, now or later in this page.
+    const onCsp = (e) => { if (WEB_HOSTS.test(String(e.blockedURI || ''))) { webBlocked = true; stop('csp-blocked'); } };
+    const doc = typeof document !== 'undefined' && document.addEventListener ? document : null;
+    if (doc && !o.fetch) doc.addEventListener('securitypolicyviolation', onCsp);
+    const done = () => ctl && ctl.signal.aborted;
+
+    /** One request with its own time limit, inside the time of the whole search. */
+    const get = async (url, as, headers) => {
+      const one = typeof AbortController === 'function' ? new AbortController() : null;
+      const t = setTimeout(() => one && one.abort(), o.requestTimeout || WEB_REQUEST_TIMEOUT);
+      const pass = () => one && one.abort();
+      if (ctl) ctl.signal.addEventListener('abort', pass, { once: true });
+      try {
+        const init = { mode: 'cors', credentials: 'omit', signal: one ? one.signal : undefined };
+        if (headers) init.headers = headers;
+        const res = await doFetch(url, init);
+        if (!res) throw Object.assign(new Error('no response'), { kind: 'load' });
+        if (res.status === 429) throw Object.assign(new Error('rate limited'), { kind: 'rate' });
+        if (!res.ok) throw Object.assign(new Error('HTTP ' + res.status), { kind: 'load' });
+        return as === 'blob' ? await res.blob() : await res.json();
+      } catch (e) {
+        // a TypeError is what a browser gives for CORS, CSP, DNS and offline alike
+        if (e && !e.kind) e.kind = (e.name === 'TypeError') ? 'network' : (e.name === 'AbortError' ? 'abort' : 'load');
+        throw e;
+      } finally {
+        clearTimeout(t);
+        if (ctl) ctl.signal.removeEventListener('abort', pass);
+      }
+    };
+    /** The Commons API asks browser clients to name themselves in Api-User-Agent (a browser may not set User-Agent). */
+    const commons = async (text) => {
+      const url = 'https://commons.wikimedia.org/w/api.php?action=query&format=json&formatversion=2&origin=*'
+        + '&generator=search&gsrnamespace=6&gsrlimit=24&gsrsearch=' + encodeURIComponent(text + ' filetype:bitmap')
+        + '&prop=imageinfo&iiprop=' + encodeURIComponent('url|size|mime|extmetadata')
+        // a standard thumbnail width: the CDN refuses others
+        + '&iiurlwidth=1280&iiextmetadatafilter=' + encodeURIComponent('LicenseShortName|Artist|ImageDescription');
+      try { return await get(url, 'json', { 'Api-User-Agent': 'LRMaster/1.0 (classroom reading worksheets; browser)' }); }
+      catch (e) {
+        // the header needs a preflight; a host or policy that refuses it gets the plain request
+        if (e.kind === 'network' && !done()) return get(url, 'json');
+        throw e;
+      }
+    };
+    const pagesOf = (j) => {
+      // formatversion=2 gives an array of pages, 1 an object keyed by id
+      if (j && j.query && Array.isArray(j.query.pages)) return { query: { pages: Object.assign({}, j.query.pages) } };
+      return j;
     };
     const download = async (c) => {
       for (const src of [c.src, c.alt].filter(Boolean)) {
+        if (done()) return null;
         try {
           const blob = await get(src, 'blob');
-          if (blob && /^image\/(jpeg|png|webp)$/.test(blob.type) && blob.size > 8000 && blob.size < 15e6) return blob;
-        } catch (e) { if (ctl && ctl.signal.aborted) throw e; }
+          if (!blob || !/^image\/(jpeg|png|webp)$/.test(blob.type) || blob.size > 15e6) { note(log, 'image-not-image'); continue; }
+          if (blob.size < 8000) { note(log, 'image-too-small'); continue; }
+          const size = await decode(blob);
+          if (!size || !(size.width > 0)) { note(log, 'image-decode-failed'); continue; }
+          if (size.width < 480 || size.height < 270) { note(log, 'image-too-small'); continue; }
+          return blob;
+        } catch (e) {
+          if (done()) return null;
+          note(log, e.kind === 'network' ? 'image-cors-failed' : 'image-load-failed');
+        }
       }
       return null;
     };
     const shorter = q.split(/\s+/).slice(0, 4).join(' ');
     const searches = [
-      () => get('https://commons.wikimedia.org/w/api.php?action=query&format=json&origin=*&generator=search&gsrnamespace=6&gsrlimit=24'
-        + '&gsrsearch=' + encodeURIComponent(q + ' filetype:bitmap')
-        + '&prop=imageinfo&iiprop=url|size|mime|extmetadata&iiurlwidth=1600&iiextmetadatafilter=LicenseShortName|Artist|ImageDescription').then(j => commonsCandidates(j, q, o.aspect)),
-      () => shorter !== q ? get('https://commons.wikimedia.org/w/api.php?action=query&format=json&origin=*&generator=search&gsrnamespace=6&gsrlimit=24'
-        + '&gsrsearch=' + encodeURIComponent(shorter + ' filetype:bitmap')
-        + '&prop=imageinfo&iiprop=url|size|mime|extmetadata&iiurlwidth=1600&iiextmetadatafilter=LicenseShortName|Artist|ImageDescription').then(j => commonsCandidates(j, shorter, o.aspect)) : [],
-      () => get('https://api.openverse.org/v1/images/?page_size=20&mature=false&category=photograph&q=' + encodeURIComponent(q)).then(j => openverseCandidates(j, q, o.aspect)),
+      { name: 'commons', run: () => commons(q).then(j => commonsCandidates(pagesOf(j), q, o.aspect, { log, fictional: o.fictional })) },
+      { name: 'commons', run: () => (shorter !== q ? commons(shorter).then(j => commonsCandidates(pagesOf(j), shorter, o.aspect, { log, fictional: o.fictional })) : null) },
+      { name: 'openverse', run: () => get('https://api.openverse.org/v1/images/?page_size=20&mature=false&category=photograph&q=' + encodeURIComponent(q), 'json')
+        .then(j => openverseCandidates(j, q, o.aspect, { log, fictional: o.fictional })) },
     ];
     try {
-      for (const search of searches) {
-        let list = [];
-        try { list = await search(); } catch (e) { if (ctl && ctl.signal.aborted) return null; continue; }
+      for (const s of searches) {
+        if (done()) break;
+        let list;
+        try { list = await s.run(); } catch (e) {
+          if (done()) break;
+          note(log, e.kind === 'rate' ? s.name + '-rate-limited' : s.name + '-search-failed');
+          continue;
+        }
+        if (list === null) continue;
+        if (!list.length) { note(log, s.name + '-search-empty'); continue; }
         for (const c of list.slice(0, 3)) {
           const blob = await download(c);
+          if (done()) break;
           if (!blob) continue;
           const ext = blob.type === 'image/png' ? 'png' : blob.type === 'image/webp' ? 'webp' : 'jpg';
+          note(log, 'found');
           return { blob, name: (c.title || 'photo').slice(0, 60) + '.' + ext, page: c.page, source: c.source, license: c.license, author: c.author, query: q,
+            caption: c.caption, title: c.title, fictional: !!o.fictional,
             credit: ('Foto: ' + c.author + ' / ' + c.source + ', ' + c.license).slice(0, 120) };
         }
       }
+      // a blocked request fails at once; the browser may report the policy
+      // behind it a moment later — wait for that moment before telling why
+      if (!why && doc && !o.fetch && log.some(c => /search-failed$/.test(c))) await new Promise(r => setTimeout(r, 80));
+      if (why) note(log, why);
+      note(log, 'fallback-used');
       return null;
     } catch (e) {
+      if (why) note(log, why);
+      note(log, 'fallback-used');
       return null;
     } finally {
       clearTimeout(timer);
-      if (o.signal) o.signal.removeEventListener('abort', stop);
+      if (o.signal) o.signal.removeEventListener('abort', onCancel);
+      if (doc && !o.fetch) doc.removeEventListener('securitypolicyviolation', onCsp);
     }
   }
 
@@ -1129,6 +1293,7 @@
     SUBJECTS, SCENES, subjectFor, subjectHints, isSubject, draw, hashOf, LIGHTS, SKIN, HAIR, CLOTHES,
     useLibrary, photosFor, pick, byId, preload, imageFor, library: () => LIBRARY.slice(),
     isOwnSource, loadSrc, imageForSrc,
-    webQueryFor, webLicenseOk, commonsCandidates, openverseCandidates, findWebPicture,
+    webQueryFor, webPlan, webLicenseOk, commonsCandidates, openverseCandidates, findWebPicture, decodeImage, isPending, sourceCaption,
+    PENDING_TONE, webBlockedNow: () => webBlocked, resetWebBlocked: () => { webBlocked = false; },
   };
 });

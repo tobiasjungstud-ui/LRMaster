@@ -132,7 +132,8 @@ function claudeStub({ scenario, text, xss, worksheet }) {
     }
     if (kind === 'layout') {
       if (scenario === 'xss') return { url: xss, siteName: xss, navItems: [xss], actions: [{ label: xss, count: xss }] };
-      return { url: 'www.x.example/a', siteName: 'City Voices', navItems: ['Home'], actions: [{ label: 'Like', count: '2' }], publication: 'City Voices', publicationLine: 'x', photoCaption: 'A photo.' };
+      return Object.assign({ url: 'www.x.example/a', siteName: 'City Voices', navItems: ['Home'], actions: [{ label: 'Like', count: '2' }], publication: 'City Voices', publicationLine: 'x', photoCaption: 'A photo.',
+        photoReality: 'real-subject', photoQuery: 'city market square stalls people' }, window.__layoutExtra || {});
     }
     if (kind === 'questions') {
       if (scenario === 'xss') return { questions: [{ n: 1, skill: 'gist', format: 'short_answer', difficulty: 'B1.1', prompt: xss, answer: xss, evidenceQuote: xss, evidenceRef: '[¶1]' }] };
@@ -180,12 +181,18 @@ const SETTINGS = (extra) => `(() => {
     if (req.url.split('?')[0] === '/photos/__probe__.png' || /^\/_blob\/[A-Za-z0-9_-]+$/.test(req.url.split('?')[0])) { res.writeHead(200, { 'content-type': 'image/png' }); res.end(PROBE); return; }
     const file = path.join(APP, decodeURIComponent(req.url.split('?')[0]).replace(/^\/+/, '') || 'index.html');
     if (!file.startsWith(APP) || !fs.existsSync(file) || fs.statSync(file).isDirectory()) { res.writeHead(404); res.end('no'); return; }
-    res.writeHead(200, { 'content-type': TYPES[path.extname(file)] || 'application/octet-stream', 'cache-control': 'no-store' });
+    const head = { 'content-type': TYPES[path.extname(file)] || 'application/octet-stream', 'cache-control': 'no-store' };
+    // ?csp=1: the page as a published Artifact serves it — scripts from its own
+    // files and the CDN allowlist, and no fetch, image or media from any other host
+    if (/[?&]csp=1\b/.test(req.url) && path.extname(file) === '.html') {
+      head['content-security-policy'] = "default-src 'self'; script-src 'self' https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; media-src 'self' data: blob:; connect-src 'self'";
+    }
+    res.writeHead(200, head);
     res.end(fs.readFileSync(file));
   }).listen(PORT);
 
   const browser = await playwright.chromium.launch({ executablePath });
-  const url = () => `http://127.0.0.1:${PORT}/index.html?v=${Date.now()}`;
+  const url = (csp) => `http://127.0.0.1:${PORT}/index.html?v=${Date.now()}${csp ? '&csp=1' : ''}`;
 
   /** A page with the stub installed; returns the page and its error log. */
   async function open(opts) {
@@ -197,8 +204,9 @@ const SETTINGS = (extra) => `(() => {
     if (opts.scenario) await page.addInitScript(claudeStub, { scenario: opts.scenario, text: TEXT, xss: XSS, worksheet: WORKSHEET });
     // the open image collections are never reached from a test: blocked, or
     // answered by the test itself (opts.web)
-    await page.route(/^https:\/\/(commons\.wikimedia\.org|upload\.wikimedia\.org|api\.openverse\.org)\//, (route) => (opts.web ? opts.web(route) : route.abort('blockedbyclient')));
-    await page.goto(url(), { waitUntil: 'domcontentloaded' });
+    await page.route(/^https:\/\/([a-z0-9-]+\.)*(wikimedia\.org|openverse\.org|staticflickr\.com)\//, (route) => (opts.web ? opts.web(route) : route.abort('blockedbyclient')));
+    if (opts.layoutExtra) await page.addInitScript((x) => { window.__layoutExtra = x; }, opts.layoutExtra);
+    await page.goto(url(opts.csp), { waitUntil: 'domcontentloaded' });
     await page.waitForTimeout(700);
     return { page, errors };
   }
@@ -545,83 +553,279 @@ const SETTINGS = (extra) => `(() => {
     await page.close();
   }
 
-  console.log('\nBrowser audit: a real photo for the generated article (2.4, 2.5)');
+  console.log('\nBrowser audit: a real photo for the generated article (2.4, 2.5, 2.7, 2.8)');
   {
-    // a photo as an image collection would send it: magenta in the middle, noise around
+    // photos as an image collection would send them: one colour in the middle, noise at the left edge
     const maker = await browser.newPage();
-    const jpegB64 = await maker.evaluate(() => {
-      const c = document.createElement('canvas'); c.width = 1600; c.height = 1000;
-      const x = c.getContext('2d');
-      x.fillStyle = 'rgb(214,38,196)'; x.fillRect(0, 0, 1600, 1000);
-      for (let i = 0; i < 40000; i++) { x.fillStyle = `rgb(${(i * 37) % 255},${(i * 91) % 255},${(i * 53) % 255})`; x.fillRect((i * 7919) % 400, (i * 104729) % 1000, 3, 3); }
-      return c.toDataURL('image/jpeg', 0.95).split(',')[1];
-    });
+    const jpeg = async (rgb) => Buffer.from(await maker.evaluate((c) => {
+      const cv = document.createElement('canvas'); cv.width = 1600; cv.height = 1000;
+      const x = cv.getContext('2d');
+      x.fillStyle = `rgb(${c[0]},${c[1]},${c[2]})`; x.fillRect(0, 0, 1600, 1000);
+      for (let i = 0; i < 40000; i++) { x.fillStyle = `rgb(${(i * 37) % 255},${(i * 91) % 255},${(i * 53) % 255})`; x.fillRect((i * 7919) % 300, (i * 104729) % 1000, 3, 3); }
+      return cv.toDataURL('image/jpeg', 0.95).split(',')[1];
+    }, rgb), 'base64');
+    const MAGENTA = [214, 38, 196], GREEN = [30, 170, 60];
+    const JPEG_M = await jpeg(MAGENTA), JPEG_G = await jpeg(GREEN);
     await maker.close();
-    const JPEG = Buffer.from(jpegB64, 'base64');
-    const queries = [];
-    const web = (route) => {
-      const u = route.request().url();
-      if (u.startsWith('https://commons.wikimedia.org/')) {
-        queries.push(decodeURIComponent(new URL(u).searchParams.get('gsrsearch') || ''));
-        return route.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify({ query: { pages: {
-          1: { title: 'File:Company logo.png', index: 1, imageinfo: [{ mime: 'image/png', width: 1600, height: 1000, thumburl: 'https://upload.wikimedia.org/logo.png', descriptionurl: 'https://commons.wikimedia.org/wiki/File:Company_logo.png', extmetadata: { LicenseShortName: { value: 'CC BY-SA 4.0' }, Artist: { value: 'Someone' } } }] },
-          2: { title: 'File:Street with no derivatives.jpg', index: 2, imageinfo: [{ mime: 'image/jpeg', width: 1600, height: 1000, thumburl: 'https://upload.wikimedia.org/nd.jpg', descriptionurl: 'x', extmetadata: { LicenseShortName: { value: 'CC BY-ND 2.0' }, Artist: { value: 'Someone' } } }] },
-          3: { title: 'File:Market square with people.jpg', index: 3, imageinfo: [{ mime: 'image/jpeg', width: 1600, height: 1000, thumburl: 'https://upload.wikimedia.org/market.jpg', descriptionurl: 'https://commons.wikimedia.org/wiki/File:Market_square_with_people.jpg', extmetadata: { LicenseShortName: { value: 'CC BY-SA 4.0' }, Artist: { value: '<a href="x">Jane Photographer</a>' } } }] },
-        } } }) });
-      }
-      if (u === 'https://upload.wikimedia.org/market.jpg') return route.fulfill({ status: 200, contentType: 'image/jpeg', headers: { 'access-control-allow-origin': '*' }, body: JPEG });
-      return route.abort('blockedbyclient');
-    };
-    const { page, errors } = await open({ scenario: 'ok', web });
-    await run(page, { textType: 'News Article', layoutMedium: 'paper' });
-    await page.waitForTimeout(600);
-    const r = await page.evaluate(async () => {
-      const { ui, quality, photo, word } = window.LR;
-      const m = ui.app.material;
-      if (!m || !m.layout) return { error: 'no material' };
-      const entry = Object.entries(m.layout.images || {})[0];
-      const model = quality.layoutModel(m);
-      const lead = model.blocks.filter(b => b.type === 'photo' && !b.round).sort((a, b) => b.w * b.h - a.w * a.h)[0];
-      const svg = document.querySelector('#out-student .medium-sheet svg.lr-medium');
-      // the colour in the middle of the lead picture as the sheet shows it
-      let rgb = null;
-      const img = svg && Array.from(svg.querySelectorAll('image')).find(i => Math.abs(+i.getAttribute('width') - lead.w) < 1);
-      if (img) {
-        const el = new Image(); el.src = img.getAttribute('href');
-        await el.decode();
+    const CORS = { 'access-control-allow-origin': '*' };
+    const near = (a, b) => Array.isArray(a) && a.every((v, i) => Math.abs(v - b[i]) < 40);
+    const cpage = (title, license, artist, img, extra) => Object.assign({ title: 'File:' + title + '.jpg', index: 1, imageinfo: [{ mime: 'image/jpeg', width: 1600, height: 1000,
+      thumburl: 'https://upload.wikimedia.org/wikipedia/commons/thumb/' + img, descriptionurl: 'https://commons.wikimedia.org/wiki/File:' + title.replace(/ /g, '_') + '.jpg',
+      extmetadata: { LicenseShortName: { value: license }, Artist: { value: artist } } }] }, extra || {});
+    const commonsBody = (...pages) => JSON.stringify({ batchcomplete: true, query: { pages } });
+    // in the page: the colour in the middle of the lead picture — on the sheet, on the PNG canvas, in the Word picture
+    const PROBES = () => {
+      window.__sheetPixel = async (root) => {
+        const svg = document.querySelector(root + ' .medium-sheet svg.lr-medium');
+        if (!svg) return null;
+        const imgs = Array.from(svg.querySelectorAll('image')).sort((a, b) => b.getAttribute('width') * b.getAttribute('height') - a.getAttribute('width') * a.getAttribute('height'));
+        if (!imgs.length) return null;
+        const el = new Image(); el.src = imgs[0].getAttribute('href'); await el.decode();
         const c = document.createElement('canvas'); c.width = el.naturalWidth; c.height = el.naturalHeight;
         c.getContext('2d').drawImage(el, 0, 0);
-        const d = c.getContext('2d').getImageData(Math.round(c.width * 0.75), Math.round(c.height / 2), 1, 1).data;
-        rgb = [d[0], d[1], d[2]];
-      }
-      const medium = await ui.mediumPng(m);
-      const stored = (await ui.store.list('materials')).find(x => x.id === m.id);
-      return { slot: entry && entry[0], credit: entry && entry[1].credit, source: entry && entry[1].source, leadOwn: !!(lead && lead.own), leadSlot: lead && lead.slot,
-        loaded: !!(lead && lead.own && photo.imageForSrc(lead.own)), svgOwn: !!(svg && /data-own="1"/.test(svg.outerHTML)), rgb,
-        search: m.layout.photoSearch, teacher: window.LR.render.renderTeacherHTML(m, {}).includes('Jane Photographer'),
-        word: !!(medium && medium.png && medium.png.length > 20000), storedImage: !!(stored && stored.layout && stored.layout.images && Object.keys(stored.layout.images).length) };
-    });
-    const near = (a, b) => a && a.every((v, i) => Math.abs(v - b[i]) < 40);
-    check('the generated article comes with a real photo in its lead picture, visible in the preview at once', !r.error && r.leadOwn && r.slot === r.leadSlot && r.loaded && r.svgOwn && near(r.rgb, [214, 38, 196]), JSON.stringify(r));
-    check('the photo is chosen with care: no logo, no ND licence, credited with author, source and licence', !r.error && /Jane Photographer/.test(r.credit || '') && /Wikimedia Commons, CC BY-SA 4\.0/.test(r.credit || '') && /Market_square/.test(r.source || '') && r.teacher, JSON.stringify(r));
-    check('the search comes from the generated text, not from the settings', queries.length >= 1 && queries.every(q => q.trim().split(/\s+/).length >= 3) && r.search && r.search.found === true, JSON.stringify({ queries, search: r.search }));
-    check('the same photo goes into the stored material and the Word export', r.storedImage && r.word, JSON.stringify(r));
-    check('a real photo raises no page error', errors.length === 0, errors[0]);
-    await page.close();
-  }
-  {
-    // no network for images: the material comes as always, with the drawn picture
-    const t0 = Date.now();
-    const { page, errors } = await open({ scenario: 'ok' });
-    await run(page, { textType: 'News Article', layoutMedium: 'paper' });
-    const r = await page.evaluate(() => {
-      const m = window.LR.ui.app.material;
-      return { material: !!m, images: m && m.layout ? Object.keys(m.layout.images || {}).length : -1, search: m && m.layout && m.layout.photoSearch,
-        svg: !!document.querySelector('#out-student .medium-sheet svg.lr-medium'), broken: document.querySelectorAll('#out-student img').length };
-    });
-    check('without a reachable image source the reading is generated as always, with the drawn picture', r.material && r.images === 0 && r.svg && r.search && r.search.found === false, JSON.stringify(r));
-    check('a blocked image source costs no noticeable time and raises no error', Date.now() - t0 < 30000 && errors.length === 0, (Date.now() - t0) + ' ms ' + (errors[0] || ''));
-    await page.close();
+        return Array.from(c.getContext('2d').getImageData(Math.round(c.width * 0.72), Math.round(c.height / 2), 1, 1).data.slice(0, 3));
+      };
+      window.__leadOf = (model) => model.blocks.filter(b => b.type === 'photo' && !b.round && b.subject !== 'portrait').sort((a, b) => b.w * b.h - a.w * a.h)[0];
+      window.__pngPixel = async (m) => {
+        const { ui } = window.LR;
+        await ui.loadOwnPictures(m);
+        const canvas = ui.renderLayout(m);
+        const model = canvas._lrModel, lead = window.__leadOf(model), k = canvas.width / model.width;
+        let exportable = true;
+        try { canvas.toDataURL('image/png'); } catch (e) { exportable = false; }
+        const d = canvas.getContext('2d').getImageData(Math.round((lead.x + lead.w * 0.72) * k), Math.round((lead.y + lead.h / 2) * k), 1, 1).data;
+        return { exportable, rgb: [d[0], d[1], d[2]] };
+      };
+      window.__wordPixel = async (m) => {
+        const { ui, mock, word, ooxml } = window.LR;
+        const medium = await ui.mediumPng(m);
+        if (!medium) return null;
+        const model = mock.buildModel(m, m.layout.chrome, { measure: mock.canvasMeasure(document.createElement('canvas')) });
+        const lead = window.__leadOf(model), box = mock.pageBoxes(model)[0];
+        const el = new Image(); el.src = URL.createObjectURL(new Blob([medium.pages[0].png], { type: 'image/jpeg' })); await el.decode();
+        const k = el.naturalWidth / box.w;
+        const c = document.createElement('canvas'); c.width = el.naturalWidth; c.height = el.naturalHeight;
+        c.getContext('2d').drawImage(el, 0, 0);
+        const d = c.getContext('2d').getImageData(Math.round((lead.x + lead.w * 0.72 - box.x) * k), Math.round((lead.y + lead.h / 2 - box.y) * k), 1, 1).data;
+        const parts = word.partsFor(m, 'student', null, { medium });
+        return { rgb: [d[0], d[1], d[2]], valid: ooxml.validate(parts).length === 0, drawing: /<w:drawing>/.test(String(parts.find(p => p.name === 'word/document.xml').data)) };
+      };
+    };
+    const NEWS = { textType: 'News Article', layoutMedium: 'paper' };
+
+    // 1. the whole way: search, download, preview, store, reopen with the host gone, PNG, Word, credit
+    {
+      let hostDown = false, hostCalls = 0;
+      const queries = [];
+      const web = (route) => {
+        const u = route.request().url();
+        if (/commons\.wikimedia\.org\/w\/api\.php/.test(u)) {
+          queries.push(new URL(u).searchParams.get('gsrsearch'));
+          return route.fulfill({ status: 200, contentType: 'application/json', headers: CORS, body: commonsBody(
+            cpage('Company logo', 'CC BY-SA 4.0', 'Someone', 'logo.jpg', { index: 1 }),
+            cpage('Street with no derivatives', 'CC BY-ND 2.0', 'Someone', 'nd.jpg', { index: 2 }),
+            cpage('Market square with people', 'CC BY-SA 4.0', '<a href="x">Jane Photographer</a>', 'market.jpg', { index: 3 })) });
+        }
+        if (/upload\.wikimedia\.org/.test(u)) { hostCalls++; if (hostDown || !/market\.jpg$/.test(u)) return route.abort('failed'); return route.fulfill({ status: 200, contentType: 'image/jpeg', headers: CORS, body: JPEG_M }); }
+        return route.abort('blockedbyclient');
+      };
+      const { page, errors } = await open({ scenario: 'ok', web });
+      await page.evaluate(PROBES);
+      await run(page, NEWS);
+      await page.waitForTimeout(300);
+      const a = await page.evaluate(async () => {
+        const { ui, quality, render } = window.LR;
+        const m = ui.app.material;
+        if (!m || !m.layout) return { error: 'no material' };
+        const entry = Object.values(m.layout.images || {})[0] || {};
+        const lead = window.__leadOf(quality.layoutModel(m));
+        const stored = (await ui.store.list('materials')).find(x => x.id === m.id);
+        const storedEntry = stored && stored.layout && Object.values(stored.layout.images || {})[0];
+        const capText = quality.layoutModel(m).blocks.filter(b => b.type === 'text').map(b => b.text).join(' | ');
+        return { id: m.id, credit: entry.credit, source: entry.source, caption: entry.caption, leadOwn: !!(lead && lead.own), search: m.layout.photoSearch,
+          sheet: await window.__sheetPixel('#out-student'), png: await window.__pngPixel(m), word: await window.__wordPixel(m),
+          frozen: !!(storedEntry && (/^data:image\/jpeg;base64,/.test(storedEntry.src || '') || storedEntry.asset)), storedCredit: storedEntry && storedEntry.credit,
+          teacher: render.renderTeacherHTML(m, {}).includes('Jane Photographer / Wikimedia Commons, CC BY-SA 4.0'), captionShown: /Market square with people/.test(capText) };
+      });
+      check('generate → search → download → the real photo stands in the preview at once', !a.error && a.leadOwn && near(a.sheet, MAGENTA) && a.search && a.search.found && a.search.codes.includes('found'), JSON.stringify(a));
+      check('no logo and no ND licence: the right candidate is chosen, the query comes from the text', !a.error && /Jane Photographer/.test(a.credit || '') && queries.length >= 1 && queries.every(q => /market square/i.test(q || '')) && a.search.codes.includes('licence-rejected'), JSON.stringify({ queries, codes: a.search && a.search.codes }));
+      check('the photo is frozen into the stored material (not its web address), with credit and source page', a.frozen && a.storedCredit === a.credit && /commons\.wikimedia\.org\/wiki\/File:Market_square_with_people\.jpg/.test(a.source || '') && a.teacher, JSON.stringify(a));
+      check('the caption under the photo is what its source says it shows', a.caption === 'Market square with people' && a.captionShown, JSON.stringify({ caption: a.caption }));
+      check('the PNG export contains the real photo and the canvas is not tainted', a.png && a.png.exportable && near(a.png.rgb, MAGENTA), JSON.stringify(a.png));
+      check('the Word export contains the real photo', a.word && a.word.valid && a.word.drawing && near(a.word.rgb, MAGENTA), JSON.stringify(a.word));
+      // reopen after a reload, with the image host gone
+      hostDown = true; hostCalls = 0;
+      await page.reload({ waitUntil: 'domcontentloaded' });
+      await page.waitForTimeout(800);
+      await page.evaluate(PROBES);
+      const b = await page.evaluate(async (id) => {
+        const { ui, photo, render } = window.LR;
+        const m = (await ui.store.list('materials')).find(x => x.id === id);
+        if (!m) return { error: 'not stored' };
+        ui.app.material = m;
+        ui.openViewer(m, 'library');
+        // the first drawing, before the stored photo has loaded: the loading tone, not the drawn scene
+        const first = await window.__sheetPixel('#vw-sheet');
+        const src = Object.values(m.layout.images)[0];
+        for (let i = 0; i < 40 && !photo.imageForSrc(src.asset ? '/_blob/' + src.asset : src.src); i++) await new Promise(r => setTimeout(r, 100));
+        await new Promise(r => setTimeout(r, 400));
+        const later = await window.__sheetPixel('#vw-sheet');
+        return { first, later, png: await window.__pngPixel(m), word: await window.__wordPixel(m), teacher: render.renderTeacherHTML(m, {}).includes('Jane Photographer') };
+      }, a.id);
+      const TONE = [231, 229, 228];
+      check('a reopened material shows its photo — first the loading tone, never the drawn scene', !b.error && (near(b.first, TONE) || near(b.first, MAGENTA)) && near(b.later, MAGENTA), JSON.stringify(b));
+      check('the reopened material exports PNG and Word with its photo, without the image host', !b.error && b.png.exportable && near(b.png.rgb, MAGENTA) && near(b.word.rgb, MAGENTA) && b.teacher && hostCalls === 0, JSON.stringify({ b, hostCalls }));
+      check('the real-photo path raises no page error', errors.length === 0, errors[0]);
+      await page.close();
+    }
+
+    // 2. Commons down → Openverse; its original refuses, its thumbnail comes
+    {
+      const web = (route) => {
+        const u = route.request().url();
+        if (/api\.openverse\.org\/v1\/images\/\?/.test(u)) return route.fulfill({ status: 200, contentType: 'application/json', headers: CORS, body: JSON.stringify({ result_count: 1, results: [{
+          id: 'x', title: 'Market square stalls', url: 'https://live.staticflickr.com/1/o.jpg', thumbnail: 'https://api.openverse.org/v1/images/x/thumb/', width: 1600, height: 1000,
+          creator: 'Bo Lens', license: 'by', license_version: '2.0', source: 'flickr', foreign_landing_url: 'https://www.flickr.com/photos/bo/1', tags: [{ name: 'market' }] }] }) });
+        if (/api\.openverse\.org\/v1\/images\/x\/thumb/.test(u)) return route.fulfill({ status: 200, contentType: 'image/jpeg', headers: CORS, body: JPEG_G });
+        return route.abort('failed');
+      };
+      const { page, errors } = await open({ scenario: 'ok', web });
+      await page.evaluate(PROBES);
+      await run(page, NEWS);
+      const r = await page.evaluate(async () => { const m = window.LR.ui.app.material; const e = Object.values(m.layout.images || {})[0] || {}; return { credit: e.credit, codes: m.layout.photoSearch && m.layout.photoSearch.codes, sheet: await window.__sheetPixel('#out-student') }; });
+      check('Wikimedia unavailable → Openverse is tried and its photo used, credited', /Bo Lens \/ Flickr via Openverse, CC BY 2\.0/.test(r.credit || '') && r.codes.includes('commons-search-failed') && (r.codes.includes('image-cors-failed') || r.codes.includes('image-load-failed')) && near(r.sheet, GREEN), JSON.stringify(r));
+      check('the Openverse path raises no page error', errors.length === 0, errors[0]);
+      await page.close();
+    }
+
+    // 3. invalid candidates: one that does not decode, one without CORS, then one that works.
+    // A stand-in response skips the browser's CORS check, so the image without
+    // CORS headers comes from a real server on another origin (reached by a redirect).
+    {
+      const NOCORS_PORT = PORT + 7;
+      const noCors = http.createServer((req, res) => { res.writeHead(200, { 'content-type': 'image/jpeg' }); res.end(JPEG_M); }).listen(NOCORS_PORT);
+      const web = (route) => {
+        const u = route.request().url();
+        if (/commons\.wikimedia\.org/.test(u)) return route.fulfill({ status: 200, contentType: 'application/json', headers: CORS, body: commonsBody(
+          cpage('Market square broken', 'CC BY 4.0', 'A', 'broken.jpg', { index: 1 }), cpage('Market square nocors', 'CC BY 4.0', 'B', 'nocors.jpg', { index: 2 }), cpage('Market square good', 'CC BY 4.0', 'C', 'good.jpg', { index: 3 })) });
+        if (/broken\.jpg$/.test(u)) return route.fulfill({ status: 200, contentType: 'image/jpeg', headers: CORS, body: Buffer.alloc(30000, 7) });
+        if (/nocors\.jpg$/.test(u)) return route.fulfill({ status: 302, headers: Object.assign({ location: `http://127.0.0.1:${NOCORS_PORT}/nocors.jpg` }, CORS) });
+        if (/good\.jpg$/.test(u)) return route.fulfill({ status: 200, contentType: 'image/jpeg', headers: CORS, body: JPEG_G });
+        return route.abort('failed');
+      };
+      const { page, errors } = await open({ scenario: 'ok', web });
+      await page.evaluate(PROBES);
+      await run(page, NEWS);
+      const r = await page.evaluate(async () => { const m = window.LR.ui.app.material; const e = Object.values(m.layout.images || {})[0] || {}; return { credit: e.credit, codes: m.layout.photoSearch && m.layout.photoSearch.codes, sheet: await window.__sheetPixel('#out-student'), broken: document.querySelectorAll('img:not([src]), img[src=""]').length }; });
+      check('a candidate that does not decode or refuses CORS is passed over for the next', /C \/ Wikimedia Commons/.test(r.credit || '') && r.codes.includes('image-decode-failed') && r.codes.includes('image-cors-failed') && near(r.sheet, GREEN), JSON.stringify(r));
+      check('invalid candidates raise no page error', errors.length === 0, errors[0]);
+      await page.close();
+      noCors.close();
+    }
+
+    // 4. every source down: the reading comes as always, with the drawn picture
+    {
+      const t0 = Date.now();
+      const { page, errors } = await open({ scenario: 'ok' });
+      await run(page, NEWS);
+      const r = await page.evaluate(() => {
+        const { ui, quality } = window.LR;
+        const m = ui.app.material;
+        const lead = m && window.LR.quality.layoutModel(m).blocks.filter(b => b.type === 'photo' && !b.round).sort((a, b) => b.w * b.h - a.w * a.h)[0];
+        ui.renderLayout(m);
+        return { material: !!m, questions: !!(m && m.worksheet && m.worksheet.questions.length), images: m && m.layout ? Object.keys(m.layout.images || {}).length : -1, drawn: !!(lead && !lead.own),
+          search: m && m.layout && m.layout.photoSearch, svg: !!document.querySelector('#out-student .medium-sheet svg.lr-medium'), note: (document.querySelector('#out-layout .layout-note') || {}).textContent || '' };
+      });
+      check('all sources unavailable → the reading and its worksheet are generated as always, with the drawn picture', r.material && r.questions && r.images === 0 && r.drawn && r.svg && r.search && !r.search.found && r.search.codes.includes('commons-search-failed') && r.search.codes.includes('openverse-search-failed') && r.search.codes.includes('fallback-used'), JSON.stringify(r));
+      check('the teacher reads one plain sentence about it, no technical detail', /gezeichnete Bild/.test(r.note) && !/search-failed|TypeError|fetch/.test(r.note), r.note);
+      check('unreachable sources cost no noticeable time and raise no error', Date.now() - t0 < 30000 && errors.length === 0, (Date.now() - t0) + ' ms ' + (errors[0] || ''));
+      await page.close();
+    }
+
+    // 5. the page under the security policy of a published Artifact: blocked, told apart, no delay
+    {
+      const t0 = Date.now();
+      const { page, errors } = await open({ scenario: 'ok', csp: true, web: (route) => route.fulfill({ status: 500, body: 'must never be reached under the policy' }) });
+      await run(page, NEWS);
+      const r = await page.evaluate(async () => {
+        const { ui, photo } = window.LR;
+        const m = ui.app.material;
+        ui.renderLayout(m);
+        let exportable = true;
+        try { document.querySelector('#layout-canvas').toDataURL('image/png'); } catch (e) { exportable = false; }
+        return { material: !!m, search: m && m.layout && m.layout.photoSearch, blockedNow: photo.webBlockedNow(), exportable, note: (document.querySelector('#out-layout .layout-note') || {}).textContent || '' };
+      });
+      check('under the Artifact security policy the search is blocked, recognised as such, and the reading comes as always', r.material && r.search && r.search.reason === 'csp-blocked' && r.search.codes.includes('csp-blocked') && r.blockedNow && r.exportable, JSON.stringify(r));
+      check('the teacher is told in one sentence that this view may not load pictures from the internet', /keine Bilder aus dem Internet/.test(r.note), r.note);
+      check('the blocked policy costs no time and raises no page error', Date.now() - t0 < 30000 && errors.length === 0, (Date.now() - t0) + ' ms ' + (errors[0] || ''));
+      await page.close();
+    }
+
+    // 6. a stopped run's photo never lands in the next material
+    {
+      let commonsCalls = 0, aRequested = false;
+      const web = async (route) => {
+        const u = route.request().url();
+        if (/commons\.wikimedia\.org/.test(u)) {
+          commonsCalls++;
+          const tag = commonsCalls === 1 ? 'A' : 'B';
+          return route.fulfill({ status: 200, contentType: 'application/json', headers: CORS, body: commonsBody(cpage('Market square ' + tag, 'CC BY 4.0', 'Author ' + tag, tag + '.jpg')) });
+        }
+        if (/\/A\.jpg$/.test(u)) { aRequested = true; await new Promise(r => setTimeout(r, 3500)); try { await route.fulfill({ status: 200, contentType: 'image/jpeg', headers: CORS, body: JPEG_M }); } catch (e) { /* the page gave up on it */ } return; }
+        if (/\/B\.jpg$/.test(u)) return route.fulfill({ status: 200, contentType: 'image/jpeg', headers: CORS, body: JPEG_G });
+        return route.abort('failed');
+      };
+      const { page, errors } = await open({ scenario: 'ok', web });
+      await page.evaluate(PROBES);
+      await page.click('#nav-reading');
+      await page.evaluate(SETTINGS(NEWS));
+      await page.evaluate(() => { window.__runA = window.LR.ui.generate(); });
+      for (let i = 0; i < 150 && !aRequested; i++) await page.waitForTimeout(100);
+      await page.click('#btn-stop');
+      await page.waitForFunction(() => !window.LR.ui.app.running, null, { timeout: 10000 }).catch(() => {});
+      await page.evaluate(() => window.LR.ui.generate());
+      await page.waitForFunction(() => !window.LR.ui.app.running, null, { timeout: 45000 }).catch(() => {});
+      await page.waitForTimeout(4200);   // A's photo arrives now
+      const r = await page.evaluate(async () => {
+        const { ui } = window.LR;
+        const m = ui.app.material;
+        const all = await ui.store.list('materials');
+        const credits = all.map(x => Object.values((x.layout && x.layout.images) || {}).map(e => e.credit).join(',')).join(';');
+        return { credit: m && Object.values(m.layout.images || {}).map(e => e.credit).join(','), credits, sheet: await window.__sheetPixel('#out-student') };
+      });
+      check('a stopped run\'s photo never appears in the next material', aRequested && /Author B/.test(r.credit || '') && !/Author A/.test(r.credits) && near(r.sheet, GREEN), JSON.stringify({ aRequested, r }));
+      check('stopping during the photo search raises no page error', errors.length === 0, errors[0]);
+      await page.close();
+    }
+
+    // 7. when it is not clear whether a real photo fits, or the story is invented
+    {
+      let calls = 0;
+      const { page, errors } = await open({ scenario: 'ok', layoutExtra: { photoReality: '' }, web: (route) => { calls++; return route.abort('failed'); } });
+      await run(page, NEWS);
+      const r = await page.evaluate(() => { const m = window.LR.ui.app.material; return { search: m.layout.photoSearch, images: Object.keys(m.layout.images || {}).length }; });
+      check('unsure whether a real photo fits → the drawn picture, nothing searched', r.search && r.search.reason === 'uncertain-subject' && r.images === 0 && calls === 0, JSON.stringify({ r, calls }));
+      await page.close();
+      const web = (route) => {
+        const u = route.request().url();
+        if (/commons\.wikimedia\.org/.test(u)) return route.fulfill({ status: 200, contentType: 'application/json', headers: CORS, body: commonsBody(
+          cpage('Hotel fire in Bristol 2019', 'CC BY 4.0', 'Press', 'fire.jpg', { index: 1 }), cpage('Historic street facade in Bristol', 'CC BY 4.0', 'Walker', 'facade.jpg', { index: 2 })) });
+        if (/facade\.jpg$/.test(u)) return route.fulfill({ status: 200, contentType: 'image/jpeg', headers: CORS, body: JPEG_G });
+        if (/fire\.jpg$/.test(u)) return route.fulfill({ status: 200, contentType: 'image/jpeg', headers: CORS, body: JPEG_M });
+        return route.abort('failed');
+      };
+      const p2 = await open({ scenario: 'ok', web, layoutExtra: { photoReality: 'fictional-event', photoQuery: 'Bristol historic street facade' } });
+      await run(p2.page, NEWS);
+      const f = await p2.page.evaluate(() => {
+        const m = window.LR.ui.app.material;
+        const e = Object.values(m.layout.images || {})[0] || {};
+        const texts = window.LR.quality.layoutModel(m).blocks.filter(b => b.type === 'text').map(b => b.text).join(' | ');
+        return { credit: e.credit, caption: e.caption, codes: m.layout.photoSearch && m.layout.photoSearch.codes, shown: /Illustrative photo: Historic street facade in Bristol/.test(texts), claude: /A photo\./.test(texts) };
+      });
+      check('an invented story: never the photo of a real event; a general scene, captioned as an illustration', /Walker/.test(f.credit || '') && f.caption === 'Illustrative photo: Historic street facade in Bristol' && f.shown && !f.claude && f.codes.includes('event-photo-rejected'), JSON.stringify(f));
+      check('the fictional and unsure paths raise no page error', errors.length === 0 && p2.errors.length === 0, errors[0] || p2.errors[0]);
+      await p2.page.close();
+    }
   }
 
   console.log('\nBrowser audit: a picture from the internet goes onto the sheet (2.4, 2.11)');

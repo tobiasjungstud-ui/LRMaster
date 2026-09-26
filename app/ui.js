@@ -1239,8 +1239,14 @@
     tab.hidden = false;
     const medium = (m.settings && m.settings.layoutMedium) || 'auto';
     const ps = m.layout.photoSearch;
-    const photoNote = !ps ? '' : ps.found ? ` Das Aufmacherfoto ist ein echtes Foto (${esc(ps.source || '')}); Nachweis in der Lehrerversion.`
-      : ` Für das Aufmacherfoto war kein passendes echtes Foto erreichbar (Suche: „${esc(ps.query || '')}“) – es steht das gezeichnete Bild; ein eigenes lässt sich jederzeit einsetzen.`;
+    const why = ps && !ps.found ? ({
+      'csp-blocked': 'diese Ansicht darf keine Bilder aus dem Internet laden',
+      'no-real-photo-fits': 'kein echtes Foto passt, ohne den erfundenen Text scheinbar zu belegen',
+      'uncertain-subject': 'unklar war, ob ein echtes Foto zum Text passt',
+      'timeout': 'die Bildsuche hat zu lange gedauert',
+    })[ps.reason] || 'kein passendes echtes Foto war erreichbar' : '';
+    const photoNote = !ps ? '' : ps.found ? ` Das Aufmacherfoto ist ein echtes Foto (${esc(ps.source || '')})${ps.fictional ? ', als Illustration beschriftet' : ''}; Nachweis in der Lehrerversion.`
+      : ` Beim Aufmacherfoto steht das gezeichnete Bild – ${esc(why)}. Ein eigenes Bild lässt sich jederzeit einsetzen.`;
     pane.innerHTML = `<p class="layout-note">So sähe der Text aus, wenn er aus diesem Medium käme (${esc(m.layout.label || '')}). Das Bild enthält den generierten Text unverändert – das wird vor der Ausgabe geprüft.${photoNote}</p>`
       + '<div class="layout-actions"><button type="button" class="btn tiny primary" data-download="png">Bild (PNG) herunterladen</button>'
       + '<span class="chips layout-media">' + [['auto', 'Automatisch'], ['screen', 'Bildschirm'], ['paper', 'Papier']].map(([k, l]) =>
@@ -1557,27 +1563,69 @@
    * never breaks.
    */
   async function attachWebPicture(m, signal) {
+    const P = window.LR.photo;
+    const log = [];
+    const record = (extra) => { if (m && m.layout) m.layout.photoSearch = Object.assign({ found: false, codes: log.slice(0, 24) }, extra); };
+    // this material, this run: whatever finishes after the run was stopped or
+    // replaced touches nothing (and an upload it made is removed again)
+    const stale = () => !!(signal && signal.aborted);
+    let uploaded = null;
     try {
-      if (!m || m.kind !== 'reading' || !m.layout || !m.layout.chrome || !window.LR.photo) return null;
+      if (!m || m.kind !== 'reading' || !m.layout || !m.layout.chrome || !P) return null;
       if (m.layout.images && Object.keys(m.layout.images).length) return null;
       const model = quality.layoutModel(m);
       const lead = model.blocks.filter(b => b.type === 'photo' && b.slot && !b.round && b.subject !== 'portrait')
         .sort((a, b) => b.w * b.h - a.w * a.h)[0];
       if (!lead || lead.w * lead.h < 40000) return null;
-      const query = window.LR.photo.webQueryFor(m.layout.chrome, m.content);
-      const found = await window.LR.photo.findWebPicture(query, { signal, aspect: lead.w / lead.h });
-      m.layout.photoSearch = { query, found: !!found, source: found ? found.source : '', page: found ? found.page : '' };
-      if (!found) return null;
+      const plan = P.webPlan(m.layout.chrome, m.content);
+      if (plan.skip) { log.push(plan.skip, 'fallback-used'); record({ query: '', reason: plan.skip }); return null; }
+      const found = await P.findWebPicture(plan.query, { signal, aspect: lead.w / lead.h, fictional: plan.fictional, log });
+      if (stale()) { record({ query: plan.query, reason: 'cancelled' }); return null; }
+      if (!found) { record({ query: plan.query, reason: log.includes('csp-blocked') ? 'csp-blocked' : log.includes('timeout') ? 'timeout' : 'not-found' }); return null; }
+      // frozen into the material: resized to JPEG and kept in the upload store
+      // (or in the material itself), never read again from the host it came from
       const file = new File([found.blob], found.name, { type: found.blob.type });
-      const entry = await replacePicture(m, lead.slot, await prepareImage(file, { inline: !caps.assets }), { credit: found.credit, name: found.name, quiet: true });
-      if (entry && found.page) entry.source = String(found.page).slice(0, 300);
-      // loaded before the first drawing, so the preview shows it at once
-      await window.LR.photo.loadSrc(entry && (entry.asset ? '/_blob/' + entry.asset : entry.src));
+      let entry;
+      try {
+        entry = await replacePicture(m, lead.slot, await prepareImage(file, { inline: !caps.assets }), { credit: found.credit, name: found.name, quiet: true });
+      } catch (e) { log.push('store-failed', 'fallback-used'); record({ query: plan.query, reason: 'store-failed' }); return null; }
+      if (entry && entry.asset) uploaded = entry.asset;
+      const src = entry && (entry.asset ? '/_blob/' + entry.asset : entry.src);
+      // counts only once this page can really show it
+      const shown = src ? await P.loadSrc(src) : false;
+      if (stale() || !shown) {
+        const images = Object.assign({}, m.layout.images || {});
+        delete images[lead.slot];
+        m.layout.images = images;
+        log.push(stale() ? 'cancelled' : 'image-display-failed', 'fallback-used');
+        record({ query: plan.query, reason: stale() ? 'cancelled' : 'image-display-failed' });
+        if (uploaded && caps.assets) caps.assets.delete(uploaded).catch(() => {});
+        return null;
+      }
+      // what the source says the photo shows — an invented story's photo is marked as an illustration
+      const caption = found.caption ? (plan.fictional ? 'Illustrative photo: ' + found.caption : found.caption) : (plan.fictional ? 'Illustrative photo' : '');
+      if (caption) entry.caption = caption.slice(0, 120);
+      entry.source = String(found.page || '').slice(0, 300);
+      entry.license = String(found.license || '').slice(0, 60);
+      entry.author = String(found.author || '').slice(0, 80);
+      entry.origin = 'web';
+      record({ query: plan.query, found: true, source: found.source, page: entry.source, reason: 'found', fictional: !!plan.fictional });
       return entry;
     } catch (e) {
-      // no upload store, a picture that does not decode, anything: the drawn picture stays
+      // anything unforeseen: the drawn picture stays, the material is untouched
+      log.push('error', 'fallback-used');
+      record({ reason: 'error' });
+      if (uploaded && caps.assets) caps.assets.delete(uploaded).catch(() => {});
       return null;
     }
+  }
+
+  /** Load the stored photos of a material (own or found), so a drawing or an export shows them. */
+  function loadOwnPictures(m) {
+    const P = window.LR.photo;
+    if (!P || !m || !m.layout || !m.layout.images) return Promise.resolve([]);
+    const srcs = Object.values(m.layout.images).map(e => e && (e.asset ? '/_blob/' + e.asset : e.src)).filter(src => src && P.isOwnSource(src));
+    return Promise.all(srcs.map(src => P.loadSrc(src)));
   }
 
   /**
@@ -1588,11 +1636,14 @@
   function ensureOwnPictures(m) {
     const P = window.LR.photo;
     if (!P || !m || !m.layout || !m.layout.images) return;
-    const missing = Object.values(m.layout.images).map(e => e && (e.asset ? '/_blob/' + e.asset : e.src))
-      .filter(src => src && P.isOwnSource(src) && !P.imageForSrc(src));
-    if (!missing.length) return;
-    Promise.all(missing.map(src => P.loadSrc(src))).then(r => {
-      if (r.some(Boolean) && (app.material === m || viewer.material === m)) repaintMedium(m);
+    // the photos still loading: drawn as a quiet tone until then (photo.draw)
+    const pending = Object.values(m.layout.images).map(e => e && (e.asset ? '/_blob/' + e.asset : e.src))
+      .filter(src => src && P.isPending(src));
+    if (!pending.length) return;
+    // whether it arrives or fails for good, the page is drawn again: with the
+    // photo, or with the drawn scene — never left on the loading tone
+    Promise.all(pending.map(src => P.loadSrc(src))).then(() => {
+      if (app.material === m || viewer.material === m) repaintMedium(m);
     }).catch(() => {});
   }
 
@@ -1864,6 +1915,8 @@
     const m = app.material; if (!m) return;
     const slug = word.slug(m.title);
     let filename, data;
+    // the stored photos first, so an export never carries their loading tone
+    if (['png', 'student', 'teacher'].includes(kind)) await loadOwnPictures(m);
     if (kind === 'docx-student' || kind === 'docx-teacher') {
       const which = kind === 'docx-student' ? 'student' : 'teacher';
       // the reading text goes in as the page of its medium, drawn here
@@ -1879,7 +1932,7 @@
       data = new Blob([which === 'teacher' ? word.buildTeacher(m, opts) : word.buildStudent(m, variant, opts)],
         { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
     } else if (kind === 'png') {
-      const canvas = $('#layout-canvas') || renderLayout(m);
+      const canvas = renderLayout(m) || $('#layout-canvas');
       if (!canvas) { toast('Für dieses Material gibt es kein Layout-Bild.'); return; }
       const model = mock.buildModel(m, m.layout.chrome, { measure: mock.canvasMeasure(canvas) });
       const problems = mock.validate(model);
@@ -2479,5 +2532,5 @@
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init); else init();
 
-  window.LR.ui = { app, generate, produceWorksheet, openViewer, renderViewer, markPageBreaks, syncViewerOffsets, buildViewerRail, buildViewerDownloads, paintLayoutCanvas, proportionNote, mediumPng, renderHotspots, renderSheetHotspots, hotspotLayer, paperChips, bindPaperChips, attachWebPicture, imageURLFrom, fetchWebImage, pictureError, openPictureEditor, replacePicture, resetPicture, prepareImage, viewer, store, caps, showView, openCreator, importState, detectUnits, fetchTopics, confirmImport, newTextbook, askText, askConfirm, clone, parsePasted, initLevelPage, download, renderOutput, renderQualityPanel, renderTaskPreview, refreshDerived, renderLayout, renderSetupBar, openCustomSetup, backToTemplates, redrawTemplate, templateState, buildForm };
+  window.LR.ui = { app, generate, produceWorksheet, openViewer, renderViewer, markPageBreaks, syncViewerOffsets, buildViewerRail, buildViewerDownloads, paintLayoutCanvas, proportionNote, mediumPng, renderHotspots, renderSheetHotspots, hotspotLayer, paperChips, bindPaperChips, attachWebPicture, loadOwnPictures, imageURLFrom, fetchWebImage, pictureError, openPictureEditor, replacePicture, resetPicture, prepareImage, viewer, store, caps, showView, openCreator, importState, detectUnits, fetchTopics, confirmImport, newTextbook, askText, askConfirm, clone, parsePasted, initLevelPage, download, renderOutput, renderQualityPanel, renderTaskPreview, refreshDerived, renderLayout, renderSetupBar, openCustomSetup, backToTemplates, redrawTemplate, templateState, buildForm };
 })();

@@ -1874,7 +1874,7 @@
       return ok(!problems.length, problems.slice(0, 3).join(' | '));
     } });
 
-  add({ id: 'S37.web_picture', section: 37, title: 'Nach dem Generieren sucht die App ein echtes, passendes Foto für das Aufmacherbild (offene Bildsammlungen: Wikimedia Commons, Openverse) – Suchbegriff aus dem generierten Text, nur freie Lizenzen ohne ND, mit Nachweis; es steht sofort in der Vorschau und im Export; scheitert irgendetwas, bleibt das gezeichnete Bild und das Material entsteht wie immer', kind: 'function',
+  add({ id: 'S37.web_picture', section: 37, title: 'Nach dem Generieren sucht die App ein echtes, passendes Foto für das Aufmacherbild (offene Bildsammlungen: Wikimedia Commons, Openverse) – Suchbegriff aus dem generierten Text, nur freie Lizenzen ohne ND, mit vollständigem Nachweis; ein erfundenes Ereignis bekommt nie das Foto eines echten Ereignisses, nur eine allgemeine Szene als Illustration; die Bildlegende sagt nur, was die Quelle sagt; das Foto wird ins Material übernommen und steht in Vorschau, Wiederöffnen und Export; scheitert irgendetwas (auch die Sicherheitsregeln eines veröffentlichten Artifacts), bleibt das gezeichnete Bild und das Material entsteht wie immer', kind: 'function',
     check(env) {
       const problems = [];
       const P = env.photo;
@@ -1883,6 +1883,7 @@
       for (const [type, medium] of [['News Article', 'paper'], ['Blog Post', 'screen']]) {
         const spec = env.mock.chromeSpec(layoutMaterial(env, { textType: type, layoutMedium: medium }));
         if (!spec.fields.some(f => f[0] === 'photoQuery')) problems.push(type + ': the layout does not ask for a photo search');
+        if (!spec.fields.some(f => f[0] === 'photoReality')) problems.push(type + ': the layout does not ask whether a real photo may stand beside the text');
       }
       const prompt = env.prompts.buildLayoutPrompt(m.settings, m.plan, m.content, env.mock.chromeSpec(m));
       if (!/photoQuery/.test(prompt) || !/REAL photograph/.test(prompt)) problems.push('the layout prompt does not ask for the photo search');
@@ -1896,6 +1897,12 @@
       const page = (t, w, h, license, i) => ({ title: 'File:' + t, index: i, imageinfo: [{ mime: 'image/jpeg', width: w, height: h, thumburl: 'https://upload.wikimedia.org/' + i + '.jpg', descriptionurl: 'https://commons.wikimedia.org/wiki/' + i, extmetadata: { LicenseShortName: { value: license }, Artist: { value: '<a>Ann Lee</a>' } } }] });
       const json = { query: { pages: { 1: page('Town logo.jpg', 1600, 1000, 'CC BY 4.0', 1), 2: page('Street map of the town.jpg', 1600, 1000, 'CC BY 4.0', 2), 3: page('Small.jpg', 300, 200, 'CC BY 4.0', 3),
         4: page('Upright tower.jpg', 800, 1400, 'CC BY 4.0', 4), 5: page('Harbour at night.jpg', 1600, 1000, 'CC BY 4.0', 5), 6: page('Market square stalls in rain.jpg', 1600, 1000, 'CC BY-SA 3.0', 6), 7: page('Square ND.jpg', 1600, 1000, 'CC BY-ND 2.0', 7) } } };
+      // an invented story: only a general scene, never a photo of a real event; unsure: none at all
+      if (P.webPlan({ photoReality: 'none', photoQuery: 'a b c' }, {}).skip !== 'no-real-photo-fits' || P.webPlan({ photoQuery: 'Zurich tram street' }, {}).skip !== 'uncertain-subject') problems.push('a real photo is searched although it may not or it is unclear whether it may');
+      if (!P.webPlan({ photoReality: 'fictional-event', photoQuery: 'Bristol street facade' }, {}).fictional) problems.push('an invented story is not searched as one');
+      const eventList = P.commonsCandidates({ query: { pages: { 1: page('Hotel fire in Bristol.jpg', 1600, 1000, 'CC BY 4.0', 1), 2: page('Bristol street facade.jpg', 1600, 1000, 'CC BY 4.0', 2) } } }, 'Bristol street facade', 1.6, { fictional: true });
+      if (eventList.length !== 1 || !/facade/.test(eventList[0].title)) problems.push('a photo of a real event is offered for an invented story');
+      if (P.sourceCaption('Market square in the rain (2).jpg') !== 'Market square in the rain' || P.sourceCaption('IMG_20190312_1234.jpg') !== '') problems.push('the caption does not come from what the source says');
       const list = P.commonsCandidates(json, 'market square stalls rain', 1.6);
       if (list.length !== 2 || !/Market square/.test(list[0].title) || list[0].author !== 'Ann Lee') problems.push('the candidates are not filtered and ranked: ' + list.map(c => c.title).join(', '));
       return ok(!problems.length, problems.slice(0, 3).join(' | '));
