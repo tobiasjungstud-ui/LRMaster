@@ -195,6 +195,9 @@ const SETTINGS = (extra) => `(() => {
     page.on('pageerror', e => errors.push(String(e.message).slice(0, 160)));
     if (opts.before) await page.addInitScript(opts.before);
     if (opts.scenario) await page.addInitScript(claudeStub, { scenario: opts.scenario, text: TEXT, xss: XSS, worksheet: WORKSHEET });
+    // the open image collections are never reached from a test: blocked, or
+    // answered by the test itself (opts.web)
+    await page.route(/^https:\/\/(commons\.wikimedia\.org|upload\.wikimedia\.org|api\.openverse\.org)\//, (route) => (opts.web ? opts.web(route) : route.abort('blockedbyclient')));
     await page.goto(url(), { waitUntil: 'domcontentloaded' });
     await page.waitForTimeout(700);
     return { page, errors };
@@ -539,6 +542,85 @@ const SETTINGS = (extra) => `(() => {
     check('the page is white by default and the paper can be switched in the viewer, also to an own colour', r.whiteBefore && r.ivoryNow && r.setting !== 'white' && r.custom, JSON.stringify(r));
     check('the Word file carries every page of the newspaper as a page', r.wordPages === r.pages && r.mediumPages === r.pages && r.wordValid, JSON.stringify(r));
     check('pages and paper raise no page error', errors.length === 0, errors[0]);
+    await page.close();
+  }
+
+  console.log('\nBrowser audit: a real photo for the generated article (2.4, 2.5)');
+  {
+    // a photo as an image collection would send it: magenta in the middle, noise around
+    const maker = await browser.newPage();
+    const jpegB64 = await maker.evaluate(() => {
+      const c = document.createElement('canvas'); c.width = 1600; c.height = 1000;
+      const x = c.getContext('2d');
+      x.fillStyle = 'rgb(214,38,196)'; x.fillRect(0, 0, 1600, 1000);
+      for (let i = 0; i < 40000; i++) { x.fillStyle = `rgb(${(i * 37) % 255},${(i * 91) % 255},${(i * 53) % 255})`; x.fillRect((i * 7919) % 400, (i * 104729) % 1000, 3, 3); }
+      return c.toDataURL('image/jpeg', 0.95).split(',')[1];
+    });
+    await maker.close();
+    const JPEG = Buffer.from(jpegB64, 'base64');
+    const queries = [];
+    const web = (route) => {
+      const u = route.request().url();
+      if (u.startsWith('https://commons.wikimedia.org/')) {
+        queries.push(decodeURIComponent(new URL(u).searchParams.get('gsrsearch') || ''));
+        return route.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify({ query: { pages: {
+          1: { title: 'File:Company logo.png', index: 1, imageinfo: [{ mime: 'image/png', width: 1600, height: 1000, thumburl: 'https://upload.wikimedia.org/logo.png', descriptionurl: 'https://commons.wikimedia.org/wiki/File:Company_logo.png', extmetadata: { LicenseShortName: { value: 'CC BY-SA 4.0' }, Artist: { value: 'Someone' } } }] },
+          2: { title: 'File:Street with no derivatives.jpg', index: 2, imageinfo: [{ mime: 'image/jpeg', width: 1600, height: 1000, thumburl: 'https://upload.wikimedia.org/nd.jpg', descriptionurl: 'x', extmetadata: { LicenseShortName: { value: 'CC BY-ND 2.0' }, Artist: { value: 'Someone' } } }] },
+          3: { title: 'File:Market square with people.jpg', index: 3, imageinfo: [{ mime: 'image/jpeg', width: 1600, height: 1000, thumburl: 'https://upload.wikimedia.org/market.jpg', descriptionurl: 'https://commons.wikimedia.org/wiki/File:Market_square_with_people.jpg', extmetadata: { LicenseShortName: { value: 'CC BY-SA 4.0' }, Artist: { value: '<a href="x">Jane Photographer</a>' } } }] },
+        } } }) });
+      }
+      if (u === 'https://upload.wikimedia.org/market.jpg') return route.fulfill({ status: 200, contentType: 'image/jpeg', headers: { 'access-control-allow-origin': '*' }, body: JPEG });
+      return route.abort('blockedbyclient');
+    };
+    const { page, errors } = await open({ scenario: 'ok', web });
+    await run(page, { textType: 'News Article', layoutMedium: 'paper' });
+    await page.waitForTimeout(600);
+    const r = await page.evaluate(async () => {
+      const { ui, quality, photo, word } = window.LR;
+      const m = ui.app.material;
+      if (!m || !m.layout) return { error: 'no material' };
+      const entry = Object.entries(m.layout.images || {})[0];
+      const model = quality.layoutModel(m);
+      const lead = model.blocks.filter(b => b.type === 'photo' && !b.round).sort((a, b) => b.w * b.h - a.w * a.h)[0];
+      const svg = document.querySelector('#out-student .medium-sheet svg.lr-medium');
+      // the colour in the middle of the lead picture as the sheet shows it
+      let rgb = null;
+      const img = svg && Array.from(svg.querySelectorAll('image')).find(i => Math.abs(+i.getAttribute('width') - lead.w) < 1);
+      if (img) {
+        const el = new Image(); el.src = img.getAttribute('href');
+        await el.decode();
+        const c = document.createElement('canvas'); c.width = el.naturalWidth; c.height = el.naturalHeight;
+        c.getContext('2d').drawImage(el, 0, 0);
+        const d = c.getContext('2d').getImageData(Math.round(c.width * 0.75), Math.round(c.height / 2), 1, 1).data;
+        rgb = [d[0], d[1], d[2]];
+      }
+      const medium = await ui.mediumPng(m);
+      const stored = (await ui.store.list('materials')).find(x => x.id === m.id);
+      return { slot: entry && entry[0], credit: entry && entry[1].credit, source: entry && entry[1].source, leadOwn: !!(lead && lead.own), leadSlot: lead && lead.slot,
+        loaded: !!(lead && lead.own && photo.imageForSrc(lead.own)), svgOwn: !!(svg && /data-own="1"/.test(svg.outerHTML)), rgb,
+        search: m.layout.photoSearch, teacher: window.LR.render.renderTeacherHTML(m, {}).includes('Jane Photographer'),
+        word: !!(medium && medium.png && medium.png.length > 20000), storedImage: !!(stored && stored.layout && stored.layout.images && Object.keys(stored.layout.images).length) };
+    });
+    const near = (a, b) => a && a.every((v, i) => Math.abs(v - b[i]) < 40);
+    check('the generated article comes with a real photo in its lead picture, visible in the preview at once', !r.error && r.leadOwn && r.slot === r.leadSlot && r.loaded && r.svgOwn && near(r.rgb, [214, 38, 196]), JSON.stringify(r));
+    check('the photo is chosen with care: no logo, no ND licence, credited with author, source and licence', !r.error && /Jane Photographer/.test(r.credit || '') && /Wikimedia Commons, CC BY-SA 4\.0/.test(r.credit || '') && /Market_square/.test(r.source || '') && r.teacher, JSON.stringify(r));
+    check('the search comes from the generated text, not from the settings', queries.length >= 1 && queries.every(q => q.trim().split(/\s+/).length >= 3) && r.search && r.search.found === true, JSON.stringify({ queries, search: r.search }));
+    check('the same photo goes into the stored material and the Word export', r.storedImage && r.word, JSON.stringify(r));
+    check('a real photo raises no page error', errors.length === 0, errors[0]);
+    await page.close();
+  }
+  {
+    // no network for images: the material comes as always, with the drawn picture
+    const t0 = Date.now();
+    const { page, errors } = await open({ scenario: 'ok' });
+    await run(page, { textType: 'News Article', layoutMedium: 'paper' });
+    const r = await page.evaluate(() => {
+      const m = window.LR.ui.app.material;
+      return { material: !!m, images: m && m.layout ? Object.keys(m.layout.images || {}).length : -1, search: m && m.layout && m.layout.photoSearch,
+        svg: !!document.querySelector('#out-student .medium-sheet svg.lr-medium'), broken: document.querySelectorAll('#out-student img').length };
+    });
+    check('without a reachable image source the reading is generated as always, with the drawn picture', r.material && r.images === 0 && r.svg && r.search && r.search.found === false, JSON.stringify(r));
+    check('a blocked image source costs no noticeable time and raises no error', Date.now() - t0 < 30000 && errors.length === 0, (Date.now() - t0) + ' ms ' + (errors[0] || ''));
     await page.close();
   }
 

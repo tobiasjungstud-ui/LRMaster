@@ -801,6 +801,12 @@
         vocabFound: vm.found, vocabMissing: vm.missing,
         quality: { findings: findingsAll, review: results[0] ? results[0].review : null, repairs, durationMs: Date.now() - t0 }, prompts: usedPrompts,
       };
+      // a real photo for the lead picture, when one can be found (never blocks the material)
+      if (material.layout && material.layout.chrome) {
+        progress('done', 'running', 'Suche ein echtes Foto zum Text …');
+        await attachWebPicture(material, ctl.signal);
+        if (ctl.signal.aborted) throw { code: 'cancelled' };
+      }
       app.material = material;
       await store.put('materials', material);
       // the list of materials must know about it right away, not after a reload
@@ -1023,6 +1029,7 @@
       + variants.map((v, i) => `<div class="variant-sheet" data-variant="${esc(v.key || '')}"${i ? ' hidden' : ''}>${render.renderStudentHTML(m, v.key)}</div>`).join('')
       + (!variants.length ? render.renderStudentHTML(m) : '');
     renderSheetHotspots(m, $('#out-student'));
+    ensureOwnPictures(m);
     $$('#out-student [data-variant].chip-btn').forEach(b => b.addEventListener('click', () => {
       $$('#out-student .chip-btn').forEach(x => x.classList.toggle('active', x === b));
       $$('#out-student .variant-sheet').forEach(x => { x.hidden = x.dataset.variant !== b.dataset.variant; });
@@ -1119,6 +1126,7 @@
       bindPaperChips(media, m);
     }
     renderSheetHotspots(m, $('#vw-sheet'));
+    ensureOwnPictures(m);
     buildViewerRail(m, model);
     buildViewerDownloads(model);
     markPageBreaks();
@@ -1230,7 +1238,10 @@
     if (!m.layout || !m.layout.chrome) { pane.innerHTML = ''; tab.hidden = true; return null; }
     tab.hidden = false;
     const medium = (m.settings && m.settings.layoutMedium) || 'auto';
-    pane.innerHTML = `<p class="layout-note">So sähe der Text aus, wenn er aus diesem Medium käme (${esc(m.layout.label || '')}). Das Bild enthält den generierten Text unverändert – das wird vor der Ausgabe geprüft.</p>`
+    const ps = m.layout.photoSearch;
+    const photoNote = !ps ? '' : ps.found ? ` Das Aufmacherfoto ist ein echtes Foto (${esc(ps.source || '')}); Nachweis in der Lehrerversion.`
+      : ` Für das Aufmacherfoto war kein passendes echtes Foto erreichbar (Suche: „${esc(ps.query || '')}“) – es steht das gezeichnete Bild; ein eigenes lässt sich jederzeit einsetzen.`;
+    pane.innerHTML = `<p class="layout-note">So sähe der Text aus, wenn er aus diesem Medium käme (${esc(m.layout.label || '')}). Das Bild enthält den generierten Text unverändert – das wird vor der Ausgabe geprüft.${photoNote}</p>`
       + '<div class="layout-actions"><button type="button" class="btn tiny primary" data-download="png">Bild (PNG) herunterladen</button>'
       + '<span class="chips layout-media">' + [['auto', 'Automatisch'], ['screen', 'Bildschirm'], ['paper', 'Papier']].map(([k, l]) =>
         `<button type="button" class="chip-btn${medium === k ? ' active' : ''}" data-layout-medium="${k}">${l}</button>`).join('') + '</span>' + paperChips(m) + '</div>'
@@ -1525,6 +1536,8 @@
     entry.credit = String((meta && meta.credit) || (previous && previous.credit) || '').trim().slice(0, 120);
     entry.name = String((meta && meta.name) || '').slice(0, 80);
     m.layout.images = Object.assign({}, m.layout.images || {}, { [slot]: entry });
+    // during generation the pipeline saves and draws the material itself
+    if (meta && meta.quiet) return entry;
     await saveMaterial(m);
     // the old upload is no longer pointed at by anything: remove it
     if (previous && previous.asset && caps.assets && previous.asset !== entry.asset) {
@@ -1532,6 +1545,55 @@
     }
     repaintMedium(m);
     toast('Bild ersetzt.');
+  }
+
+  /**
+   * A real photo for the lead picture of a freshly generated reading: the
+   * search comes from the generated text (Claude's photoQuery, else caption
+   * and headline), the photo from an open collection (photo.findWebPicture).
+   * It goes into the lead picture's place exactly as a teacher's own picture
+   * does, so preview, sheet, Word and PNG all show the same photo. Anything
+   * that fails leaves the drawn picture — the material never waits long and
+   * never breaks.
+   */
+  async function attachWebPicture(m, signal) {
+    try {
+      if (!m || m.kind !== 'reading' || !m.layout || !m.layout.chrome || !window.LR.photo) return null;
+      if (m.layout.images && Object.keys(m.layout.images).length) return null;
+      const model = quality.layoutModel(m);
+      const lead = model.blocks.filter(b => b.type === 'photo' && b.slot && !b.round && b.subject !== 'portrait')
+        .sort((a, b) => b.w * b.h - a.w * a.h)[0];
+      if (!lead || lead.w * lead.h < 40000) return null;
+      const query = window.LR.photo.webQueryFor(m.layout.chrome, m.content);
+      const found = await window.LR.photo.findWebPicture(query, { signal, aspect: lead.w / lead.h });
+      m.layout.photoSearch = { query, found: !!found, source: found ? found.source : '', page: found ? found.page : '' };
+      if (!found) return null;
+      const file = new File([found.blob], found.name, { type: found.blob.type });
+      const entry = await replacePicture(m, lead.slot, await prepareImage(file, { inline: !caps.assets }), { credit: found.credit, name: found.name, quiet: true });
+      if (entry && found.page) entry.source = String(found.page).slice(0, 300);
+      // loaded before the first drawing, so the preview shows it at once
+      await window.LR.photo.loadSrc(entry && (entry.asset ? '/_blob/' + entry.asset : entry.src));
+      return entry;
+    } catch (e) {
+      // no upload store, a picture that does not decode, anything: the drawn picture stays
+      return null;
+    }
+  }
+
+  /**
+   * The sheet is drawn at once; a stored photo (the teacher's own or one
+   * found on the web) may still be loading. Once it is there, the medium is
+   * drawn again — so a reopened material shows the same photo as its export.
+   */
+  function ensureOwnPictures(m) {
+    const P = window.LR.photo;
+    if (!P || !m || !m.layout || !m.layout.images) return;
+    const missing = Object.values(m.layout.images).map(e => e && (e.asset ? '/_blob/' + e.asset : e.src))
+      .filter(src => src && P.isOwnSource(src) && !P.imageForSrc(src));
+    if (!missing.length) return;
+    Promise.all(missing.map(src => P.loadSrc(src))).then(r => {
+      if (r.some(Boolean) && (app.material === m || viewer.material === m)) repaintMedium(m);
+    }).catch(() => {});
   }
 
   /** Back to the picture the app chose itself. */
@@ -2417,5 +2479,5 @@
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init); else init();
 
-  window.LR.ui = { app, generate, produceWorksheet, openViewer, renderViewer, markPageBreaks, syncViewerOffsets, buildViewerRail, buildViewerDownloads, paintLayoutCanvas, proportionNote, mediumPng, renderHotspots, renderSheetHotspots, hotspotLayer, paperChips, bindPaperChips, imageURLFrom, fetchWebImage, pictureError, openPictureEditor, replacePicture, resetPicture, prepareImage, viewer, store, caps, showView, openCreator, importState, detectUnits, fetchTopics, confirmImport, newTextbook, askText, askConfirm, clone, parsePasted, initLevelPage, download, renderOutput, renderQualityPanel, renderTaskPreview, refreshDerived, renderLayout, renderSetupBar, openCustomSetup, backToTemplates, redrawTemplate, templateState, buildForm };
+  window.LR.ui = { app, generate, produceWorksheet, openViewer, renderViewer, markPageBreaks, syncViewerOffsets, buildViewerRail, buildViewerDownloads, paintLayoutCanvas, proportionNote, mediumPng, renderHotspots, renderSheetHotspots, hotspotLayer, paperChips, bindPaperChips, attachWebPicture, imageURLFrom, fetchWebImage, pictureError, openPictureEditor, replacePicture, resetPicture, prepareImage, viewer, store, caps, showView, openCreator, importState, detectUnits, fetchTopics, confirmImport, newTextbook, askText, askConfirm, clone, parsePasted, initLevelPage, download, renderOutput, renderQualityPanel, renderTaskPreview, refreshDerived, renderLayout, renderSetupBar, openCustomSetup, backToTemplates, redrawTemplate, templateState, buildForm };
 })();

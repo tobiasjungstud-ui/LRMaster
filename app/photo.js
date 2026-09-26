@@ -970,11 +970,165 @@
     return Math.abs(h % 100000);
   }
 
+  /* ------------------------------------------------------------------ */
+  /* A real photo from the web for the lead picture                       */
+  /* ------------------------------------------------------------------ */
+
+  /*
+   * After the text is written, the page looks for a real photograph that
+   * would accompany it — in open image collections that a page may call from
+   * the browser (Wikimedia Commons, then Openverse): free licences, no key,
+   * CORS allowed. Nothing is invented: a picture is used only when it was
+   * really found, really downloaded and really decodes. Everything else —
+   * no network, a blocked host, no match, a timeout — ends quietly in the
+   * picture the page draws itself.
+   */
+  const WEB_TIMEOUT = 15000;
+  const WEB_SKIP = /\b(logo|map|diagram|flag|coat of arms|chart|graph|icon|signature|seal|screenshot|poster|cover|plan|drawing|illustration|painting|svg|scan|document|text|table|emblem|banner|sticker)\b/i;
+  const STOP = new Set('a an the of in on at to for and or with by from as is are was were be this that these those its it their his her our your into over under about after before during near new old one two three'.split(' '));
+
+  /** The search for the photo, from what Claude chose for this text — or from the text itself. */
+  function webQueryFor(chrome, content) {
+    const c = chrome || {};
+    const own = String(c.photoQuery || '').replace(/[^\p{L}\p{N}\s'-]/gu, ' ').replace(/\s+/g, ' ').trim();
+    if (own.split(' ').length >= 2) return own.split(' ').slice(0, 10).join(' ');
+    // no query from Claude: the caption and the headline of the generated text
+    const src = [c.photoCaption, content && content.title].filter(Boolean).join(' ');
+    const words = String(src).replace(/[^\p{L}\p{N}\s'-]/gu, ' ').split(/\s+/)
+      .filter(w => w.length > 2 && !STOP.has(w.toLowerCase()) && !/^fixture/i.test(w));
+    const seen = new Set();
+    return words.filter(w => !seen.has(w.toLowerCase()) && seen.add(w.toLowerCase())).slice(0, 7).join(' ');
+  }
+
+  /** A licence a worksheet may print and hand out: free licences and CC NC for own teaching, never ND. */
+  function webLicenseOk(label) {
+    const l = String(label || '').toLowerCase().replace(/[_-]/g, ' ').replace(/\s+/g, ' ').trim();
+    if (!l) return false;
+    if (/\bnd\b|no derivatives|noderivs/.test(l)) return false;
+    if (/public domain|^pd\b|pdm|cc0|cc zero|no restrictions/.test(l)) return true;
+    return /^(cc )?by( sa| nc| nc sa)?( \d(\.\d)?)?/.test(l.replace(/^cc\s*/, 'cc '));
+  }
+  const plainText = (html) => String(html || '').replace(/<[^>]*>/g, ' ').replace(/&amp;/g, '&').replace(/&nbsp;/g, ' ').replace(/&[a-z#0-9]+;/gi, ' ').replace(/\s+/g, ' ').trim();
+  const overlap = (query, text) => {
+    const q = String(query).toLowerCase().split(/\s+/).filter(w => w.length > 2 && !STOP.has(w));
+    const t = ' ' + String(text).toLowerCase().replace(/[^a-z0-9\u00C0-\u024F]+/g, ' ') + ' ';
+    return q.filter(w => t.includes(' ' + w) || t.includes(w + ' ')).length;
+  };
+  /** Wide enough for the place it goes to, and a photograph. */
+  function shapeOk(w, h, aspect) {
+    if (!(w >= 640) || !(h >= 360)) return false;
+    const r = w / h;
+    const want = aspect > 0 ? aspect : 1.6;
+    return want >= 1 ? (r >= 1.15 && r <= 2.4) : (r >= 0.55 && r <= 1.05);
+  }
+
+  /** The candidates Wikimedia Commons returns, filtered and ranked. */
+  function commonsCandidates(json, query, aspect) {
+    const pages = json && json.query && json.query.pages ? Object.values(json.query.pages) : [];
+    const out = [];
+    for (const p of pages) {
+      const ii = p && p.imageinfo && p.imageinfo[0];
+      if (!ii) continue;
+      if (!/^image\/(jpeg|png|webp)$/.test(ii.mime || '')) continue;
+      const title = String(p.title || '').replace(/^File:/, '').replace(/\.[a-z0-9]+$/i, '').replace(/_/g, ' ');
+      if (WEB_SKIP.test(title)) continue;
+      if (!shapeOk(ii.width, ii.height, aspect)) continue;
+      const meta = ii.extmetadata || {};
+      const license = plainText(meta.LicenseShortName && meta.LicenseShortName.value);
+      if (!webLicenseOk(license)) continue;
+      const author = plainText(meta.Artist && meta.Artist.value).slice(0, 60) || 'Unknown';
+      const desc = plainText(meta.ImageDescription && meta.ImageDescription.value);
+      const src = ii.thumburl || ii.url;
+      if (!/^https:\/\//.test(src || '')) continue;
+      out.push({ src, page: ii.descriptionurl || '', title, author, license, source: 'Wikimedia Commons',
+        score: overlap(query, title + ' ' + desc) * 3 - (p.index || 0) * 0.15 });
+    }
+    return out.sort((a, b) => b.score - a.score);
+  }
+
+  /** The candidates Openverse returns, filtered and ranked. */
+  function openverseCandidates(json, query, aspect) {
+    const out = [];
+    ((json && json.results) || []).forEach((r, i) => {
+      if (!r || !r.url) return;
+      const title = String(r.title || '');
+      if (WEB_SKIP.test(title)) return;
+      if (r.width && r.height && !shapeOk(r.width, r.height, aspect)) return;
+      const license = (String(r.license || '').toLowerCase() === 'cc0' ? 'CC0' : String(r.license || '').toLowerCase() === 'pdm' ? 'Public Domain' : 'CC ' + String(r.license || '').toUpperCase()) + (r.license_version ? ' ' + r.license_version : '');
+      if (!webLicenseOk(license)) return;
+      const srcs = [r.url, r.thumbnail].filter(u => /^https:\/\//.test(u || ''));
+      if (!srcs.length) return;
+      out.push({ src: srcs[0], alt: srcs[1] || '', page: r.foreign_landing_url || '', title, author: String(r.creator || 'Unknown').slice(0, 60), license,
+        source: r.source ? String(r.source).replace(/^./, c => c.toUpperCase()) + ' via Openverse' : 'Openverse', score: overlap(query, title + ' ' + (r.tags || []).map(t => t && t.name).join(' ')) * 3 - i * 0.15 });
+    });
+    return out.sort((a, b) => b.score - a.score);
+  }
+
+  /**
+   * Look for a real photo and download it. Resolves `null` whenever anything
+   * is missing or fails — never throws, never invents. `opts.fetch` lets a
+   * test stand in for the network.
+   */
+  async function findWebPicture(query, opts) {
+    const o = opts || {};
+    const doFetch = o.fetch || (typeof fetch === 'function' ? fetch.bind(globalThis) : null);
+    const q = String(query || '').trim();
+    if (!doFetch || q.split(/\s+/).length < 2) return null;
+    const ctl = typeof AbortController === 'function' ? new AbortController() : null;
+    const stop = () => ctl && ctl.abort();
+    const timer = setTimeout(stop, o.timeout || WEB_TIMEOUT);
+    if (o.signal) { if (o.signal.aborted) stop(); else o.signal.addEventListener('abort', stop, { once: true }); }
+    const get = async (url, as) => {
+      const res = await doFetch(url, { mode: 'cors', credentials: 'omit', signal: ctl ? ctl.signal : undefined });
+      if (!res || !res.ok) throw new Error('HTTP ' + (res && res.status));
+      return as === 'blob' ? res.blob() : res.json();
+    };
+    const download = async (c) => {
+      for (const src of [c.src, c.alt].filter(Boolean)) {
+        try {
+          const blob = await get(src, 'blob');
+          if (blob && /^image\/(jpeg|png|webp)$/.test(blob.type) && blob.size > 8000 && blob.size < 15e6) return blob;
+        } catch (e) { if (ctl && ctl.signal.aborted) throw e; }
+      }
+      return null;
+    };
+    const shorter = q.split(/\s+/).slice(0, 4).join(' ');
+    const searches = [
+      () => get('https://commons.wikimedia.org/w/api.php?action=query&format=json&origin=*&generator=search&gsrnamespace=6&gsrlimit=24'
+        + '&gsrsearch=' + encodeURIComponent(q + ' filetype:bitmap')
+        + '&prop=imageinfo&iiprop=url|size|mime|extmetadata&iiurlwidth=1600&iiextmetadatafilter=LicenseShortName|Artist|ImageDescription').then(j => commonsCandidates(j, q, o.aspect)),
+      () => shorter !== q ? get('https://commons.wikimedia.org/w/api.php?action=query&format=json&origin=*&generator=search&gsrnamespace=6&gsrlimit=24'
+        + '&gsrsearch=' + encodeURIComponent(shorter + ' filetype:bitmap')
+        + '&prop=imageinfo&iiprop=url|size|mime|extmetadata&iiurlwidth=1600&iiextmetadatafilter=LicenseShortName|Artist|ImageDescription').then(j => commonsCandidates(j, shorter, o.aspect)) : [],
+      () => get('https://api.openverse.org/v1/images/?page_size=20&mature=false&category=photograph&q=' + encodeURIComponent(q)).then(j => openverseCandidates(j, q, o.aspect)),
+    ];
+    try {
+      for (const search of searches) {
+        let list = [];
+        try { list = await search(); } catch (e) { if (ctl && ctl.signal.aborted) return null; continue; }
+        for (const c of list.slice(0, 3)) {
+          const blob = await download(c);
+          if (!blob) continue;
+          const ext = blob.type === 'image/png' ? 'png' : blob.type === 'image/webp' ? 'webp' : 'jpg';
+          return { blob, name: (c.title || 'photo').slice(0, 60) + '.' + ext, page: c.page, source: c.source, license: c.license, author: c.author, query: q,
+            credit: ('Foto: ' + c.author + ' / ' + c.source + ', ' + c.license).slice(0, 120) };
+        }
+      }
+      return null;
+    } catch (e) {
+      return null;
+    } finally {
+      clearTimeout(timer);
+      if (o.signal) o.signal.removeEventListener('abort', stop);
+    }
+  }
+
   useLibrary(photolib);
 
   return {
     SUBJECTS, SCENES, subjectFor, subjectHints, isSubject, draw, hashOf, LIGHTS, SKIN, HAIR, CLOTHES,
     useLibrary, photosFor, pick, byId, preload, imageFor, library: () => LIBRARY.slice(),
     isOwnSource, loadSrc, imageForSrc,
+    webQueryFor, webLicenseOk, commonsCandidates, openverseCandidates, findWebPicture,
   };
 });

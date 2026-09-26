@@ -2,7 +2,7 @@
 
 Erzeugt von `npm run coverage`. Jede Zeile ist eine Anforderung aus `docs/Konzept_Listening_Reading_Creator.md`, gebunden an die Stelle im Code, die sie umsetzt, und das Ergebnis der automatischen Prüfung (`npm test`).
 
-**Ergebnis: 325 von 325 Anforderungen bestanden.**
+**Ergebnis: 326 von 326 Anforderungen bestanden.**
 
 Prüfarten: **setting** – Steuerelement vorhanden und Änderung des Werts verändert nachweislich den Prompt an Claude · **function** – Verhalten wird mit echten Eingaben ausgeführt und verglichen · **rule** – Qualitätsregel existiert als Messung oder Claude-Review-Kriterium · **render** – Ausgabe wird auf einer Fixture gerendert und inhaltlich geprüft · **ui** – Navigations-/Strukturelement existiert.
 
@@ -479,7 +479,7 @@ Prüfarten: **setting** – Steuerelement vorhanden und Änderung des Werts ver�
 | ✅ | `S36.repair` | Beanstandete Post-Task wird gezielt neu erstellt, Fragen und Pre-Task bleiben unverändert | function | Funktion (siehe Check im Manifest) |
 | ✅ | `S36.output` | Post-Task steht nach den Fragen auf dem Arbeitsblatt (Bildschirm, Word, Markdown) mit Sozialform, Arbeitsweise, Zeit, Produkt und Kriterien; Lehrerversion mit Übersicht | render | render.js (renderStudentHTML / renderTeacherHTML) |
 
-## §37 Authentisches Layout (Screenshot des Mediums) (25/25)
+## §37 Authentisches Layout (Screenshot des Mediums) (26/26)
 
 | Status | ID | Anforderung | Art | Umsetzung |
 |---|---|---|---|---|
@@ -503,6 +503,7 @@ Prüfarten: **setting** – Steuerelement vorhanden und Änderung des Werts ver�
 | ✅ | `S37.photo_library` | Echte Fotos, wo die App welche mitbringt: frei lizenziert, mit Bildnachweis unter dem Bild und in der Lehrerversion; Porträts erfundener Personen nur aus Stockfotos; sonst gezeichnete Szene | function | Funktion (siehe Check im Manifest) |
 | ✅ | `S37.own_pictures` | Jedes Bild im Medium lässt sich durch ein eigenes ersetzen – in der Vorschau und im Viewer beim Überfahren des Bildes, im Layout-Tab: Datei wählen, Strg+V, hineinziehen, auch direkt aus dem Internet (Bild aus einer Website ziehen oder seine Adresse laden) – mit Bildnachweis, gespeichert mit dem Material, jederzeit zurück zum automatischen Bild | function | Funktion (siehe Check im Manifest) |
 | ✅ | `S37.composition` | Claude komponiert die Seite wie ein Editorial Designer: Aufmacher-Grösse, Spalten, ein zweites Bild im Text, Zitatkasten (nur wörtlich aus dem Text), Zwischentitel, Dichte – der Text selbst bleibt Wort für Wort unverändert | function | Funktion (siehe Check im Manifest) |
+| ✅ | `S37.web_picture` | Nach dem Generieren sucht die App ein echtes, passendes Foto für das Aufmacherbild (offene Bildsammlungen: Wikimedia Commons, Openverse) – Suchbegriff aus dem generierten Text, nur freie Lizenzen ohne ND, mit Nachweis; es steht sofort in der Vorschau und im Export; scheitert irgendetwas, bleibt das gezeichnete Bild und das Material entsteht wie immer | function | Funktion (siehe Check im Manifest) |
 | ✅ | `S37.press_pages` | Die Zeitung ist eine echte A4-Seite: ein längerer Artikel läuft auf einer Folgeseite weiter („Continued on page 2“, Fortsetzungskopf, Seitenzahlen) – nie kleinere Schrift, nie gekürzt; jede Seite ist im Blatt und im Word-Export eine eigene Seite; Silbentrennung im Blocksatz | function | Funktion (siehe Check im Manifest) |
 | ✅ | `S37.press_makeup` | Die Zeitungsseite ist umbrochen wie eine echte: Titelkopf mit Namen, Motto und Ausgabezeile, Rubrik, schwarze, eng gesetzte Schlagzeile, Vorspann ohne Etikett, Autorenzeile zwischen Linien, Initial (Titelseite) oder Ortsmarke (Innenseite), neben dem Aufmacher Zitat und Fakten statt Textstreifen, kein Abstand zwischen Absätzen (nur Einzug), Zwischentitel nie allein am Spaltenfuss, zweites Bild nie neben dem Aufmacher, Zitat und Kästen rücken an den Text | function | Funktion (siehe Check im Manifest) |
 | ✅ | `S37.modules` | Um den Text steht, was auf so einer Seite wirklich steht: Werbung, Umfrage, Meistgelesen, Anmeldekasten, Kleinanzeigen – Claude wählt aus dem Katalog und darf Eigenes ergänzen | function | Funktion (siehe Check im Manifest) |

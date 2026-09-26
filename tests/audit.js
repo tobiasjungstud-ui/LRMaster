@@ -610,6 +610,49 @@ test('2.4 R3', 'the medium is furnished: pictures with subjects, and whatever el
   assert.ok(everywhere.every(n => n > 0), 'a medium receives nothing at all beside its text: ' + everywhere.join('/'));
 });
 
+test('2.4 2.8', 'a real photo for the lead picture: found and credited, or nothing — never a fake, never a hang', () => {
+  // the search runs against a stand-in network in a child process (the suite itself is synchronous)
+  const script = `
+    const photo = require(${JSON.stringify(path.join(APP, 'photo.js'))});
+    const big = new Uint8Array(20000).fill(7);
+    const img = (type) => ({ ok: true, status: 200, blob: async () => new Blob([big], { type }) });
+    const json = (j) => ({ ok: true, status: 200, json: async () => j });
+    const commons = { query: { pages: { 1: { title: 'File:Market square in the rain.jpg', index: 1, imageinfo: [{ mime: 'image/jpeg', width: 1600, height: 1000,
+      thumburl: 'https://upload.wikimedia.org/m.jpg', descriptionurl: 'https://commons.wikimedia.org/wiki/File:M.jpg',
+      extmetadata: { LicenseShortName: { value: 'CC BY-SA 4.0' }, Artist: { value: '<b>Ann Lee</b>' } } }] } } } };
+    const openverse = { results: [{ url: 'https://live.staticflickr.com/o.jpg', thumbnail: 'https://api.openverse.org/v1/images/x/thumb/', width: 1600, height: 1000,
+      title: 'Market square', creator: 'Bo', license: 'by', license_version: '2.0', source: 'flickr', foreign_landing_url: 'https://flickr.com/p/1' }] };
+    const calls = [];
+    const net = (routes) => async (url) => { calls.push(url); for (const [re, fn] of routes) if (re.test(url)) return fn(url); throw new TypeError('Failed to fetch'); };
+    (async () => {
+      const out = {};
+      out.found = await photo.findWebPicture('market square stalls rain', { fetch: net([[/commons/, () => json(commons)], [/upload\\.wikimedia/, () => img('image/jpeg')]]) });
+      out.foundCalls = calls.splice(0);
+      out.blocked = await photo.findWebPicture('market square stalls rain', { fetch: net([]) });
+      out.fallback = await photo.findWebPicture('market square stalls rain', { fetch: net([[/commons/, () => json({})], [/openverse\\.org\\/v1\\/images\\/\\?/, () => json(openverse)], [/staticflickr/, () => ({ ok: false, status: 403 })], [/thumb/, () => img('image/jpeg')]]) });
+      out.notImage = await photo.findWebPicture('market square stalls rain', { fetch: net([[/commons/, () => json(commons)], [/upload/, () => ({ ok: true, status: 200, blob: async () => new Blob(['<html>'], { type: 'text/html' }) })]]) });
+      const t0 = Date.now();
+      out.slow = await photo.findWebPicture('market square stalls rain', { timeout: 300, fetch: (u, o) => new Promise((res, rej) => { o.signal.addEventListener('abort', () => rej(new Error('aborted'))); }) });
+      out.slowMs = Date.now() - t0;
+      const ctl = new AbortController(); setTimeout(() => ctl.abort(), 50);
+      out.cancelled = await photo.findWebPicture('market square stalls rain', { signal: ctl.signal, fetch: (u, o) => new Promise((res, rej) => { o.signal.addEventListener('abort', () => rej(new Error('aborted'))); }) });
+      out.oneWord = await photo.findWebPicture('market', { fetch: net([[/./, () => { throw new Error('should not be called'); }]]) });
+      const pick = (r) => r && { credit: r.credit, page: r.page, size: r.blob.size, type: r.blob.type };
+      console.log(JSON.stringify({ found: pick(out.found), foundCalls: out.foundCalls, blocked: out.blocked, fallback: pick(out.fallback), notImage: out.notImage, slow: out.slow, slowMs: out.slowMs, cancelled: out.cancelled, oneWord: out.oneWord }));
+    })();`;
+  const { execFileSync } = require('node:child_process');
+  const r = JSON.parse(execFileSync(process.execPath, ['-e', script], { encoding: 'utf8', timeout: 20000 }));
+  assert.ok(r.found && r.found.size === 20000 && r.found.type === 'image/jpeg', 'a photo that exists is not taken: ' + JSON.stringify(r.found));
+  assert.equal(r.found.credit, 'Foto: Ann Lee / Wikimedia Commons, CC BY-SA 4.0', 'the credit does not name author, source and licence');
+  assert.ok(/commons\.wikimedia\.org\/w\/api\.php/.test(r.foundCalls[0]) && /origin=\*/.test(r.foundCalls[0]), 'the search does not ask the collection from the browser (CORS)');
+  assert.equal(r.blocked, null, 'a blocked network does not end in the drawn picture');
+  assert.ok(r.fallback && /Flickr via Openverse, CC BY 2\.0/.test(r.fallback.credit), 'the second collection is not tried, or its thumbnail not used when the original refuses: ' + JSON.stringify(r.fallback));
+  assert.equal(r.notImage, null, 'something that is not an image is taken as a photo');
+  assert.ok(r.slow === null && r.slowMs < 3000, 'a network that never answers holds up the material (' + r.slowMs + ' ms)');
+  assert.equal(r.cancelled, null, 'stopping the run does not stop the search');
+  assert.equal(r.oneWord, null, 'a search of one word is sent');
+});
+
 test('2.4 R3', 'every picture is in proportion: no column is left nearly empty, whatever the text is like', () => {
   const words = 'the quick brown fox jumps over a lazy dog while students argue about trust and gossip in class today'.split(' ');
   const body = (n, per) => {

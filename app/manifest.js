@@ -1874,6 +1874,32 @@
       return ok(!problems.length, problems.slice(0, 3).join(' | '));
     } });
 
+  add({ id: 'S37.web_picture', section: 37, title: 'Nach dem Generieren sucht die App ein echtes, passendes Foto für das Aufmacherbild (offene Bildsammlungen: Wikimedia Commons, Openverse) – Suchbegriff aus dem generierten Text, nur freie Lizenzen ohne ND, mit Nachweis; es steht sofort in der Vorschau und im Export; scheitert irgendetwas, bleibt das gezeichnete Bild und das Material entsteht wie immer', kind: 'function',
+    check(env) {
+      const problems = [];
+      const P = env.photo;
+      // the search is asked of Claude with the text, and built from the text
+      const m = layoutMaterial(env, { textType: 'News Article', layoutMedium: 'paper' });
+      for (const [type, medium] of [['News Article', 'paper'], ['Blog Post', 'screen']]) {
+        const spec = env.mock.chromeSpec(layoutMaterial(env, { textType: type, layoutMedium: medium }));
+        if (!spec.fields.some(f => f[0] === 'photoQuery')) problems.push(type + ': the layout does not ask for a photo search');
+      }
+      const prompt = env.prompts.buildLayoutPrompt(m.settings, m.plan, m.content, env.mock.chromeSpec(m));
+      if (!/photoQuery/.test(prompt) || !/REAL photograph/.test(prompt)) problems.push('the layout prompt does not ask for the photo search');
+      if (P.webQueryFor({ photoQuery: 'Zurich school street pedestrians bicycles' }, m.content) !== 'Zurich school street pedestrians bicycles') problems.push('Claude\'s search is not used');
+      const own = P.webQueryFor({ photoCaption: 'Stalls on the market square in the rain' }, { title: 'Council keeps square closed to cars' });
+      if (!/market/i.test(own) || !/square/i.test(own) || own.split(' ').length < 3) problems.push('without Claude the search does not come from the text: ' + own);
+      // licences: free, never ND, never unknown
+      const lic = ['CC BY-SA 4.0', 'CC BY 2.0', 'Public domain', 'CC0', 'CC BY-NC-SA 2.0'].every(P.webLicenseOk) && !['CC BY-ND 2.0', 'All rights reserved', ''].some(P.webLicenseOk);
+      if (!lic) problems.push('the licence rule lets the wrong pictures through');
+      // candidates: no logo, no map, no tiny or upright picture for a wide place, ranked by the story
+      const page = (t, w, h, license, i) => ({ title: 'File:' + t, index: i, imageinfo: [{ mime: 'image/jpeg', width: w, height: h, thumburl: 'https://upload.wikimedia.org/' + i + '.jpg', descriptionurl: 'https://commons.wikimedia.org/wiki/' + i, extmetadata: { LicenseShortName: { value: license }, Artist: { value: '<a>Ann Lee</a>' } } }] });
+      const json = { query: { pages: { 1: page('Town logo.jpg', 1600, 1000, 'CC BY 4.0', 1), 2: page('Street map of the town.jpg', 1600, 1000, 'CC BY 4.0', 2), 3: page('Small.jpg', 300, 200, 'CC BY 4.0', 3),
+        4: page('Upright tower.jpg', 800, 1400, 'CC BY 4.0', 4), 5: page('Harbour at night.jpg', 1600, 1000, 'CC BY 4.0', 5), 6: page('Market square stalls in rain.jpg', 1600, 1000, 'CC BY-SA 3.0', 6), 7: page('Square ND.jpg', 1600, 1000, 'CC BY-ND 2.0', 7) } } };
+      const list = P.commonsCandidates(json, 'market square stalls rain', 1.6);
+      if (list.length !== 2 || !/Market square/.test(list[0].title) || list[0].author !== 'Ann Lee') problems.push('the candidates are not filtered and ranked: ' + list.map(c => c.title).join(', '));
+      return ok(!problems.length, problems.slice(0, 3).join(' | '));
+    } });
   add({ id: 'S37.press_pages', section: 37, title: 'Die Zeitung ist eine echte A4-Seite: ein längerer Artikel läuft auf einer Folgeseite weiter („Continued on page 2“, Fortsetzungskopf, Seitenzahlen) – nie kleinere Schrift, nie gekürzt; jede Seite ist im Blatt und im Word-Export eine eigene Seite; Silbentrennung im Blocksatz', kind: 'function',
     check(env) {
       const problems = [];
