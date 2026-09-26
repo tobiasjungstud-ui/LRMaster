@@ -1907,6 +1907,90 @@
       if (list.length !== 2 || !/Market square/.test(list[0].title) || list[0].author !== 'Ann Lee') problems.push('the candidates are not filtered and ranked: ' + list.map(c => c.title).join(', '));
       return ok(!problems.length, problems.slice(0, 3).join(' | '));
     } });
+  add({ id: 'S37.no_overlap', section: 37, title: 'Kein Element läuft in ein anderes: jede Oberflächen-Zeile (Datumszeile, Bildnachweis, Navigation, Modultexte …) passt in ihren Platz – zu lange Angaben werden mit „…“ gekürzt, nie der Text des Materials oder ein wörtliches Zitat; nichts ragt über Seite oder Kasten', kind: 'function',
+    check(env) {
+      const problems = [];
+      const measure = env.mock.approxMeasure;
+      const LONG = ['Bristol Evening Chronicle and Western Daily Mail', 'Tuesday, 14 March 2026 · Late City Edition · £1.80', 'Environment, Climate & Sustainable Transport', 'Weekend edition · No. 214 · Established 1858', 'Photo: Jane Photographer-Whitfield / Wikimedia Commons, CC BY-SA 4.0'];
+      const lengthen = (chrome) => {
+        const ch = Object.assign({}, chrome);
+        for (const k of Object.keys(ch)) {
+          const v = ch[k];
+          if (k === 'modules') ch.modules = (v || []).map(md => Object.assign({}, md, { heading: (md.heading || '') + ' with a considerably longer heading than usual', label: (md.label || '') + ' Extended', lines: (md.lines || []).map(l => l + ' and a second clause that makes it long'), items: (md.items || []).concat(['An additional item with a rather long text']), meta: (md.meta || '') + ' · updated 5 minutes ago', cta: (md.cta || '') + ' now' }));
+          else if (k === 'composition' || /Subject|photoReality|photoQuery|photoPrompts/.test(k)) continue;
+          else if (typeof v === 'string' && v) ch[k] = (v + ' ' + LONG[k.length % LONG.length]).slice(0, 90);
+          else if (Array.isArray(v)) ch[k] = v.concat(v).slice(0, 6).map((x, i) => typeof x === 'string' ? (x + ' ' + LONG[i % LONG.length]).slice(0, 60) : (x && typeof x === 'object' ? Object.assign({}, x, { label: String(x.label || '') + ' extended label', count: '12.4k' }) : x));
+        }
+        return ch;
+      };
+      const boxOf = (b) => { const w = measure(b.text, b.font) + (b.letterSpacing || 0) * b.text.length; const x0 = b.align === 'center' ? b.x - w / 2 : b.align === 'right' ? b.x - w : b.x; return { x0, x1: x0 + w, y0: b.y - b.font.size * 0.72, y1: b.y + b.font.size * 0.2 }; };
+      for (const textType of env.core.TEXT_TYPES) {
+        for (const layoutMedium of ['screen', 'paper']) {
+          for (const long of [false, true]) {
+            const m = layoutMaterial(env, { textType, layoutMedium });
+            m.content.paragraphs = m.content.paragraphs.concat(m.content.paragraphs);
+            if (long) { m.layout.chrome = lengthen(m.layout.chrome); m.content.title = 'Council votes to keep the historic market square closed to cars for another two years'; }
+            const model = env.quality.layoutModel(m);
+            const where = textType + '/' + layoutMedium + (long ? '/long' : '');
+            if (!long && model.blocks.some(b => b.fitted)) problems.push(where + ': a normal entry is shortened: ' + model.blocks.find(b => b.fitted).full);
+            if (env.quality.normalizeForSearch(env.mock.bodyText(model)) !== env.quality.normalizeForSearch(m.content.paragraphs.join(' '))) problems.push(where + ': the text of the material changed');
+            const texts = model.blocks.filter(b => b.type === 'text' && !b.deco && b.text && b.text.trim()).map(b => Object.assign({ b }, boxOf(b)));
+            const pages = model.pages || [{ x: 0, y: 0, w: model.width, h: model.height }];
+            for (let i = 0; i < texts.length && problems.length < 4; i++) {
+              const A = texts[i];
+              const pg = pages.find(p => A.y0 >= p.y - 30 && A.y0 <= p.y + p.h + 30) || pages[0];
+              if (A.b.role !== 'body' && A.b.role !== 'quote' && (A.x1 > pg.x + pg.w + 1 || A.x0 < pg.x - 1)) problems.push(where + ': "' + A.b.text.slice(0, 30) + '" runs off the page');
+              for (let j = i + 1; j < texts.length; j++) {
+                const B = texts[j];
+                if (B.y0 > A.y1) continue;
+                const ox = Math.min(A.x1, B.x1) - Math.max(A.x0, B.x0), oy = Math.min(A.y1, B.y1) - Math.max(A.y0, B.y0);
+                if (ox > 2 && oy > Math.max(2, 0.25 * Math.min(A.y1 - A.y0, B.y1 - B.y0)) && !A.b.glue && !B.b.glue) { problems.push(where + ': "' + A.b.text.slice(0, 25) + '" runs into "' + B.b.text.slice(0, 25) + '"'); break; }
+              }
+            }
+          }
+        }
+      }
+      return ok(!problems.length, problems.slice(0, 3).join(' | '));
+    } });
+  add({ id: 'S37.photo_prompts', section: 37, title: 'Höchstens drei Fotos pro Artikel (Aufmacher, zweites Bild, ein weiteres); in jedem Fotoplatz ohne echtes Foto stehen drei allgemeine Google-Bildsuchen und ein ChatGPT-Prompt für ein fotorealistisches Kamerafoto – nur am Bildschirm, nie im Druck oder Export', kind: 'function',
+    check(env) {
+      const problems = [];
+      const P = env.photo;
+      // Claude is asked for them, and what comes back is clamped
+      const m = layoutMaterial(env, { textType: 'News Article', layoutMedium: 'paper' });
+      const spec = env.mock.chromeSpec(m);
+      if (!spec.fields.some(f => f[0] === 'photoPrompts')) problems.push('the layout does not ask for photo prompts');
+      const raw = { photoPrompts: [{ google: ['market square stalls', 'x', 'farmers market England', 'a b c d'], chatgpt: 'Photorealistic documentary photograph of a busy market square on a Saturday morning, 35 mm, natural light, landscape 3:2, no text.' }, 'junk', {}, {}] };
+      const norm = env.quality.normalizeChrome(raw, spec).photoPrompts;
+      if (!Array.isArray(norm) || norm.length !== 3 || norm[0].google.length !== 3 || norm[0].google.includes('x')) problems.push('the prompts are not clamped: ' + JSON.stringify(norm));
+      const fromClaude = P.promptsFor({ role: 'lead', chrome: { photoPrompts: norm }, subject: 'market', medium: 'print' });
+      if (fromClaude.from !== 'claude' || fromClaude.google[0] !== 'market square stalls') problems.push('Claude\'s prompts are not used');
+      // without them: built from the page, generic, three searches and a camera prompt
+      for (const role of ['lead', 'second', 'extra']) {
+        const r = P.promptsFor({ role, chrome: { photoCaption: 'Stalls on the market square on a Saturday morning.' }, content: { title: 'Council keeps the market square closed' }, subject: 'market', medium: 'print', caption: 'Traders set up their stalls.' });
+        if (r.google.length !== 3 || r.google.some(q => q.split(' ').length < 2 || q.split(' ').length > 6)) problems.push(role + ': the searches are not three short ones: ' + JSON.stringify(r.google));
+        if (!/^Photorealistic/.test(r.chatgpt) || !/35 mm camera/.test(r.chatgpt) || !/No text/.test(r.chatgpt) || !/3:2/.test(r.chatgpt)) problems.push(role + ': the image prompt is not for a camera-like photo');
+      }
+      // at most three photos to find, in every medium; lead and second picture keep theirs
+      for (const textType of env.core.TEXT_TYPES) {
+        for (const layoutMedium of ['screen', 'paper']) {
+          const mm = layoutMaterial(env, { textType, layoutMedium });
+          mm.content.paragraphs = mm.content.paragraphs.concat(mm.content.paragraphs, mm.content.paragraphs);
+          const model = env.quality.layoutModel(mm);
+          const slots = new Map();
+          model.blocks.filter(b => b.type === 'photo' && !b.round).forEach(b => slots.set(b.slot, b.picRole));
+          if (slots.size > 3) problems.push(textType + '/' + layoutMedium + ': ' + slots.size + ' photos to find');
+          if ([...slots.values()].some(r => !r)) problems.push(textType + '/' + layoutMedium + ': a photo without its role');
+          const comp = env.mock.composition(mm.layout.chrome, mm.content.paragraphs, env.mock.chromeSpec(mm).kind === 'print' ? 'print' : 'page');
+          if (/News Article|Article|Blog Post/.test(textType) && comp.figure && ![...slots.values()].includes('second') && layoutMedium === 'paper' && textType === 'News Article') problems.push(textType + '/' + layoutMedium + ': the second picture lost its place');
+        }
+      }
+      // the sheet marks each photo place with its role, and the page shows the prompts there, on screen only
+      if (!/data-role="lead"/.test(env.quality.layoutSVG(m))) problems.push('the sheet does not mark the lead picture');
+      const src = env.uiSource || '';
+      if (src && !(/function photoPromptCard/.test(src) && /tbm=isch/.test(src) && /chatgpt\.com/.test(src) && /clipboard\.writeText/.test(src))) problems.push('the photo places do not offer the searches and the prompt');
+      return ok(!problems.length, problems.slice(0, 3).join(' | '));
+    } });
   add({ id: 'S37.press_pages', section: 37, title: 'Die Zeitung ist eine echte A4-Seite: ein längerer Artikel läuft auf einer Folgeseite weiter („Continued on page 2“, Fortsetzungskopf, Seitenzahlen) – nie kleinere Schrift, nie gekürzt; jede Seite ist im Blatt und im Word-Export eine eigene Seite; Silbentrennung im Blocksatz', kind: 'function',
     check(env) {
       const problems = [];

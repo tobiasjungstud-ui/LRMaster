@@ -871,6 +871,15 @@
       // the plan for the page: a small object, clamped here and checked against
       // the text where it is used (mock.composition)
       if (key === 'composition') { out[key] = normalizeComposition(v); continue; }
+      // how to find or make each photo: at most three sets of three searches and one prompt
+      if (key === 'photoPrompts') {
+        const str = (x, n) => (typeof x === 'string' ? x.replace(/\s+/g, ' ').trim().slice(0, n) : '');
+        out[key] = (Array.isArray(v) ? v : []).slice(0, 3).map(p => (p && typeof p === 'object') ? {
+          google: (Array.isArray(p.google) ? p.google : []).map(q => str(q, 80)).filter(q => q.split(' ').length >= 2).slice(0, 3),
+          chatgpt: str(p.chatgpt, 1200),
+        } : { google: [], chatgpt: '' });
+        continue;
+      }
       // a picture subject is a key of the picture engine, not free text: an
       // invented one would leave a blank box, so it is dropped here
       if (/Subjects?$/.test(key)) {

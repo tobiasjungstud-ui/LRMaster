@@ -473,6 +473,24 @@ mark.vocab { background: var(--mark); color: inherit; border-radius: 3px; paddin
 .photo-hotspot.is-small.is-own::after { top: 1px; left: 1px; width: 7px; height: 7px; }
 @media (hover: none) { .photo-hotspot span { opacity: .9; transform: none; } }
 @media print { .photo-hotspots { display: none; } }
+/* how to find a photo, right in its place (screen only) */
+.photo-prompts { position: absolute; pointer-events: none; display: flex; align-items: flex-start; justify-content: flex-start; padding: 8px; box-sizing: border-box; }
+.photo-prompts .pp-card { pointer-events: auto; max-width: min(360px, 100%); max-height: calc(100% - 34px); overflow: auto; background: rgba(255, 255, 255, .95); color: #1f2937;
+  border-radius: 8px; padding: .5rem .65rem; box-shadow: 0 4px 16px rgba(15, 23, 42, .22); font: 400 .72rem/1.35 var(--font-ui, system-ui, sans-serif); text-align: left; }
+.photo-prompts .pp-head { font-weight: 700; font-size: .74rem; margin-bottom: .25rem; }
+.photo-prompts .pp-label { font-weight: 700; font-size: .64rem; text-transform: uppercase; letter-spacing: .05em; color: #64748b; margin: .35rem 0 .1rem; }
+.photo-prompts .pp-google { margin: 0; padding-left: 1.1rem; }
+.photo-prompts .pp-google a { color: #1d4ed8; text-decoration: underline; word-break: break-word; }
+.photo-prompts .pp-gpt { margin: 0; max-height: 5.4em; overflow: auto; color: #334155; user-select: text; }
+.photo-prompts .pp-actions { display: flex; flex-wrap: wrap; gap: .4rem; align-items: center; margin-top: .35rem; }
+.photo-prompts .pp-copy, .photo-prompts .pp-toggle { font: 600 .7rem/1.2 var(--font-ui, system-ui, sans-serif); border: 1px solid #cbd5e1; background: #fff; color: #1f2937; border-radius: 999px; padding: .25rem .6rem; cursor: pointer; }
+.photo-prompts .pp-open { color: #1d4ed8; font-weight: 600; }
+.photo-prompts .pp-toggle { display: none; pointer-events: auto; }
+.photo-prompts.is-compact .pp-card { display: none; }
+.photo-prompts.is-compact .pp-toggle { display: inline-block; }
+.photo-prompts.is-compact.is-open { z-index: 5; }
+.photo-prompts.is-compact.is-open .pp-card { display: block; position: absolute; top: 34px; left: 0; width: 320px; max-width: 80vw; max-height: none; }
+.photo-prompts a:focus-visible, .photo-prompts button:focus-visible { outline: 2px solid var(--accent, #2563eb); outline-offset: 1px; }
 
 .picture-editor { border: 1px solid var(--line); border-radius: 14px; padding: 0; width: min(520px, calc(100vw - 32px)); background: var(--surface, #fff); color: inherit; box-shadow: 0 24px 60px rgba(15, 23, 42, .28); }
 .picture-editor::backdrop { background: rgba(15, 23, 42, .45); }

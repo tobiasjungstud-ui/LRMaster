@@ -1287,12 +1287,70 @@
     }
   }
 
+  /* ------------------------------------------------------------------ */
+  /* Prompts to find or make a photo                                      */
+  /* ------------------------------------------------------------------ */
+
+  /*
+   * A published page cannot fetch pictures from the web, so each photo place
+   * tells the teacher how to get one: three short Google image searches that
+   * are generic enough to have many real results, and one prompt for an image
+   * generator (ChatGPT) for a photorealistic photo as if taken with a camera.
+   * Claude writes them with the page (chrome.photoPrompts); for a material
+   * without them they are built here from what the page says about the picture.
+   */
+  const ROLE_INDEX = { lead: 0, second: 1, extra: 2 };
+  const clean = (t, n) => String(t || '').replace(/[\u201C\u201D"]/g, '').replace(/\s+/g, ' ').trim().slice(0, n);
+  function keywords(text, n) {
+    const seen = new Set();
+    return String(text || '').replace(/[^\p{L}\p{N}\s'-]/gu, ' ').split(/\s+/)
+      .filter(w => w.length > 2 && !STOP.has(w.toLowerCase()) && !/^fixture/i.test(w))
+      .filter(w => !seen.has(w.toLowerCase()) && seen.add(w.toLowerCase())).slice(0, n);
+  }
+  /** Is a prompt set usable: three searches of a few words and a real image prompt. */
+  function promptSetOk(p) {
+    return !!p && Array.isArray(p.google) && p.google.filter(q => clean(q, 80).split(' ').length >= 2).length >= 2 && clean(p.chatgpt, 1200).length >= 40;
+  }
+  /**
+   * The prompts for one photo place. `ctx`: role (lead, second, extra), the
+   * page's chrome, the material's content, the picture subject, the medium.
+   */
+  function promptsFor(ctx) {
+    const c = (ctx && ctx.chrome) || {};
+    const role = ctx.role || 'extra';
+    const given = Array.isArray(c.photoPrompts) ? c.photoPrompts[ROLE_INDEX[role]] : null;
+    if (promptSetOk(given)) {
+      return { google: given.google.map(q => clean(q, 80)).filter(q => q.split(' ').length >= 2).slice(0, 3), chatgpt: clean(given.chatgpt, 1200), from: 'claude' };
+    }
+    const subject = isSubject(ctx.subject) ? ctx.subject : 'city';
+    const scene = (SCENES[subject] && SCENES[subject].hint) || subject;
+    const sceneWords = keywords(scene, 4);
+    const fromText = role === 'lead'
+      ? keywords(c.photoQuery || '', 5).length >= 2 ? keywords(c.photoQuery, 5) : keywords([ctx.content && ctx.content.title, c.photoCaption].filter(Boolean).join(' '), 5)
+      : role === 'second' ? keywords(ctx.caption || '', 5) : [];
+    const print = ctx.medium === 'print';
+    const style = print ? 'documentary news' : 'editorial';
+    const google = [];
+    const add = (words) => { const q = words.filter(Boolean).join(' ').trim(); if (q.split(' ').length >= 2 && !google.some(x => x.toLowerCase() === q.toLowerCase())) google.push(q); };
+    add(fromText.slice(0, 5));
+    add(sceneWords.slice(0, 3).concat(['photo']));
+    add([sceneWords[0] || subject, print ? 'documentary photo' : 'everyday life', 'people']);
+    add([subject, 'photography']);
+    const what = clean(role === 'lead' ? (c.photoCaption || scene) : role === 'second' ? (ctx.caption || scene) : scene, 220).replace(/\.$/, '');
+    const chatgpt = `Photorealistic ${style} photograph, as if taken with a real 35 mm camera at eye level: ${what}. `
+      + 'Natural available light, realistic colours and textures, shallow depth of field, slight film grain, candid and unposed. '
+      + `Composition for a ${print ? 'newspaper' : 'magazine or news website'} ${role === 'lead' ? 'lead picture' : 'picture'}, landscape format 3:2. `
+      + 'No text, no captions, no logos, no watermarks, no recognisable real people or brands.';
+    return { google: google.slice(0, 3), chatgpt, from: 'app' };
+  }
+
   useLibrary(photolib);
 
   return {
     SUBJECTS, SCENES, subjectFor, subjectHints, isSubject, draw, hashOf, LIGHTS, SKIN, HAIR, CLOTHES,
     useLibrary, photosFor, pick, byId, preload, imageFor, library: () => LIBRARY.slice(),
     isOwnSource, loadSrc, imageForSrc,
+    promptsFor, promptSetOk,
     webQueryFor, webPlan, webLicenseOk, commonsCandidates, openverseCandidates, findWebPicture, decodeImage, isPending, sourceCaption,
     PENDING_TONE, webBlockedNow: () => webBlocked, resetWebBlocked: () => { webBlocked = false; },
   };

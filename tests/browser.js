@@ -553,6 +553,81 @@ const SETTINGS = (extra) => `(() => {
     await page.close();
   }
 
+  console.log('\nBrowser audit: how to find the photos, and nothing runs into anything (2.4, 2.11)');
+  {
+    const { page, errors } = await open({});
+    const r = await page.evaluate(async () => {
+      const { fixture, ui, quality } = window.LR;
+      window.__copied = null;
+      try { Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: async (t) => { window.__copied = t; } } }); } catch (e) { /* keep the real one */ }
+      const m = fixture.material({ textType: 'News Article', authenticLayout: true, createWorksheet: true }, 'reading');
+      m.id = 'prompt-test';
+      m.content.paragraphs = [].concat(m.content.paragraphs, m.content.paragraphs, m.content.paragraphs, m.content.paragraphs);
+      ui.app.material = m; ui.openViewer(m, 'creator');
+      await new Promise(r => setTimeout(r, 500));
+      const cards = Array.from(document.querySelectorAll('#vw-sheet .photo-prompts'));
+      const slots = new Set(Array.from(document.querySelectorAll('#vw-sheet svg rect.photo-slot')).filter(x => x.getAttribute('data-round') !== '1').map(x => x.getAttribute('data-slot')));
+      const links = cards.map(c => Array.from(c.querySelectorAll('.pp-google a')).map(a => a.href));
+      const gpt = cards.map(c => (c.querySelector('.pp-open') || {}).href || '');
+      const lead = cards[0];
+      lead.querySelector('.pp-copy').click();
+      await new Promise(r => setTimeout(r, 100));
+      const copied = window.__copied;
+      const visible = lead.querySelector('.pp-card').getBoundingClientRect().width > 50 || lead.classList.contains('is-compact');
+      // a real photo in its place: its card goes
+      const slot = lead.dataset.slot;
+      const bytes = await (await fetch('/photos/__probe__.png')).blob();
+      await ui.replacePicture(m, slot, await ui.prepareImage(new File([bytes], 'p.png', { type: 'image/png' }), { inline: true }), { credit: 'Foto: Test' });
+      await new Promise(r => setTimeout(r, 600));
+      const after = Array.from(document.querySelectorAll('#vw-sheet .photo-prompts')).map(c => c.dataset.slot);
+      return { cards: cards.length, slots: slots.size, links, gpt, copied, visible, slot, after, heads: cards.map(c => c.querySelector('.pp-head').textContent) };
+    });
+    check('each photo place without a real photo shows three Google image searches and a ChatGPT prompt — at most three places', r.cards >= 1 && r.cards <= 3 && r.cards === r.slots && r.links.every(l => l.length === 3 && l.every(h => /^https:\/\/www\.google\.com\/search\?tbm=isch&q=[^&]+$/.test(h))) && r.gpt.every(h => /^https:\/\/chatgpt\.com\/\?q=/.test(h)) && /von/.test(r.heads[0]), JSON.stringify(r));
+    check('the ChatGPT prompt is copied with one click and asks for a photorealistic camera photo', /^Photorealistic/.test(r.copied || '') && /35 mm camera/.test(r.copied || '') && r.visible, JSON.stringify(r.copied));
+    check('once a real photo stands in the place, its card is gone', !r.after.includes(r.slot) && r.after.length === r.cards - 1, JSON.stringify(r));
+    await page.emulateMedia({ media: 'print' });
+    const printed = await page.evaluate(() => { const l = document.querySelector('#vw-sheet .photo-hotspots'); return l ? getComputedStyle(l).display : 'none'; });
+    await page.emulateMedia({ media: 'screen' });
+    check('the prompts are on screen only, never printed', printed === 'none', printed);
+    // nothing runs into anything: every medium, with long entries as Claude may write them
+    const o = await page.evaluate(() => {
+      const { mock, fixture, core } = window.LR;
+      const measure = mock.canvasMeasure(document.createElement('canvas'));
+      const LONG = ['Bristol Evening Chronicle and Western Daily Mail', 'Tuesday, 14 March 2026 · Late City Edition · £1.80', 'Environment, Climate & Sustainable Transport', 'Weekend edition · No. 214 · Established 1858', 'Photo: Jane Photographer-Whitfield / Wikimedia Commons, CC BY-SA 4.0'];
+      const bad = [];
+      const boxOf = (b) => { const w = measure(b.text, b.font) + (b.letterSpacing || 0) * b.text.length; const x0 = b.align === 'center' ? b.x - w / 2 : b.align === 'right' ? b.x - w : b.x; return { x0, x1: x0 + w, y0: b.y - b.font.size * 0.72, y1: b.y + b.font.size * 0.2 }; };
+      for (const tt of core.TEXT_TYPES) for (const med of ['screen', 'paper']) {
+        const m = fixture.material({ textType: tt, layoutMedium: med, authenticLayout: true }, 'reading');
+        const ch = Object.assign({}, m.layout.chrome);
+        for (const k of Object.keys(ch)) {
+          const v = ch[k];
+          if (k === 'modules') ch.modules = (v || []).map(md => Object.assign({}, md, { heading: (md.heading || '') + ' with a considerably longer heading than usual', label: (md.label || '') + ' Extended', lines: (md.lines || []).map(l => l + ' and a second clause that makes it long'), meta: (md.meta || '') + ' · updated 5 minutes ago', cta: (md.cta || '') + ' now' }));
+          else if (k === 'composition' || /Subject|photoReality|photoQuery|photoPrompts/.test(k)) continue;
+          else if (typeof v === 'string' && v) ch[k] = (v + ' ' + LONG[k.length % LONG.length]).slice(0, 90);
+          else if (Array.isArray(v)) ch[k] = v.concat(v).slice(0, 6).map((x, i) => typeof x === 'string' ? (x + ' ' + LONG[i % LONG.length]).slice(0, 60) : (x && typeof x === 'object' ? Object.assign({}, x, { label: String(x.label || '') + ' extended label', count: '12.4k' }) : x));
+        }
+        m.layout.chrome = ch;
+        const model = mock.buildModel(m, ch, { measure });
+        const texts = model.blocks.filter(b => b.type === 'text' && !b.deco && b.text && b.text.trim()).map(b => Object.assign({ b }, boxOf(b)));
+        const pages = model.pages || [{ x: 0, y: 0, w: model.width, h: model.height }];
+        for (let i = 0; i < texts.length; i++) {
+          const A = texts[i];
+          const pg = pages.find(p => A.y0 >= p.y - 30 && A.y0 <= p.y + p.h + 30) || pages[0];
+          if (A.b.role !== 'body' && (A.x1 > pg.x + pg.w + 1 || A.x0 < pg.x - 1)) bad.push(tt + '/' + med + ' off page: ' + A.b.text.slice(0, 30));
+          for (let j = i + 1; j < texts.length; j++) {
+            const B = texts[j];
+            const ox = Math.min(A.x1, B.x1) - Math.max(A.x0, B.x0), oy = Math.min(A.y1, B.y1) - Math.max(A.y0, B.y0);
+            if (ox > 2 && oy > Math.max(2, 0.25 * Math.min(A.y1 - A.y0, B.y1 - B.y0)) && !A.b.glue && !B.b.glue) bad.push(tt + '/' + med + ': "' + A.b.text.slice(0, 25) + '" / "' + B.b.text.slice(0, 25) + '"');
+          }
+        }
+      }
+      return bad;
+    });
+    check('with the real fonts and long entries, no text runs into another or off its page', o.length === 0, o.slice(0, 4).join(' | '));
+    check('prompts and fitting raise no page error', errors.length === 0, errors[0]);
+    await page.close();
+  }
+
   console.log('\nBrowser audit: a real photo for the generated article (2.4, 2.5, 2.7, 2.8)');
   {
     // photos as an image collection would send them: one colour in the middle, noise at the left edge
@@ -841,7 +916,12 @@ const SETTINGS = (extra) => `(() => {
       ui.app.material = m; ui.openViewer(m, 'creator');
       await new Promise(r => setTimeout(r, 400));
     });
-    await page.hover('#vw-sheet .medium-sheet .photo-hotspot');
+    // the bottom-right corner, where "Bild ersetzen" appears (the prompt card sits top left)
+    {
+      await page.locator('#vw-sheet .medium-sheet .photo-hotspot').first().scrollIntoViewIfNeeded();
+      const box = await page.locator('#vw-sheet .medium-sheet .photo-hotspot').first().boundingBox();
+      await page.mouse.move(box.x + box.width - 12, box.y + box.height - 12);
+    }
     await page.waitForTimeout(400);   // the label fades in
     const hovered = await page.evaluate(() => { const el = document.querySelector('#vw-sheet .medium-sheet .photo-hotspot:hover span'); return el ? getComputedStyle(el).opacity : 'not hovered'; });
     const r = await page.evaluate(async () => {

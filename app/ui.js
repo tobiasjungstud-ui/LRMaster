@@ -1367,7 +1367,7 @@
       const X = vb[0] || 0, Y = vb[1] || 0;
       const W = vb[2] || svg.width.baseVal.value, H = vb[3] || svg.height.baseVal.value;
       const pics = Array.from(svg.querySelectorAll('rect.photo-slot')).map(r => ({
-        slot: r.getAttribute('data-slot'), subject: r.getAttribute('data-subject') || '', own: r.getAttribute('data-own') === '1', round: r.getAttribute('data-round') === '1',
+        slot: r.getAttribute('data-slot'), subject: r.getAttribute('data-subject') || '', own: r.getAttribute('data-own') === '1', round: r.getAttribute('data-round') === '1', picRole: r.getAttribute('data-role') || '',
         x: +r.getAttribute('x') - X, y: +r.getAttribute('y') - Y, w: +r.getAttribute('width'), h: +r.getAttribute('height'),
       })).filter(b => b.slot && b.w >= 18 && b.h >= 18);
       hotspotLayer(m, frame, pics, W, H);
@@ -1376,6 +1376,7 @@
 
   /** The buttons themselves: one per picture, placed in per cent of the picture of the medium. */
   function hotspotLayer(m, frame, pics, width, height) {
+    frame.__lrHeight = height;
     let layer = frame.querySelector('.photo-hotspots');
     if (!layer) { layer = document.createElement('div'); layer.className = 'photo-hotspots'; frame.appendChild(layer); }
     layer.innerHTML = '';
@@ -1395,18 +1396,81 @@
       btn.title = `Bild ersetzen (${what}) – klicken, ein Bild aus dem Internet oder eine Datei hierher ziehen, oder Strg+V`;
       btn.innerHTML = `<span>${b.own ? 'Eigenes Bild ändern' : 'Bild ersetzen'}</span>`;
       btn.addEventListener('click', () => openPictureEditor(m, b, count[b.slot]));
-      btn.addEventListener('dragover', (e) => { e.preventDefault(); btn.classList.add('is-drop'); });
-      btn.addEventListener('dragleave', () => btn.classList.remove('is-drop'));
-      btn.addEventListener('drop', async (e) => {
+      const onDrop = async (e) => {
         e.preventDefault();
         btn.classList.remove('is-drop');
         try {
           const file = await imageFromTransfer(e.dataTransfer);
           await replacePicture(m, b.slot, await prepareImage(file), { name: file.name, credit: file.lrCredit || '' });
         } catch (err) { toast(pictureError(err)); }
-      });
+      };
+      btn.addEventListener('dragover', (e) => { e.preventDefault(); btn.classList.add('is-drop'); });
+      btn.addEventListener('dragleave', () => btn.classList.remove('is-drop'));
+      btn.addEventListener('drop', onDrop);
       layer.appendChild(btn);
+      // no real photo yet: how to find one, right in the picture
+      if (!b.own && !b.round && b.picRole) {
+        const card = photoPromptCard(m, b, pics, frame, width);
+        if (card) {
+          card.addEventListener('dragover', (e) => { e.preventDefault(); btn.classList.add('is-drop'); });
+          card.addEventListener('drop', onDrop);
+          layer.appendChild(card);
+        }
+      }
     }
+  }
+
+  /*
+   * Three Google image searches and one ChatGPT prompt, shown in a photo
+   * place that has no real photo yet — on screen only (never printed, never
+   * exported). The searches open Google Images in a new tab; the prompt is
+   * copied with one click. A small picture shows a button that opens them.
+   */
+  const PHOTO_ROLE_ORDER = { lead: 0, second: 1, extra: 2 };
+  function photoPromptCard(m, b, pics, frame, width) {
+    const P = window.LR.photo;
+    if (!P || !P.promptsFor || !m.layout) return null;
+    const photos = [...new Map(pics.filter(x => !x.round && x.picRole).map(x => [x.slot, x])).values()]
+      .sort((x, y) => (PHOTO_ROLE_ORDER[x.picRole] - PHOTO_ROLE_ORDER[y.picRole]) || (y.w * y.h - x.w * x.h));
+    const n = photos.findIndex(x => x.slot === b.slot) + 1;
+    const set = P.promptsFor({ role: b.picRole, chrome: m.layout.chrome, content: m.content, subject: b.subject, medium: quality.mediumOf(m), caption: b.caption || '' });
+    if (!set || !set.google.length) return null;
+    const card = document.createElement('div');
+    card.className = 'photo-prompts';
+    card.dataset.slot = b.slot;
+    const height = frame.__lrHeight || 1;
+    card.style.left = (b.x / width * 100) + '%';
+    card.style.top = (b.y / height * 100) + '%';
+    card.style.width = (b.w / width * 100) + '%';
+    card.style.height = (b.h / height * 100) + '%';
+    // too small to read in place: a button opens the card over the page
+    const shown = (frame.clientWidth || width) * b.w / width, shownH = (frame.clientWidth || width) * b.h / width;
+    if (shown < 250 || shownH < 170) card.classList.add('is-compact');
+    const google = (q) => 'https://www.google.com/search?tbm=isch&q=' + encodeURIComponent(q);
+    const gpt = 'https://chatgpt.com/?q=' + encodeURIComponent(set.chatgpt);
+    card.innerHTML = `<div class="pp-card" role="group" aria-label="So findest du Foto ${n}">
+        <div class="pp-head">Foto ${n} von ${photos.length} · so findest du es</div>
+        <div class="pp-label">Google Bilder</div>
+        <ol class="pp-google">${set.google.map(q => `<li><a href="${esc(google(q))}" target="_blank" rel="noopener noreferrer">${esc(q)}</a></li>`).join('')}</ol>
+        <div class="pp-label">ChatGPT · fotorealistisch</div>
+        <p class="pp-gpt">${esc(set.chatgpt)}</p>
+        <div class="pp-actions"><button type="button" class="pp-copy">Prompt kopieren</button><a class="pp-open" href="${esc(gpt)}" target="_blank" rel="noopener noreferrer">In ChatGPT öffnen</a></div>
+      </div>
+      <button type="button" class="pp-toggle" aria-expanded="false">Bildideen</button>`;
+    const copy = card.querySelector('.pp-copy');
+    copy.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      try { await navigator.clipboard.writeText(set.chatgpt); toast('Prompt kopiert – in ChatGPT einfügen, Foto speichern, dann hier einfügen (Strg+V).'); }
+      catch (err) {
+        // the clipboard is refused: select the text so Ctrl+C copies it
+        const range = document.createRange(); range.selectNodeContents(card.querySelector('.pp-gpt'));
+        const sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(range);
+        toast('Prompt markiert – mit Strg+C kopieren.');
+      }
+    });
+    const toggle = card.querySelector('.pp-toggle');
+    toggle.addEventListener('click', (e) => { e.stopPropagation(); const open = card.classList.toggle('is-open'); toggle.setAttribute('aria-expanded', String(open)); });
+    return card;
   }
 
   /**
@@ -2532,5 +2596,5 @@
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init); else init();
 
-  window.LR.ui = { app, generate, produceWorksheet, openViewer, renderViewer, markPageBreaks, syncViewerOffsets, buildViewerRail, buildViewerDownloads, paintLayoutCanvas, proportionNote, mediumPng, renderHotspots, renderSheetHotspots, hotspotLayer, paperChips, bindPaperChips, attachWebPicture, loadOwnPictures, imageURLFrom, fetchWebImage, pictureError, openPictureEditor, replacePicture, resetPicture, prepareImage, viewer, store, caps, showView, openCreator, importState, detectUnits, fetchTopics, confirmImport, newTextbook, askText, askConfirm, clone, parsePasted, initLevelPage, download, renderOutput, renderQualityPanel, renderTaskPreview, refreshDerived, renderLayout, renderSetupBar, openCustomSetup, backToTemplates, redrawTemplate, templateState, buildForm };
+  window.LR.ui = { app, generate, produceWorksheet, openViewer, renderViewer, markPageBreaks, syncViewerOffsets, buildViewerRail, buildViewerDownloads, paintLayoutCanvas, proportionNote, mediumPng, renderHotspots, renderSheetHotspots, hotspotLayer, paperChips, bindPaperChips, attachWebPicture, loadOwnPictures, photoPromptCard, imageURLFrom, fetchWebImage, pictureError, openPictureEditor, replacePicture, resetPicture, prepareImage, viewer, store, caps, showView, openCreator, importState, detectUnits, fetchTopics, confirmImport, newTextbook, askText, askConfirm, clone, parsePasted, initLevelPage, download, renderOutput, renderQualityPanel, renderTaskPreview, refreshDerived, renderLayout, renderSetupBar, openCustomSetup, backToTemplates, redrawTemplate, templateState, buildForm };
 })();

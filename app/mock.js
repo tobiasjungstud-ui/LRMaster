@@ -73,6 +73,7 @@
         ['captionCredit', 'the small credit beside the caption, e.g. a photographer or agency name'],
         ['footerLinks', 'an array of 3–5 very short link labels in the footer'],
         ['photoSubject', 'what the picture at the top shows — one key from the list of picture subjects'],
+        ['photoPrompts', 'how the teacher gets each photo of the page — an array with one object per photo, at most 3, in this order: the lead picture, the second picture in the text, the picture of the other story or module. Each object: {"google": three short Google image searches in English, 2–5 words each, generic enough to have many real results (the kind of place, the scene, the everyday subject — never an invented name, business or event), "chatgpt": one prompt for an image generator for a photorealistic photo as if taken with a real camera: what it shows as this text describes it, the setting, time of day and light, camera and lens (e.g. 35 mm, eye level), depth of field, the photo style of this medium; landscape 3:2; no text, no logos, no watermarks, no recognisable real people}'],
         ['photoReality', 'may a REAL photograph stand beside this text? "real-subject" when the text is about a real, general subject a photo can truly show (a city, a landscape, an animal, a sport, a technology, everyday life); "fictional-event" when the text reports an invented specific event, person, business or incident (a fire at a named hotel, a local council vote, a named pupil) — then only a general scene that cannot be mistaken for evidence of it; "none" when no real photo fits without seeming to document the story; if unsure, "none"'],
         ['photoQuery', 'a search for a REAL photograph that would accompany this text in this medium, in English, 4–8 words, built from what THIS text is about: the real place, the scene, the people and the action it describes (e.g. "Zurich school street pedestrians bicycles"); name the kind of photo the medium prints — documentary news photo for a paper, location photo for travel, editorial photo for a magazine feature, portrait in its setting for a profile, the lab or landscape for science. For "fictional-event": only the general setting, never the invented event itself (for an invented hotel fire: "Bristol historic street facade", not "hotel fire"); no invented names; empty if the page has no lead picture or photoReality is "none"'],
         ['sidebarSubjects', 'an array with one picture subject per headline in the box beside the text'],
@@ -127,6 +128,7 @@
         ['pageLabel', 'what stands in the page footer, e.g. "Page 7" or the date'],
         ['footerNote', 'one short line at the very bottom, e.g. a website or a continuation note'],
         ['photoSubject', 'what the picture on the page shows — one key from the list of picture subjects'],
+        ['photoPrompts', 'how the teacher gets each photo of the page — an array with one object per photo, at most 3, in this order: the lead picture, the second picture in the text, the picture of the other story or module. Each object: {"google": three short Google image searches in English, 2–5 words each, generic enough to have many real results (the kind of place, the scene, the everyday subject — never an invented name, business or event), "chatgpt": one prompt for an image generator for a photorealistic photo as if taken with a real camera: what it shows as this text describes it, the setting, time of day and light, camera and lens (e.g. 35 mm, eye level), depth of field, the photo style of this medium; landscape 3:2; no text, no logos, no watermarks, no recognisable real people}'],
         ['photoReality', 'may a REAL photograph stand beside this text? "real-subject" when the text is about a real, general subject a photo can truly show (a city, a landscape, an animal, a sport, a technology, everyday life); "fictional-event" when the text reports an invented specific event, person, business or incident (a fire at a named hotel, a local council vote, a named pupil) — then only a general scene that cannot be mistaken for evidence of it; "none" when no real photo fits without seeming to document the story; if unsure, "none"'],
         ['photoQuery', 'a search for a REAL photograph that would accompany this text in this medium, in English, 4–8 words, built from what THIS text is about: the real place, the scene, the people and the action it describes (e.g. "Zurich school street pedestrians bicycles"); name the kind of photo the medium prints — documentary news photo for a paper, location photo for travel, editorial photo for a magazine feature, portrait in its setting for a profile, the lab or landscape for science. For "fictional-event": only the general setting, never the invented event itself (for an invented hotel fire: "Bristol historic street facade", not "hotel fire"); no invented names; empty if the page has no lead picture or photoReality is "none"'],
         ['weatherNote', 'the weather line the paper prints in its running head, e.g. "Cloudy, 14°C"'],
@@ -246,7 +248,7 @@
         b.text(x + h - 8, y + 70, clipText(mod.lines[0] || '', 66), S.ui(12.5), { color: '#475569' });
         if (mod.cta) {
           const f = S.ui(12, 700);
-          const cw = approxMeasure(mod.cta, f) + 34;
+          const cw = (b.measure || approxMeasure)(mod.cta, f) + 34;
           b.rect(x + w - cw - 20, y + h / 2 - 17, cw, 34, { fill: S.accent, radius: 17 });
           b.text(x + w - cw / 2 - 20, y + h / 2 + 5, mod.cta, f, { color: '#FFFFFF', align: 'center' });
         }
@@ -266,7 +268,7 @@
         b.text(x + 12, y + picH + 68, clipText(mod.lines[0] || mod.label || '', 40), S.ui(11.5), { color: MUTED });
         if (mod.cta) {
           const f = S.ui(11, 700);
-          const cw = approxMeasure(mod.cta, f) + 26;
+          const cw = (b.measure || approxMeasure)(mod.cta, f) + 26;
           b.rect(x + 12, y + picH + 78, cw, 26, { fill: S.accent, radius: 13 });
           b.text(x + 12 + cw / 2, y + picH + 95, mod.cta, f, { color: '#FFFFFF', align: 'center' });
         }
@@ -285,7 +287,7 @@
         b.para(x + 12, end + 8, clipText(mod.lines[0] || '', 70), S.ui(11.5), w - 24, { color: MUTED, lineHeight: 16 });
         if (mod.cta) {
           const f = S.ui(11.5, 700);
-          const cw = approxMeasure(mod.cta, f) + 30;
+          const cw = (b.measure || approxMeasure)(mod.cta, f) + 30;
           b.rect(x + 12, y + h - 52, cw, 30, { fill: S.accent, radius: 15 });
           b.text(x + 12 + cw / 2, y + h - 32, mod.cta, f, { color: '#FFFFFF', align: 'center' });
         }
@@ -372,7 +374,7 @@
         const shares = pcts.map(v => v / 100);
         items.forEach((it, i) => {
           b.rect(x + 16, iy, w - 32, 26, { fill: '#EEF2F6', radius: 13 });
-          b.rect(x + 16, iy, Math.max(30, (w - 32) * Math.min(0.78, Math.max(0.08, shares[i]))), 26, { fill: i === 0 ? S.accent : '#CBD5E1', radius: 13 });
+          b.rect(x + 16, iy, Math.max(30, (w - 32) * Math.min(0.78, Math.max(0.08, shares[i]))), 26, { fill: i === 0 ? S.accent : '#CBD5E1', radius: 13, meter: true });
           b.text(x + 28, iy + 18, clipText(String(it), 34), S.ui(12, 600), { color: i === 0 ? '#FFFFFF' : '#334155' });
           b.text(x + w - 26, iy + 18, pcts[i] + '%', S.ui(11, 700), { color: '#475569', align: 'right' });
           iy += 34;
@@ -394,7 +396,7 @@
         b.rect(x + 18, iy + 12, w - 36, 30, { fill: '#FFFFFF', radius: 6, stroke: LINE });
         b.text(x + 28, iy + 32, clipText(mod.meta || 'your@email', 26), S.ui(11.5), { color: '#94A3B8' });
         const f = S.ui(11.5, 700);
-        const cw = approxMeasure(mod.cta || 'Sign up', f) + 26;
+        const cw = (b.measure || approxMeasure)(mod.cta || 'Sign up', f) + 26;
         b.rect(x + w - cw - 24, iy + 16, cw, 22, { fill: S.accent, radius: 11 });
         b.text(x + w - cw / 2 - 24, iy + 32, mod.cta || 'Sign up', f, { color: '#FFFFFF', align: 'center' });
         const h = iy + 56 - y;
@@ -416,7 +418,7 @@
           const said = (parts.length > 1 ? parts.slice(1).join('|') : parts[0]).trim();
           avatar(b, x + 16, iy + 12, 16, upper(who.slice(0, 2)), S.accent, who);
           b.text(x + 44, iy + 10, who, S.ui(12.5, 700), { color: INK });
-          b.text(x + 44 + approxMeasure(who, S.ui(12.5, 700)) + 12, iy + 10, String(2 + i * 3) + 'h', S.ui(11), { color: MUTED });
+          b.text(x + 44 + (b.measure || approxMeasure)(who, S.ui(12.5, 700)) + 12, iy + 10, String(2 + i * 3) + 'h', S.ui(11), { color: MUTED });
           const end = b.para(x + 44, iy + 30, said, S.ui(13), w - 70, { color: '#334155', lineHeight: 19 });
           b.icon('heart', x + 44, end + 4, 15, { color: MUTED, weight: 1.6 });
           b.text(x + 66, end + 16, String(3 + i * 7), S.ui(11), { color: MUTED });
@@ -538,7 +540,7 @@
         b.text(x + 20, y + 34, clipText(mod.heading || '', 60), S.title(17, 700), { color: '#7C2D12' });
         b.text(x + 20, y + 58, clipText(mod.lines[0] || '', 90), S.ui(12.5), { color: '#9A3412' });
         const f = S.ui(12, 700);
-        const cw = approxMeasure(mod.cta || 'Subscribe', f) + 36;
+        const cw = (b.measure || approxMeasure)(mod.cta || 'Subscribe', f) + 36;
         b.rect(x + 20, y + 74, cw, 30, { fill: '#C2410C', radius: 15 });
         b.text(x + 20 + cw / 2, y + 94, mod.cta || 'Subscribe', f, { color: '#FFFFFF', align: 'center' });
         b.text(x + cw + 36, y + 94, mod.meta || '', S.ui(11.5), { color: '#9A3412' });
@@ -556,7 +558,7 @@
         b.text(x + 62, y + 28, clipText(mod.heading || '', 46), S.ui(13, 700), { color: '#FFFFFF' });
         b.text(x + 62, y + 46, clipText(mod.lines[0] || '', 54), S.ui(11), { color: '#94A3B8' });
         const f = S.ui(11.5, 700);
-        const cw = approxMeasure(mod.cta || 'Open', f) + 28;
+        const cw = (b.measure || approxMeasure)(mod.cta || 'Open', f) + 28;
         b.rect(x + w - cw - 16, y + 16, cw, 30, { fill: '#FFFFFF', radius: 15 });
         b.text(x + w - cw / 2 - 16, y + 36, mod.cta || 'Open', f, { color: '#0F172A', align: 'center' });
         return h + 12;
@@ -570,7 +572,7 @@
         b.rect(x, y, w, h, { fill: '#F1F5F9', radius: 8, stroke: '#CBD5E1' });
         const end = b.para(x + 18, y + 28, clipText(mod.heading || mod.lines[0] || '', 150), S.ui(11.5), w - 260, { color: '#334155', lineHeight: 16 });
         const f = S.ui(11.5, 700);
-        const cw = approxMeasure(mod.cta || 'Accept all', f) + 30;
+        const cw = (b.measure || approxMeasure)(mod.cta || 'Accept all', f) + 30;
         b.rect(x + w - cw - 18, y + h / 2 - 15, cw, 30, { fill: S.accent, radius: 6 });
         b.text(x + w - cw / 2 - 18, y + h / 2 + 5, mod.cta || 'Accept all', f, { color: '#FFFFFF', align: 'center' });
         b.rect(x + w - cw - 132, y + h / 2 - 15, 104, 30, { fill: '#FFFFFF', radius: 6, stroke: '#CBD5E1' });
@@ -585,7 +587,7 @@
         const h = 40;
         b.rect(x, y, w, h, { fill: '#B91C1C', radius: 4 });
         const f = S.ui(11, 800);
-        const lw = approxMeasure(upper(mod.label || 'Live'), f) + 22;
+        const lw = (b.measure || approxMeasure)(upper(mod.label || 'Live'), f) + 22;
         b.rect(x + 10, y + 9, lw, 22, { fill: '#FFFFFF', radius: 3 });
         b.text(x + 10 + lw / 2, y + 24, upper(mod.label || 'Live'), f, { color: '#B91C1C', align: 'center' });
         b.text(x + lw + 26, y + 25, clipText(mod.heading || '', 96), S.ui(12.5, 600), { color: '#FFFFFF' });
@@ -618,7 +620,7 @@
         b.para(x + 88, y + 64, clipText(mod.lines[0] || '', 90), S.ui(11.5), w - 104, { color: MUTED, lineHeight: 16 });
         if (mod.cta) {
           const f = S.ui(11, 700);
-          const cw = approxMeasure(mod.cta, f) + 24;
+          const cw = (b.measure || approxMeasure)(mod.cta, f) + 24;
           b.rect(x + w - cw - 16, y + 16, cw, 24, { fill: S.accent, radius: 12 });
           b.text(x + w - cw / 2 - 16, y + 32, mod.cta, f, { color: '#FFFFFF', align: 'center' });
         }
@@ -633,7 +635,7 @@
         let tx = x, ty = y + 40;
         mod.items.slice(0, 8).forEach((t) => {
           const f = S.ui(12);
-          const tw = approxMeasure('#' + t, f) + 24;
+          const tw = (b.measure || approxMeasure)('#' + t, f) + 24;
           if (tx + tw > x + w) { tx = x; ty += 34; }
           b.pill(tx, ty, tw, 26, '#' + t, f, { fill: '#F1F5F9', color: S.accent, stroke: LINE });
           tx += tw + 8;
@@ -701,11 +703,11 @@
       b.rect(x, y, w, h, { fill: SOFT, radius: 6, stroke: LINE });
       if (mod.label) {
         const f = S.ui(10, 800);
-        const lw = approxMeasure(upper(mod.label), f) + 20;
+        const lw = (b.measure || approxMeasure)(upper(mod.label), f) + 20;
         b.rect(x + 10, y + 11, lw, 22, { fill: S.accent, radius: 3 });
         b.text(x + 10 + lw / 2, y + 26, upper(mod.label), f, { color: '#FFFFFF', align: 'center' });
       }
-      b.text(x + (mod.label ? approxMeasure(upper(mod.label), S.ui(10, 800)) + 42 : 16), y + 27, clipText(mod.heading || mod.lines[0] || '', 96), S.ui(12.5, 600), { color: INK });
+      b.text(x + (mod.label ? (b.measure || approxMeasure)(upper(mod.label), S.ui(10, 800)) + 42 : 16), y + 27, clipText(mod.heading || mod.lines[0] || '', 96), S.ui(12.5, 600), { color: INK });
       if (mod.meta) b.text(x + w - 14, y + 27, mod.meta, S.ui(11), { color: MUTED, align: 'right' });
       return h + 12;
     },
@@ -728,7 +730,7 @@
       }
       if (mod.cta) {
         const f = S.ui(11.5, 700);
-        const cw = approxMeasure(mod.cta, f) + 28;
+        const cw = (b.measure || approxMeasure)(mod.cta, f) + 28;
         b.rect(x + 18, iy + 14, cw, 28, { fill: S.accent, radius: 14 });
         b.text(x + 18 + cw / 2, iy + 33, mod.cta, f, { color: '#FFFFFF', align: 'center' });
         iy += 34;
@@ -985,11 +987,19 @@
   /* Model builder                                                        */
   /* ------------------------------------------------------------------ */
 
+  /** At most this many photos per article (lead, second picture, one more). */
+  const PHOTO_BUDGET = 3;
+
   function builder(width, measure) {
     const blocks = [];
     const api = {
       y: 0,
       blocks,
+      measure,           // the real text measure of this picture (modules size their buttons with it)
+      photoSlots: new Map(),   // the photo places drawn so far, with their role (lead, second, extra)
+      photoReserved: 0,        // lead and second picture still to come
+      /** The page will draw `n` essential photos (lead, second picture): keep their places. */
+      reservePhotos(n) { api.photoReserved = Math.max(0, n | 0); return api; },
       subject: 'city',   // what a picture shows when nothing else says
       images: null,      // the teacher's own pictures, by place
       rect(x, y, w, h, o) { blocks.push(Object.assign({ type: 'rect', x, y, w, h, fill: '#FFFFFF' }, o || {})); return api; },
@@ -1003,7 +1013,7 @@
       /** Wrapped paragraph; returns the y below it. */
       para(x, y, str, font, maxWidth, o) {
         const lh = (o && o.lineHeight) || font.size * 1.45;
-        wrap(str, font, maxWidth, measure).forEach((l, i) => api.text(x, y + i * lh, l, font, o));
+        wrap(str, font, maxWidth, measure).forEach((l, i) => api.text(x, y + i * lh, l, font, Object.assign({ wrapped: true }, o || {})));
         return y + wrap(str, font, maxWidth, measure).length * lh;
       },
       icon(name, x, y, size, o) { blocks.push(Object.assign({ type: 'icon', name, x, y, size }, o || {})); return api; },
@@ -1022,6 +1032,30 @@
         // in the byline and in the author box is one place — replaced once,
         // replaced everywhere.
         spec.slot = spec.slot || spec.subject + ':' + spec.seed;
+        // At most PHOTO_BUDGET photos per article, so a teacher has at most
+        // three to find: the lead picture and the second picture in the text
+        // always (their places are reserved when the page starts), then the
+        // most prominent picture of the page. Beyond that a module shows a
+        // quiet colour field, as ads and teasers often do. Small round faces
+        // (bylines, comments) are not photos to find and do not count.
+        const face = !!spec.round;
+        if (!face) {
+          spec.picRole = spec.picRole || 'extra';
+          if (!api.photoSlots.has(spec.slot)) {
+            const extras = [...api.photoSlots.values()].filter(r => r === 'extra').length;
+            if (spec.picRole === 'extra' && extras >= Math.max(0, PHOTO_BUDGET - api.photoReserved)) {
+              // a graphic, not an empty frame: a colour field with two diagonal bands
+              const palettes = [['#DCE6F2', '#C5D6EA', '#AFC5E0'], ['#F1E4D3', '#E6CFB2', '#D9B98F'], ['#DDEBDD', '#C4DCC5', '#A9CBAB'], ['#E9DDEE', '#D8C4E0', '#C3A6D0']];
+              const pal = palettes[photo.hashOf(spec.slot) % palettes.length];
+              blocks.push({ type: 'rect', x, y, w, h, fill: pal[0], field: true });
+              blocks.push({ type: 'poly', points: [[x, y + h * 0.62], [x + w, y + h * 0.18], [x + w, y + h * 0.46], [x, y + h * 0.9]], fill: pal[1] });
+              blocks.push({ type: 'poly', points: [[x, y + h * 0.9], [x + w, y + h * 0.46], [x + w, y + h], [x, y + h]], fill: pal[2] });
+              api.last = { field: true };
+              return api;
+            }
+            api.photoSlots.set(spec.slot, spec.picRole);
+          }
+        }
         // 1. a picture the teacher put in herself
         const own = ownPicture(api.images, spec.slot);
         if (own) {
@@ -1184,6 +1218,11 @@
   function pageModel(m, chrome, d, measure) {
     const W = 1040;
     const b = builder(W, measure);
+    {
+      // the lead picture and the second picture keep their places among the three photos
+      const plan = composition(chrome, m.content.paragraphs || [], 'page');
+      b.reservePhotos(((d.kicker || d.sidebar) && plan.lead !== 'none' ? 1 : 0) + (plan.figure ? 1 : 0));
+    }
     b.subject = autoSubject(m);
     b.images = (m.layout && m.layout.images) || null;
     const meta = m.content.meta || {};
@@ -1269,7 +1308,7 @@
     if ((d.kicker || d.sidebar) && comp.lead === 'inset') {
       const iw = Math.round(colW * 0.46), ih = Math.round(iw * 0.72);
       const ix = PAD + colW - iw;
-      b.photo(ix, y + 6, iw, ih, { seed: photo.hashOf(m.content.title || 'lead'), subject: chrome.photoSubject, colour: true });
+      b.photo(ix, y + 6, iw, ih, { seed: photo.hashOf(m.content.title || 'lead'), subject: chrome.photoSubject, colour: true, picRole: 'lead' });
       const leadCredit = (b.last && b.last.credit) || chrome.captionCredit;
       const leadCaption = (b.last && b.last.caption) || chrome.photoCaption;
       let cy = y + 6 + ih + 14;
@@ -1278,7 +1317,7 @@
       inset = { top: y, bottom: cy + 6, w: iw };
     } else if ((d.kicker || d.sidebar) && comp.lead !== 'none') {
       const ph = Math.round(colW * 0.46);
-      b.photo(PAD, y, colW, ph, { seed: photo.hashOf(m.content.title || 'lead'), subject: chrome.photoSubject, colour: true });
+      b.photo(PAD, y, colW, ph, { seed: photo.hashOf(m.content.title || 'lead'), subject: chrome.photoSubject, colour: true, picRole: 'lead' });
       const leadCredit = (b.last && b.last.credit) || chrome.captionCredit;
       const leadCaption = (b.last && b.last.caption) || chrome.photoCaption;
       y += ph + 18;
@@ -1304,7 +1343,7 @@
     // the pull quote stands in the middle of the piece, where an editor puts it
     const pullAt = pull && paragraphs.length >= 3 ? Math.floor(paragraphs.length / 2) : -1;
     const drawPull = () => {
-      b.text(PAD, y + 48, '\u201c', { family: d.title, size: 64, weight: 700 }, { color: d.accent + '55' });
+      b.text(PAD, y + 48, '\u201c', { family: d.title, size: 64, weight: 700 }, { color: d.accent + '55', deco: true });
       y = b.para(PAD + 46, y + 34, pull, { family: d.body, size: 21, style: 'italic', weight: 600 }, colW - 60, { color: d.accent, lineHeight: 30, role: 'quote' });
       b.line(PAD, y + 16, PAD + 70, y + 16, { color: d.accent, width: 3 });
       y += 40;
@@ -1329,12 +1368,12 @@
       if (comp.figure && comp.figure.after === i + 1) {
         if (comp.figure.size === 'wide') {
           const fh = Math.round(colW * 0.52);
-          b.photo(PAD, y + 4, colW, fh, { seed: photo.hashOf(comp.figure.subject + i), subject: comp.figure.subject, colour: true });
+          b.photo(PAD, y + 4, colW, fh, { seed: photo.hashOf(comp.figure.subject + i), subject: comp.figure.subject, colour: true, picRole: 'second' });
           y += fh + 18;
           if (comp.figure.caption) y = b.para(PAD, y, comp.figure.caption, ui(12), colW - 40, { color: MUTED, lineHeight: 17 }) + 10;
         } else {
           const fw = Math.round(colW * 0.44), fh = Math.round(fw * 0.7);
-          b.photo(PAD + colW - fw, y + 4, fw, fh, { seed: photo.hashOf(comp.figure.subject + i), subject: comp.figure.subject, colour: true });
+          b.photo(PAD + colW - fw, y + 4, fw, fh, { seed: photo.hashOf(comp.figure.subject + i), subject: comp.figure.subject, colour: true, picRole: 'second' });
           let cy = y + 4 + fh + 12;
           if (comp.figure.caption) cy = b.para(PAD + colW - fw, cy, comp.figure.caption, ui(11.5), fw, { color: MUTED, lineHeight: 16 });
           cut = { top: y, bottom: cy + 8, w: fw };
@@ -1446,6 +1485,8 @@
   function mailModel(m, chrome, d, measure) {
     const W = 1040;
     const b = builder(W, measure);
+    // the one picture of this medium keeps its place among the three photos
+    if (photo.isSubject(chrome.photoSubject) || photo.isSubject(chrome.attachmentSubject)) b.reservePhotos(1);
     b.subject = autoSubject(m);
     b.images = (m.layout && m.layout.images) || null;
     const meta = m.content.meta || {};
@@ -1526,7 +1567,7 @@
         b.text(x, y + 2, '1 attachment', ui(11.5, 700), { color: MUTED, letterSpacing: 0.6 });
         y += 18;
         b.rect(x, y, 320, 232, { fill: '#FFFFFF', radius: 12, stroke: '#CBD5E1' });
-        b.photo(x + 8, y + 8, 304, 176, { seed: photo.hashOf(chrome.attachmentName), subject: chrome.attachmentSubject, colour: true, frame: false });
+        b.photo(x + 8, y + 8, 304, 176, { seed: photo.hashOf(chrome.attachmentName), subject: chrome.attachmentSubject, colour: true, frame: false, picRole: 'lead' });
         b.text(x + 14, y + 208, clipText(chrome.attachmentName, 28), ui(12.5, 600), { color: INK });
         b.text(x + 14, y + 224, chrome.attachmentMeta || '', ui(11), { color: MUTED });
         b.icon('down', x + 290, y + 200, 18, { color: MUTED, weight: 1.7 });
@@ -1552,7 +1593,7 @@
       let cx = x;
       list(chrome.actions).slice(0, 3).forEach((a, i) => {
         const f = ui(13, 600);
-        const w = approxMeasure(a.label || '', f) + 54;
+        const w = measure(a.label || '', f) + 58;
         b.rect(cx, y, w, 36, { fill: i === 0 ? d.accent : '#FFFFFF', radius: 18, stroke: i === 0 ? null : '#CBD5E1' });
         b.icon(i === 0 ? 'reply' : i === 1 ? 'share' : 'clip', cx + 16, y + 9, 18, { color: i === 0 ? '#FFFFFF' : '#475569', weight: 1.8 });
         b.text(cx + 42, y + 23, a.label || '', f, { color: i === 0 ? '#FFFFFF' : '#475569' });
@@ -1567,6 +1608,8 @@
   function threadModel(m, chrome, d, measure) {
     const W = 1040;
     const b = builder(W, measure);
+    // the one picture of this medium keeps its place among the three photos
+    if (photo.isSubject(chrome.photoSubject) || photo.isSubject(chrome.attachmentSubject)) b.reservePhotos(1);
     b.subject = autoSubject(m);
     b.images = (m.layout && m.layout.images) || null;
     const meta = m.content.meta || {};
@@ -1638,7 +1681,7 @@
       // the picture the first post shares, as a forum shows it under the text
       if (i === 0 && photo.isSubject(chrome.photoSubject)) {
         const pw = Math.min(inner, 420), ph = Math.round(pw * 0.58);
-        b.photo(tx + 36, end + 10, pw, ph, { seed: photo.hashOf(String(chrome.siteName || '') + p.slice(0, 20)), subject: chrome.photoSubject, colour: true, frame: false });
+        b.photo(tx + 36, end + 10, pw, ph, { picRole: 'lead', seed: photo.hashOf(String(chrome.siteName || '') + p.slice(0, 20)), subject: chrome.photoSubject, colour: true, frame: false });
         b.rect(tx + 36, end + 10, pw, ph, { fill: 'none', radius: 8, stroke: LINE });
         end += ph + 16;
       }
@@ -1690,6 +1733,8 @@
   function chatModel(m, chrome, d, measure) {
     const W = 560;
     const b = builder(W, measure);
+    // the one picture of this medium keeps its place among the three photos
+    if (photo.isSubject(chrome.photoSubject) || photo.isSubject(chrome.attachmentSubject)) b.reservePhotos(1);
     b.subject = autoSubject(m);
     b.images = (m.layout && m.layout.images) || null;
     const ui = (size, weight) => ({ family: d.ui, size, weight: weight || 400 });
@@ -1753,7 +1798,7 @@
       if (photo.isSubject(chrome.photoSubject) && i + 1 === Math.max(1, Math.min(list(m.content.paragraphs).length, Number(chrome.photoAfter) || 1))) {
         const pw = 236, ph = 186, px = mine ? 18 : W - 18 - pw, myPic = !mine;
         b.rect(px, y, pw, ph + 22, { fill: myPic ? MINE : THEIRS, radius: 9, shadow: 'soft' });
-        b.photo(px + 5, y + 5, pw - 10, ph - 4, { seed: photo.hashOf(String(chrome.contactName || '') + i), subject: chrome.photoSubject, colour: true, frame: false });
+        b.photo(px + 5, y + 5, pw - 10, ph - 4, { picRole: 'lead', seed: photo.hashOf(String(chrome.contactName || '') + i), subject: chrome.photoSubject, colour: true, frame: false });
         b.text(px + pw - (myPic ? 26 : 12), y + ph + 12, times[i] || '', ui(10.5), { color: '#8696A0', align: 'right' });
         if (myPic) b.icon('ticks', px + pw - 24, y + ph + 2, 15, { color: TICK, weight: 1.5 });
         y += ph + 32;
@@ -2072,6 +2117,8 @@
     const wordsN = paras.join(' ').split(/\s+/).filter(Boolean).length;
     const cols = columnsForText(paras, font, inner, gutter, measure, comp.columns || d.columns || 3, wordsN < 60 ? 1 : 2);
     const colW = (inner - gutter * (cols - 1)) / cols;
+    // the lead picture and the second picture keep their places among the three photos
+    b.reservePhotos((d.photo !== false && comp.lead !== 'none' ? 1 : 0) + (comp.figure && cols >= 2 ? 1 : 0));
     const accent = d.pressAccent || '#1B4E8F';
     const warm = d.pressWarm || '#C2410C';
     const look = d.look || paperLook({}, d);
@@ -2092,7 +2139,7 @@
       let ns = 62;
       while (ns > 30 && measure(pub, nf(ns)) - pub.length * 1.5 > inner) ns -= 2;
       b.text(W / 2, y + ns + 6, pub, nf(ns), { color: INK, align: 'center', letterSpacing: -1.5 });
-      y += ns + 18;
+      y += ns + 24;
       if (chrome.tagline) {
         b.text(W / 2, y + 8, upper(chrome.tagline), { family: SANS, size: 10 }, { color: '#3F3F46', align: 'center', letterSpacing: 2.4 });
         y += 20;
@@ -2221,11 +2268,14 @@
       const minH = Math.round(photoW * (comp.lead === 'column' ? 0.6 : 0.34));
       const maxH = Math.round(photoW * (comp.lead === 'column' ? 1.25 : 0.72));
       const photoH = Math.max(minH, Math.min(maxH, photoWish || Math.round(photoW * ratio)));
-      b.photo(L, y, photoW, photoH, { seed: photo.hashOf(m.content.title || 'lead'), subject: chrome.photoSubject, colour: d.photoColour !== false, print: true, halftone: true });
+      b.photo(L, y, photoW, photoH, { picRole: 'lead', seed: photo.hashOf(m.content.title || 'lead'), subject: chrome.photoSubject, colour: d.photoColour !== false, print: true, halftone: true });
       const leadCredit = (b.last && b.last.credit) || chrome.captionCredit;
       const cy = y + photoH + 14;
       const capFont = { family: SANS, size: 12.5 };
-      const capLines = wrap((b.last && b.last.caption) || chrome.photoCaption || '', capFont, photoW - 180, measure);
+      // the credit keeps at most half the width; the caption wraps in what is left
+      const creditFont = { family: SANS, size: 10.5, style: 'italic' };
+      const creditW = leadCredit ? Math.min(measure(String(leadCredit), creditFont), photoW * 0.45) + 16 : 0;
+      const capLines = wrap((b.last && b.last.caption) || chrome.photoCaption || '', capFont, photoW - Math.max(creditW, 40), measure);
       capLines.forEach((l, i) => b.text(L, cy + i * 16, l, capFont, { color: '#3F3F46' }));
       if (leadCredit) b.text(L + photoW, cy, leadCredit, { family: SANS, size: 10.5, style: 'italic' }, { color: '#78716C', align: 'right' });
       photoBottom = cy + Math.max(capLines.length * 16, 16) + 12;
@@ -2239,7 +2289,7 @@
       let sy = y;
       if (quote) {
         b.line(sx, sy, sx + colW, sy, { color: accent, width: 3 });
-        b.text(sx - 2, sy + 52, '“', { family: SERIF, size: 60, weight: 700 }, { color: accent });
+        b.text(sx - 2, sy + 52, '\u201C', { family: SERIF, size: 60, weight: 700 }, { color: accent, deco: true });
         const ql = wrap(quote, qFont, colW - 8, measure);
         ql.forEach((l, i) => b.text(sx, sy + 66 + i * 27, l, qFont, { color: INK, role: 'quote' }));
         sy += 66 + (ql.length - 1) * 27 + 26;
@@ -2432,7 +2482,7 @@
         }
         if (l.kind === 'figure') {
           const ph = Math.round(colW * 0.62);
-          b.photo(x, l.y + 8, colW, ph, { seed: photo.hashOf(String(l.fig.subject) + l.pi), subject: l.fig.subject, colour: d.photoColour !== false, print: true, halftone: true });
+          b.photo(x, l.y + 8, colW, ph, { picRole: 'second', seed: photo.hashOf(String(l.fig.subject) + l.pi), subject: l.fig.subject, colour: d.photoColour !== false, print: true, halftone: true });
           l.fig.capLines.forEach((cl, i) => b.text(x, l.y + 8 + ph + 17 + i * 15, cl, capFont2, { color: '#3F3F46' }));
           continue;
         }
@@ -2723,6 +2773,8 @@
   function notebookModel(m, chrome, d, measure) {
     const W = 780;
     const b = builder(W, measure);
+    // the one picture of this medium keeps its place among the three photos
+    if (photo.isSubject(chrome.photoSubject) || photo.isSubject(chrome.attachmentSubject)) b.reservePhotos(1);
     b.subject = autoSubject(m);
     b.images = (m.layout && m.layout.images) || null;
     const P = PAGE_PAD, M = 86;
@@ -2758,7 +2810,7 @@
       const pw = Math.min(260, inner * 0.6), ph = Math.round(pw * 0.78);
       const px = L + (inner - pw) / 2, py = bottom + 12;
       b.rect(px - 10, py - 10, pw + 20, ph + 44, { fill: '#FFFDF8', shadow: 'soft' });
-      b.photo(px, py, pw, ph, { subject: chrome.photoSubject, seed: photo.hashOf(m.content.title || 'diary'), colour: true, frame: false });
+      b.photo(px, py, pw, ph, { subject: chrome.photoSubject, seed: photo.hashOf(m.content.title || 'diary'), colour: true, frame: false, picRole: 'lead' });
       if (chrome.photoCaption) b.text(px + pw / 2, py + ph + 26, clipText(chrome.photoCaption, 34), { family: HAND, size: 17 }, { color: '#475569', align: 'center' });
       // two strips of tape, across the corners of the print
       b.poly([[px - 26, py + 2], [px + 6, py - 26], [px + 26, py - 8], [px - 8, py + 22]], { fill: 'rgba(214,222,232,.7)' });
@@ -2780,6 +2832,8 @@
   function sheetModel(m, chrome, d, measure) {
     const W = 840;
     const b = builder(W, measure);
+    // the one picture of this medium keeps its place among the three photos
+    if (photo.isSubject(chrome.photoSubject) || photo.isSubject(chrome.attachmentSubject)) b.reservePhotos(1);
     b.subject = autoSubject(m);
     b.images = (m.layout && m.layout.images) || null;
     const meta = m.content.meta || {};
@@ -2816,7 +2870,7 @@
         const fw = Math.min(inner, 460), fh = Math.round(fw * 0.5);
         const fx = L + (inner - fw) / 2;
         b.rect(fx - 8, y - 2, fw + 16, fh + 46, { fill: '#F5F3EE', radius: 4 });
-        b.photo(fx, y + 6, fw, fh, { subject: chrome.photoSubject, seed: photo.hashOf(m.content.title || 'fig'), colour: true, print: true });
+        b.photo(fx, y + 6, fw, fh, { subject: chrome.photoSubject, seed: photo.hashOf(m.content.title || 'fig'), colour: true, print: true, picRole: 'lead' });
         b.text(fx, y + fh + 26, 'Fig. 1  ' + clipText(chrome.photoCaption || '', 70), { family: SANS, size: 10.5, weight: 600 }, { color: '#57534E' });
         if (chrome.captionCredit) b.text(fx + fw, y + fh + 26, chrome.captionCredit, { family: SANS, size: 9.5, style: 'italic' }, { color: '#A8A29E', align: 'right' });
         y += fh + 58;
@@ -3012,7 +3066,7 @@
         }
         if (!b.round && b.frame !== false) out.push(`<rect x="${fmt(b.x + 0.5)}" y="${fmt(b.y + 0.5)}" width="${fmt(b.w - 1)}" height="${fmt(b.h - 1)}" fill="none" stroke="rgba(0,0,0,.2)" stroke-width="1"/>`);
         // the place of the picture, for the hand that wants to replace it
-        if (b.slot) out.push(`<rect class="photo-slot" data-slot="${xmlEsc(b.slot)}" data-subject="${xmlEsc(String(b.subject || ''))}"${b.own ? ' data-own="1"' : ''}${b.round ? ' data-round="1"' : ''} x="${fmt(b.x)}" y="${fmt(b.y)}" width="${fmt(b.w)}" height="${fmt(b.h)}" fill="none" pointer-events="none"/>`);
+        if (b.slot) out.push(`<rect class="photo-slot" data-slot="${xmlEsc(b.slot)}" data-subject="${xmlEsc(String(b.subject || ''))}"${b.picRole ? ` data-role="${xmlEsc(b.picRole)}"` : ''}${b.own ? ' data-own="1"' : ''}${b.round ? ' data-round="1"' : ''} x="${fmt(b.x)}" y="${fmt(b.y)}" width="${fmt(b.w)}" height="${fmt(b.h)}" fill="none" pointer-events="none"/>`);
       } else if (b.type === 'icon') {
         const d = iconPath(b.name);
         if (!d) continue;
@@ -3143,6 +3197,110 @@
     return { src, credit, focus, caption, name: String(e.name || '').slice(0, 80) };
   }
 
+  /*
+   * The last step of every picture: no interface text runs into another text
+   * or over the edge of its page or box. Claude writes the interface (a
+   * dateline, a credit, a navigation entry) and cannot know how wide the
+   * space for it is; a long entry would run into its neighbour. So every
+   * single line of the interface is fitted here: where two collide on one
+   * line, the less important one is shortened with "…" (a fragment too
+   * short to read is left out), and none crosses its page or the box it
+   * starts in. The text of the material and a verbatim quote are never
+   * touched — only the interface around them.
+   */
+  const FIT_GAP = 10;
+  function fitChromeText(model, measure) {
+    const blocks = model.blocks || [];
+    const widthOf = (b) => measure(b.text, b.font) + (b.letterSpacing || 0) * b.text.length;
+    const boxOf = (b) => {
+      const w = widthOf(b);
+      const x0 = b.align === 'center' ? b.x - w / 2 : b.align === 'right' ? b.x - w : b.x;
+      return { x0, x1: x0 + w, y0: b.y - b.font.size * 0.72, y1: b.y + b.font.size * 0.2 };
+    };
+    // a decorative glyph (a large quote mark) fills little of its box: it neither moves nor blocks
+    const texts = blocks.filter(b => b.type === 'text' && !b.deco && b.text && String(b.text).trim() && b.font && b.font.size);
+    const movable = (b) => b.role !== 'body' && b.role !== 'quote';
+    const pages = Array.isArray(model.pages) && model.pages.length ? model.pages : [{ x: 0, y: 0, w: model.width, h: model.height }];
+    const pageOf = (y) => pages.find(p => y >= p.y - 30 && y <= p.y + p.h + 30) || pages[0];
+    // the boxes a text may start in: cards, pills, bars — not the page itself
+    // (a meter — the filled part of a poll bar — shows an amount, it holds no text)
+    const rects = blocks.filter(b => b.type === 'rect' && !b.page && !b.meter && b.w > 24 && b.h > 10 && b.w < model.width * 0.98 && b.fill !== 'none');
+    /** Shorten a text to at most `max` px, with an ellipsis; '' when nothing sensible is left. */
+    const clipTo = (b, max) => {
+      if (widthOf(b) <= max) return;
+      const full = String(b.text);
+      let lo = 0, hi = full.length;
+      while (lo < hi) {
+        const mid = Math.ceil((lo + hi) / 2);
+        const t = full.slice(0, mid).replace(/[\s\u00B7,;:\u2013\u2014-]+$/, '') + '\u2026';
+        if (measure(t, b.font) + (b.letterSpacing || 0) * t.length <= max) lo = mid; else hi = mid - 1;
+      }
+      const kept = full.slice(0, lo).replace(/[\s\u00B7,;:\u2013\u2014-]+$/, '');
+      if (b.full == null) b.full = full;
+      b.text = kept.length >= 3 ? kept + '\u2026' : '';
+      b.fitted = true;
+    };
+    /** Fit a text into [left, right] horizontally, keeping its anchor side. */
+    const fitInto = (b, left, right) => {
+      const room = right - left;
+      if (room < 24) { b.text = ''; b.fitted = true; return; }
+      if (b.align === 'right') { if (b.x > right) b.x = right; clipTo(b, b.x - left); }
+      else if (b.align === 'center') { const half = Math.min(b.x - left, right - b.x); clipTo(b, Math.max(0, half * 2)); }
+      else { if (b.x < left) b.x = left; clipTo(b, right - b.x); }
+    };
+    // 1. inside its page and inside the box it starts in
+    for (const b of texts) {
+      if (!movable(b)) continue;
+      const pg = pageOf(b.y);
+      let left = pg.x + 2, right = pg.x + pg.w - 2;
+      const bx = boxOf(b);
+      const ax = b.align === 'right' ? bx.x1 - 1 : b.align === 'center' ? b.x : bx.x0 + 1;
+      const home = rects.filter(r => ax >= r.x && ax <= r.x + r.w && b.y - b.font.size * 0.4 >= r.y && b.y <= r.y + r.h)
+        .sort((r1, r2) => r1.w * r1.h - r2.w * r2.h)[0];
+      if (home) { left = Math.max(left, home.x + 2); right = Math.min(right, home.x + home.w - 2); }
+      if (bx.x0 < left - 0.5 || bx.x1 > right + 0.5) fitInto(b, left, right);
+    }
+    // 2. no two texts on one line run into each other
+    const rank = (b) => (b.align === 'center' ? 0 : 1) + (b.font.weight >= 700 ? 1 : 0) + (b.font.size >= 16 ? 2 : 0);
+    for (let pass = 0; pass < 4; pass++) {
+      let changed = false;
+      const live = texts.filter(b => b.text && String(b.text).trim()).map(b => ({ b, box: boxOf(b) })).sort((p, q) => p.box.y0 - q.box.y0);
+      for (let i = 0; i < live.length; i++) {
+        const A = live[i];
+        for (let j = i + 1; j < live.length && live[j].box.y0 < A.box.y1; j++) {
+          const B = live[j];
+          if (!A.b.text || !B.b.text) continue;
+          const ox = Math.min(A.box.x1, B.box.x1) - Math.max(A.box.x0, B.box.x0);
+          const oy = Math.min(A.box.y1, B.box.y1) - Math.max(A.box.y0, B.box.y0);
+          // touching descenders and capitals of stacked lines are not a collision
+          const hA = A.box.y1 - A.box.y0, hB = B.box.y1 - B.box.y0;
+          if (ox <= 2 || oy <= Math.max(2, 0.25 * Math.min(hA, hB))) continue;
+          if (A.b.glue || B.b.glue) continue;
+          // which one gives way: never the text, never a quote, never a line of a
+          // wrapped paragraph (it would lose words); else the less important one
+          let give, keep;
+          const firm = (b) => !movable(b) || b.wrapped;
+          if (firm(A.b) && firm(B.b)) { if (!movable(A.b) && !movable(B.b)) continue; if (!movable(A.b)) { give = B; keep = A; } else if (!movable(B.b)) { give = A; keep = B; } else { give = rank(A.b) <= rank(B.b) ? A : B; keep = give === A ? B : A; } }
+          else if (firm(A.b)) { give = B; keep = A; }
+          else if (firm(B.b)) { give = A; keep = B; }
+          else if (rank(A.b) !== rank(B.b)) { give = rank(A.b) < rank(B.b) ? A : B; keep = give === A ? B : A; }
+          else { give = widthOf(A.b) >= widthOf(B.b) ? A : B; keep = give === A ? B : A; }
+          const g = give.b, k = keep.box;
+          const gb = boxOf(g);
+          const pg = pageOf(g.y);
+          // the side of the kept text the other one stands on
+          if ((gb.x0 + gb.x1) / 2 <= (k.x0 + k.x1) / 2) fitInto(g, Math.max(pg.x + 2, g.align === 'right' ? pg.x + 2 : gb.x0), k.x0 - FIT_GAP);
+          else fitInto(g, k.x1 + FIT_GAP, Math.min(pg.x + pg.w - 2, g.align === 'left' || !g.align ? pg.x + pg.w - 2 : gb.x1));
+          give.box = boxOf(g);
+          changed = true;
+        }
+      }
+      if (!changed) break;
+    }
+    model.blocks = blocks.filter(b => !(b.type === 'text' && b.fitted && !String(b.text).trim()));
+    return model;
+  }
+
   function buildModel(material, chrome, opts) {
     opts = opts || {};
     const measure = opts.measure || approxMeasure;
@@ -3161,6 +3319,7 @@
     model.medium = d.medium || 'screen';
     model.label = d.label;
     model.designId = core.designIdFor(material.settings || {});
+    fitChromeText(model, measure);
     return fitModel(model);
   }
 
@@ -3533,7 +3692,7 @@
     };
   }
 
-  return { LAYOUTS, CHROME_SPECS, ICONS, MAX_SIDE, PAPERS, A4_RATIO, paperLook, shade, hyphenPoints, wrapJustified, joinBody, svgBodyText, pageBoxes,
+  return { LAYOUTS, CHROME_SPECS, ICONS, MAX_SIDE, PAPERS, A4_RATIO, paperLook, shade, hyphenPoints, wrapJustified, joinBody, svgBodyText, pageBoxes, fitChromeText,
     credits, ownPicture, composition, verbatim, SUBJECTS: photo.SUBJECTS, isSubject: photo.isSubject, subjectFor: photo.subjectFor, subjectHints: photo.subjectHints, hashOf: photo.hashOf, layoutFor, chromeSpec, fallbackChrome, buildModel, fitModel, canvasScale, drawPhoto, drawIcon, bodyText, chromeText, validate, proportions, draw, toSVG, iconPath,
     MODULES, MODULE_KEYS, SHAPES, SHAPE_KEYS, MEDIUM_SLOTS, shapeOf, moduleRenderer, moduleHints, modulesFor, placeModules, moduleStyle, canvasMeasure, approxMeasure, wrap, fontString };
 });
