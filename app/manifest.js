@@ -291,8 +291,12 @@
   add({ id: 'S17.length_mode', section: 17, title: 'Length: word count oder approximate A4 length', kind: 'setting', key: 'lengthMode', alt: 'a4', mode: 'reading' });
   add({ id: 'S17.word_count', section: 17, title: 'Word count (z. B. 450 words)', kind: 'setting', key: 'wordCount', alt: 900, mode: 'reading',
     extra(env) { return ok(env.core.targetWordCount(env.state({ kind: 'reading', lengthMode: 'words', wordCount: 450 })) === 450); } });
-  add({ id: 'S17.a4', section: 17, title: 'A4-Länge wird in Wortzahl umgerechnet', kind: 'setting', key: 'a4Pages', alt: '2', given: { lengthMode: 'a4' }, mode: 'reading',
-    extra(env) { return ok(env.core.targetWordCount(env.state({ kind: 'reading', lengthMode: 'a4', a4Pages: '2' })) === 900); } });
+  add({ id: 'S17.a4', section: 17, title: 'Seitenzahl 1–4 wird in die Wortzahl umgerechnet, die auf so viele Seiten des Mediums passt', kind: 'setting', key: 'a4Pages', alt: '3', given: { lengthMode: 'a4' }, mode: 'reading',
+    extra(env) {
+      const t = (n) => env.core.targetWordCount(env.state({ kind: 'reading', lengthMode: 'a4', a4Pages: String(n) }));
+      const cap = env.core.pageCapacity(env.state({ kind: 'reading', lengthMode: 'a4', a4Pages: '3' }), 3);
+      return ok(t(1) < t(2) && t(2) < t(3) && t(3) < t(4) && t(3) === Math.round(cap * 0.88 / 10) * 10, `targets ${[1, 2, 3, 4].map(t).join(' / ')}`);
+    } });
 
   /* §18 Worksheet */
   add({ id: 'S18.toggle', section: 18, title: 'Create Worksheet ON/OFF; OFF → nur Skript/Text', kind: 'setting', key: 'createWorksheet', alt: false,
@@ -2051,6 +2055,120 @@
       const doc = String(parts.find(p => p.name === 'word/document.xml').data);
       if ((doc.match(/<w:drawing>/g) || []).length < 2 || !/<w:pageBreakBefore\/>[\s\S]*page 2 of 2/.test(doc)) problems.push('the Word file does not carry the pages one per page');
       if (env.ooxml.validate(parts).length) problems.push('the Word file with pages is not valid: ' + env.ooxml.validate(parts)[0]);
+      return ok(!problems.length, problems.slice(0, 3).join(' | '));
+    } });
+  /* The page limit: the text fills at most 1–4 A4 pages of its medium */
+  const pageText = (words) => {
+    const S = ['The council met on Tuesday evening to talk about the new sports centre by the river.', 'Many families came because they wanted to know what would happen to the old park.', 'Some were worried about the traffic, others were excited about the pool and the climbing wall.', 'A student asked if young people could help to choose the activities.', 'The mayor promised that teenagers would join the planning team next month.'];
+    const out = []; let cur = [], n = 0, i = 0;
+    while (n < words) { const x = S[i++ % S.length]; cur.push(x); n += x.split(' ').length; if (cur.length === 4) { out.push(cur.join(' ')); cur = []; } }
+    if (cur.length) out.push(cur.join(' '));
+    return out;
+  };
+  const pagedMaterial = (env, over, words) => { const m = layoutMaterial(env, over); m.content.paragraphs = pageText(words); return m; };
+  add({ id: 'S37.page_capacity', section: 37, title: 'Seitenlimit: wie viele Wörter auf 1–4 A4-Seiten passen, hängt vom Medium ab (Zeitung, Buch, Tagebuch in Handschrift, Screenshot, Handy-Chat) – gemessen mit dem Layout selbst; eine Wortzahl wird nie über das hinaus geplant, was auf die erlaubten Seiten passt, und der Plan sagt es', kind: 'function',
+    check(env) {
+      const problems = [];
+      const core = env.core;
+      for (const id of Object.values(core.TEXT_TYPE_DESIGN)) {
+        const row = core.PAGE_CAPACITY_MEDIA[id];
+        if (!row) { problems.push('no capacity for ' + id); continue; }
+        for (const md of ['screen', 'paper']) {
+          const r = row[md];
+          if (!Array.isArray(r) || r.length !== 4 || !r.every((v, i) => v >= 60 && (!i || v > r[i - 1]))) problems.push(`${id}/${md}: capacity does not grow with the pages`);
+        }
+      }
+      const st = (o) => env.state(Object.assign({ kind: 'reading', authenticLayout: true }, o));
+      // the medium decides: a newspaper page holds more than a handwritten diary page
+      if (!(core.pageCapacity(st({ textType: 'News Article', layoutMedium: 'paper' }), 1) > 2 * core.pageCapacity(st({ textType: 'Diary Entry', layoutMedium: 'paper' }), 1))) problems.push('a newspaper page does not hold more than a diary page');
+      // short paragraphs cost room: measured per medium, never more room than medium ones
+      if (!Object.values(core.PAGE_SHORT_PARAGRAPHS).every(r => r.screen > 0.5 && r.screen <= 1 && r.paper > 0.5 && r.paper <= 1)) problems.push('the factor for short paragraphs is missing or implausible');
+      if (!(core.pageCapacity(st({ textType: 'Forum Discussion', paragraphLength: 'short' }), 2) < core.pageCapacity(st({ textType: 'Forum Discussion', paragraphLength: 'medium' }), 2))) problems.push('short paragraphs are planned with the room of medium ones');
+      if (core.textMedium(st({ textType: 'Blog Post' })) !== 'screen' || core.textMedium(st({ textType: 'News Article' })) !== 'paper' || core.textMedium(st({ authenticLayout: false })) !== 'plain') problems.push('the medium of the text is not recognised');
+      for (const [t, want] of Object.entries(core.TEXT_TYPE_DESIGN)) {
+        const d = env.mock.layoutFor({ settings: st({ textType: t }) });
+        if ((d.medium === 'paper') !== (core.textMedium(st({ textType: t })) === 'paper')) problems.push(`the plan and the picture disagree on the medium of ${want}`);
+      }
+      // a word count that does not fit is capped, and the plan says so
+      const capped = core.buildPlan(st({ textType: 'Diary Entry', layoutMedium: 'paper', lengthMode: 'words', wordCount: 900, a4Pages: '1' }), env.ctx);
+      if (!(capped.targetWords <= capped.pageCapacity && capped.wordsCapped && capped.pageLimit === 1)) problems.push('a word count beyond the page limit is not capped');
+      const free = core.buildPlan(st({ textType: 'News Article', layoutMedium: 'paper', lengthMode: 'words', wordCount: 450, a4Pages: '2' }), env.ctx);
+      if (free.targetWords !== 450 || free.wordsCapped) problems.push('a word count that fits is changed');
+      // older stored lengths still open
+      if (core.normalizeState({ kind: 'reading', a4Pages: '0.5' }).a4Pages !== '1' || core.normalizeState({ kind: 'reading', a4Pages: '1.5' }).a4Pages !== '2') problems.push('an older half-page length is not carried over');
+      // the prompt carries the ceiling
+      const prompt = env.prompts.buildContentPrompt(capped.pageLimit ? st({ textType: 'Diary Entry', layoutMedium: 'paper', a4Pages: '1' }) : st({}), capped);
+      if (!/may fill at most 1 A4 page/.test(prompt) || !new RegExp('never more than ' + capped.pageCapacity + ' words').test(prompt)) problems.push('the prompt does not carry the page limit');
+      return ok(!problems.length, problems.slice(0, 3).join(' | '));
+    } });
+  add({ id: 'S37.page_breaks', section: 37, title: 'Jedes Medium kommt auf A4-Seiten: Papier (Buch, Tagebuch, Bericht) als einzelne Blätter mit Kopf, Seitenzahl und Linierung auf jedem Blatt, Bildschirm (Webseite, Mail, Forum) als Screenshot-Folge, der Chat als Handy-Bildschirme; kein Seitenrand schneidet je eine Zeile, ein Bild oder einen Kasten, keine Zwischenüberschrift steht am Seitenfuss, kein Absatz lässt eine einzelne Zeile allein', kind: 'function',
+    check(env) {
+      const problems = [];
+      const M = env.mock;
+      const cases = [['Story', 'paper'], ['Diary Entry', 'paper'], ['Report', 'paper'], ['Blog Post', 'screen'], ['Forum Discussion', 'screen'], ['Email', 'screen'], ['Dialogue', 'screen'], ['News Article', 'paper']];
+      for (const [t, md] of cases) {
+        const m = pagedMaterial(env, { textType: t, layoutMedium: md, a4Pages: '4' }, 700);
+        const model = env.quality.layoutModel(m);
+        const boxes = M.pageBoxes(model);
+        if (boxes.length < 2) { problems.push(`${t}: 700 words stay on one page`); continue; }
+        const src = m.content.paragraphs.join(' ').replace(/\s+/g, ' ').trim();
+        const pagesSvg = boxes.map((_, i) => M.toSVG(model, { page: i })).join('');
+        if (M.svgBodyText(pagesSvg).replace(/\s+/g, ' ').trim() !== src) problems.push(`${t}: the pages do not carry the text exactly once`);
+        for (const b of model.blocks) {
+          if (b.type !== 'text' && b.type !== 'photo') continue;
+          const top = b.type === 'text' ? b.y - b.font.size * 0.8 : b.y, bot = b.type === 'text' ? b.y + b.font.size * 0.25 : b.y + b.h;
+          if (!boxes.some(x => top >= x.y - 1 && bot <= x.y + x.h + 1)) { problems.push(`${t}: ${b.type === 'text' ? 'a line' : 'a picture'} is cut by a page edge`); break; }
+        }
+        const ratio = model.pageMode === 'screen' ? (model.kind === 'chat' ? M.PHONE_RATIO : M.A4_RATIO) : 1.55;
+        if (boxes.some(x => x.h > x.w * ratio + 2)) problems.push(`${t}: a page is taller than its format`);
+        if (md === 'paper' && model.pageMode !== 'paper') problems.push(`${t}: paper is not printed in sheets`);
+        if (md === 'screen' && model.pageMode !== 'screen') problems.push(`${t}: the screen is not a series of screenshots`);
+      }
+      // the furniture of every sheet: page numbers in the book, ruling in the notebook
+      const book = env.quality.layoutModel(pagedMaterial(env, { textType: 'Story', layoutMedium: 'paper', a4Pages: '4' }, 700));
+      const nums = book.pages.map(pg => book.blocks.some(b => b.type === 'text' && /\d/.test(b.text) && b.y > pg.y + pg.h - 60 && b.y < pg.y + pg.h));
+      if (!nums.every(Boolean)) problems.push('a book page has no page number');
+      const nb = env.quality.layoutModel(pagedMaterial(env, { textType: 'Diary Entry', layoutMedium: 'paper', a4Pages: '4' }, 400));
+      if (!nb.pages.every(pg => nb.blocks.filter(b => b.type === 'line' && b.y1 === b.y2 && b.y1 > pg.y && b.y1 < pg.y + pg.h).length > 10)) problems.push('a notebook sheet is not ruled');
+      // the breaks: never under a heading, never a lonely line
+      const heads = M.pageBreaks([
+        { type: 'text', y: 100, font: { size: 16 }, role: 'body', grp: 1, li: 0, ln: 2, text: 'a' }, { type: 'text', y: 122, font: { size: 16 }, role: 'body', grp: 1, li: 1, ln: 2, text: 'b' },
+        { type: 'text', y: 170, font: { size: 20, weight: 700 }, role: 'chrome', text: 'Heading' },
+        { type: 'text', y: 200, font: { size: 16 }, role: 'body', grp: 2, li: 0, ln: 3, text: 'c' }, { type: 'text', y: 222, font: { size: 16 }, role: 'body', grp: 2, li: 1, ln: 3, text: 'd' }, { type: 'text', y: 244, font: { size: 16 }, role: 'body', grp: 2, li: 2, ln: 3, text: 'e' },
+      ], 0, 250, 1000, () => 210);
+      if (heads[0].end > 130) problems.push('a page ends under a heading');
+      return ok(!problems.length, problems.slice(0, 3).join(' | '));
+    } });
+  add({ id: 'S37.page_fit', section: 37, title: 'Seitenlimit eingehalten: passt der Text nicht, gibt zuerst das Layout nach (kleineres Aufmacherbild, engerer Satz, ohne Zitatkasten, weniger/keine Elemente neben dem Text, ohne zweites Bild – nur so viel wie nötig); die Schrift wird nie kleiner, der Text nie abgeschnitten; bleibt er zu lang, sagt die Kontrolle (blockierend), auf wie viele Wörter – gemessen am Layout selbst – und Claude kürzt; eine letzte Seite mit drei Zeilen wird zurückgeholt', kind: 'function',
+    check(env) {
+      const problems = [];
+      const M = env.mock, Q = env.quality;
+      // the make-up gives way before the text does, and only as far as needed
+      const blog = pagedMaterial(env, { textType: 'Blog Post', layoutMedium: 'screen', a4Pages: '2' }, 520);
+      const free = Q.layoutModel(Object.assign({}, blog, { settings: Object.assign({}, blog.settings, { a4Pages: '4' }) }));
+      const fitted = Q.layoutModel(blog);
+      if (!(free.pageFit.pages > 2 && fitted.pageFit.pages <= 2 && fitted.pageFit.steps.length && !fitted.pageFit.over)) problems.push(`the page does not give way to the limit (${free.pageFit.pages} → ${fitted.pageFit.pages})`);
+      if (M.bodyText(fitted).replace(/\s+/g, ' ') !== blog.content.paragraphs.join(' ').replace(/\s+/g, ' ')) problems.push('the text changed while the page gave way');
+      const size = (mm) => Math.min.apply(null, mm.blocks.filter(b => b.type === 'text' && b.role === 'body').map(b => b.font.size));
+      if (size(fitted) < size(free) - 0.01) problems.push('the type was set smaller to fit');
+      if (fitted.pageFit.steps.some(k => !M.FIT_STEPS.some(st => st.key === k))) problems.push('an unknown make-up step');
+      // too long even so: the check fails, blocking, and says how long the text may be
+      const long = pagedMaterial(env, { textType: 'News Article', layoutMedium: 'paper', a4Pages: '1' }, 1600);
+      const f = Q.runContentChecks(long.settings, long.plan, long.content, { layout: long.layout }).find(x => x.id === 'layout.page_limit');
+      if (!f || f.status !== 'fail' || !f.blocking || !(f.fitWords > 60 && f.fitWords < 1600)) problems.push('a text that is too long is not reported with the length that fits');
+      else {
+        const cut = Object.assign({}, long, { content: Object.assign({}, long.content, { paragraphs: pageText(f.fitWords) }) });
+        if (Q.pageFit(cut).over) problems.push(`the length the check names (${f.fitWords} words) does not fit either`);
+      }
+      const ok1 = pagedMaterial(env, { textType: 'News Article', layoutMedium: 'paper', a4Pages: '2' }, 300);
+      const g = Q.runContentChecks(ok1.settings, ok1.plan, ok1.content, { layout: ok1.layout }).find(x => x.id === 'layout.page_limit');
+      if (!g || g.status === 'fail') problems.push('a text that fits is reported');
+      // the shorter text keeps its second picture and its crossheads
+      const moved = Q.fitComposition({ composition: { figure: { after: 9, subject: 'park' }, crossheads: [{ before: 3, text: 'A' }, { before: 12, text: 'B' }] } }, ['a', 'b', 'c', 'd']);
+      if (!(moved.composition.figure && moved.composition.figure.after === 2 && moved.composition.crossheads.map(h => h.before).join() === '3')) problems.push('the picture or a crosshead is lost when the text becomes shorter');
+      // the pipeline: a round of its own that shortens the text to the measured length
+      const pipe = env.pipelineSource || '';
+      if (pipe && !(/quality\.pageFit\(/.test(pipe) && /target: 'pages'/.test(pipe) && /pageMaxWords = fit\.fitWords/.test(pipe) && /quality\.fitComposition\(/.test(pipe))) problems.push('the pipeline does not shorten a text that is too long for its pages');
       return ok(!problems.length, problems.slice(0, 3).join(' | '));
     } });
   add({ id: 'S37.press_makeup', section: 37, title: 'Die Zeitungsseite ist umbrochen wie eine echte: Titelkopf mit Namen, Motto und Ausgabezeile, Rubrik, schwarze, eng gesetzte Schlagzeile, Vorspann ohne Etikett, Autorenzeile zwischen Linien, Initial (Titelseite) oder Ortsmarke (Innenseite), neben dem Aufmacher Zitat und Fakten statt Textstreifen, kein Abstand zwischen Absätzen (nur Einzug), Zwischentitel nie allein am Spaltenfuss, zweites Bild nie neben dem Aufmacher, Zitat und Kästen rücken an den Text', kind: 'function',

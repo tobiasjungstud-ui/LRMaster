@@ -812,8 +812,11 @@
       const render = moduleRenderer(mod);
       // what does not fit here is not lost: the caller can put it elsewhere
       if (!render || n >= (o.max || 4) || (o.until && cy > o.until)) { if (o.leftovers) o.leftovers.push(mod); continue; }
-      const before = b.blocks.length;
-      const h = render(b, x, cy, w, mod, S) || 0;
+      let before = b.blocks.length;
+      let h = render(b, x, cy, w, mod, S) || 0;
+      // a box in the column beside the text never runs over a page break
+      const clear = clearOfBreaks(o.avoid, cy, h);
+      if (clear !== cy) { b.blocks.length = before; cy = clear; before = b.blocks.length; h = render(b, x, cy, w, mod, S) || 0; }
       if (o.until && cy + h > o.until + (o.slack || 0)) {
         b.blocks.length = before;
         if (o.leftovers) o.leftovers.push(mod);
@@ -823,6 +826,21 @@
       n += 1;
     }
     return cy;
+  }
+
+  /**
+   * The column beside the text is filled after the pages are known: a box
+   * that would run over the edge of a page (`avoid`, the y of every edge)
+   * moves down to the top of the next page instead of being cut in two.
+   */
+  function clearOfBreaks(avoid, y, h) {
+    if (!Array.isArray(avoid) || !avoid.length) return y;
+    for (let i = 0; i < 12; i++) {
+      const edge = avoid.find(e => y < e + 8 && y + h > e - 8);
+      if (edge === undefined) return y;
+      y = edge + 16;
+    }
+    return y;
   }
 
   /** The style a module is drawn in, taken from the design of the medium. */
@@ -998,6 +1016,7 @@
       measure,           // the real text measure of this picture (modules size their buttons with it)
       photoSlots: new Map(),   // the photo places drawn so far, with their role (lead, second, extra)
       photoReserved: 0,        // lead and second picture still to come
+      groups: 0,               // paragraphs set so far (their lines share a group)
       /** The page will draw `n` essential photos (lead, second picture): keep their places. */
       reservePhotos(n) { api.photoReserved = Math.max(0, n | 0); return api; },
       subject: 'city',   // what a picture shows when nothing else says
@@ -1013,8 +1032,11 @@
       /** Wrapped paragraph; returns the y below it. */
       para(x, y, str, font, maxWidth, o) {
         const lh = (o && o.lineHeight) || font.size * 1.45;
-        wrap(str, font, maxWidth, measure).forEach((l, i) => api.text(x, y + i * lh, l, font, Object.assign({ wrapped: true }, o || {})));
-        return y + wrap(str, font, maxWidth, measure).length * lh;
+        const lines = wrap(str, font, maxWidth, measure);
+        // the lines of one paragraph know each other: a page break keeps two together
+        const grp = ++api.groups;
+        lines.forEach((l, i) => api.text(x, y + i * lh, l, font, Object.assign({ wrapped: true, grp, li: i, ln: lines.length }, o || {})));
+        return y + lines.length * lh;
       },
       icon(name, x, y, size, o) { blocks.push(Object.assign({ type: 'icon', name, x, y, size }, o || {})); return api; },
       wall(x, y, w, h, o) { blocks.push(Object.assign({ type: 'wallpaper', x, y, w, h }, o || {})); return api; },
@@ -1310,8 +1332,9 @@
     // first paragraphs with the text running around it, or none: the plan
     const comp = composition(chrome, m.content.paragraphs || [], 'page');
     let inset = null;
+    const small = !!(d.fit && d.fit.has('photo'));
     if ((d.kicker || d.sidebar) && comp.lead === 'inset') {
-      const iw = Math.round(colW * 0.46), ih = Math.round(iw * 0.72);
+      const iw = Math.round(colW * (small ? 0.38 : 0.46)), ih = Math.round(iw * 0.72);
       const ix = PAD + colW - iw;
       b.photo(ix, y + 6, iw, ih, { seed: photo.hashOf(m.content.title || 'lead'), subject: chrome.photoSubject, colour: true, picRole: 'lead' });
       const leadCredit = (b.last && b.last.credit) || chrome.captionCredit;
@@ -1321,7 +1344,7 @@
       if (leadCredit) { b.text(ix + iw, cy + 2, leadCredit, ui(10), { color: '#94A3B8', align: 'right' }); cy += 14; }
       inset = { top: y, bottom: cy + 6, w: iw };
     } else if ((d.kicker || d.sidebar) && comp.lead !== 'none') {
-      const ph = Math.round(colW * 0.46);
+      const ph = Math.round(colW * (small ? 0.3 : 0.46));
       b.photo(PAD, y, colW, ph, { seed: photo.hashOf(m.content.title || 'lead'), subject: chrome.photoSubject, colour: true, picRole: 'lead' });
       const leadCredit = (b.last && b.last.credit) || chrome.captionCredit;
       const leadCaption = (b.last && b.last.caption) || chrome.photoCaption;
@@ -1426,6 +1449,8 @@
     // article, so the page never shows a long empty strip next to the text.
     let sideBottom = articleTop;
     const sideX = PAD + colW + 44, sideW = W - (PAD + colW + 44) - PAD;
+    const railFrom = b.blocks.length;
+    const avoid = d.pageEdges || null;
     if (hasSide) {
       const sx = sideX, sw = sideW;
       const target = y - 24;
@@ -1435,6 +1460,7 @@
       sy += 46;
       list(chrome.sidebarItems).slice(0, 6).forEach((it, i) => {
         if (i >= 4 && sy + 80 > target) return;
+        sy = clearOfBreaks(avoid, sy, 70);
         b.photo(sx, sy, 74, 56, { seed: photo.hashOf(String(it)), subject: list(chrome.sidebarSubjects)[i] || photo.subjectFor(String(it), 'city'), colour: true });
         b.text(sx + 86, sy + 2, String(i + 1), { family: d.title, size: 15, weight: 800 }, { color: d.accent });
         const end = b.para(sx + 86, sy + 20, it, ui(13, 600), sw - 86, { color: INK, lineHeight: 18 });
@@ -1446,7 +1472,7 @@
       // stacks (poll, sign-up, the tall advertisement, another story …), then
       // — if the text runs longer than all of it — the slots a rail keeps
       // filled, down to the foot of the text. A rail never ends in a hole.
-      sy = placeModules(b, modulesFor(chrome, 'page', 'rail'), sx, sy, sw, S, { max: 6, until: target, slack: 90 });
+      sy = placeModules(b, modulesFor(chrome, 'page', 'rail'), sx, sy, sw, S, { max: 6, until: target, slack: 90, avoid });
       // a display advertisement is a picture with a label, not a grey box
       const AD_SUBJECTS = ['sea', 'mountain', 'food', 'transport', 'market', 'still', 'city', 'park', 'desk', 'sport'];
       let adNo = 0;
@@ -1457,14 +1483,19 @@
         b.text(sx + sw / 2, yy + hh - 16, 'ADVERTISEMENT', ui(9.5, 700), { color: '#94A3B8', align: 'center', letterSpacing: 1.4 });
       };
       for (let i = 0; i < 24 && target - sy > 140; i++) {
-        const hh = target - sy >= 620 ? 600 : 200;
+        let hh = target - sy >= 620 ? 600 : 200;
+        const at = clearOfBreaks(avoid, sy, hh);
+        // the space above a page edge takes a smaller advertisement, not a hole
+        if (at !== sy && at - sy - 20 >= 140) hh = Math.min(hh, at - sy - 36);
+        else sy = at;
         if (sy + hh > target + 40) break;
         adBox(sy, hh); sy += hh + 20;
       }
       const rest = target - sy;
-      if (rest > 80) { adBox(sy, rest); sy += rest; }
+      if (rest > 80 && clearOfBreaks(avoid, sy, rest) === sy) { adBox(sy, rest); sy += rest; }
       sideBottom = sy - 20;
     }
+    for (let i = railFrom; i < b.blocks.length; i++) b.blocks[i].rail = true;
 
     y = Math.max(y, sideBottom) + 24;
     // the footer of the site
@@ -1726,7 +1757,9 @@
     box.h = Math.max(150, iy + 44 - by);
     // whatever else the board keeps in its column: other threads, the rules,
     // the advertisement — down to the foot of the thread
-    const railEnd = placeModules(b, modulesFor(chrome, 'thread', 'rail'), bx, by + box.h + 18, SIDE, S, { max: 4, until: y - 40, slack: 120 });
+    const railFrom = b.blocks.length;
+    const railEnd = placeModules(b, modulesFor(chrome, 'thread', 'rail'), bx, by + box.h + 18, SIDE, S, { max: 4, until: y - 40, slack: 120, avoid: d.pageEdges || null });
+    for (let i = railFrom; i < b.blocks.length; i++) b.blocks[i].rail = true;
     y = Math.max(y, railEnd + 10, by + box.h + 20);
     const belowThread = modulesFor(chrome, 'thread', 'below');
     if (belowThread.length) y = placeModules(b, belowThread, PAD, y + 10, MAIN, S, { max: 3 }) + 6;
@@ -1938,6 +1971,12 @@
    */
   function pressModel(m, chrome, d, measure) {
     const base = pressLayout(m, chrome, d, measure, 0);
+    // fitting to the page limit: the lead picture at its smallest
+    if (d.fit && d.fit.has('photo') && base.photo) {
+      const small = pressLayout(m, chrome, d, measure, base.photo.min);
+      small.model.pageMode = 'paper';
+      return small.model;
+    }
     let best = base;
     const p = base.photo;
     if (p) {
@@ -1962,6 +2001,7 @@
         }
       }
     }
+    best.model.pageMode = 'paper';
     return best.model;
   }
 
@@ -2759,17 +2799,30 @@
       }
       const indent = i > 0 ? 24 : 0;
       const lines = wrapIndent(p, font, inner, measure, indent);
+      const grp = ++b.groups;
       lines.forEach((l, k) => {
         const x = L + (k === 0 ? indent : 0);
         const width = inner - (k === 0 ? indent : 0);
-        if (k === lines.length - 1) b.text(x, y + k * lh, l, font, { color: INK, role: 'body' });
-        else justifyLine(b, x, y + k * lh, l, font, width, measure, { color: INK, role: 'body' });
+        const o = { color: INK, role: 'body', grp, li: k, ln: lines.length };
+        if (k === lines.length - 1) b.text(x, y + k * lh, l, font, o);
+        else justifyLine(b, x, y + k * lh, l, font, width, measure, o);
       });
       y += lines.length * lh;
     });
-    b.text(W / 2, y + 46, String(chrome.pageLabel || ''), { family: SERIF, size: 11 }, { color: '#78716C', align: 'center' });
-    const model = paperFinish(b, W, y + 76 + P, d);
-    // the shadow of the binding along the inner edge of the page
+    // A longer text goes on over the next pages of the book: each page with
+    // the running head (the title of the piece) and its own page number.
+    const pageW = W - 2 * P;
+    const label = String(chrome.pageLabel || '');
+    const num = /\d+/.exec(label);
+    const model = pagedPaper(b, W, d, {
+      pageH: Math.round(pageW * 1.5), top: 104, bottom: 84,
+      decorate(out, box, k, n) {
+        if (k > 0) out.text(W / 2, box.y + 52, upper(clipText(m.content.title, 60)), { family: SERIF, size: 9.5 }, { color: '#8A8578', align: 'center', letterSpacing: 2.6 });
+        const pl = num ? label.replace(num[0], String(Number(num[0]) + k)) : (n > 1 ? String(k + 1) : label);
+        out.text(W / 2, box.y + box.h - 38, pl, { family: SERIF, size: 11 }, { color: '#78716C', align: 'center' });
+      },
+    });
+    // the shadow of the binding along the inner edge of every page
     model.finish.gutter = { x: P, w: 58 };
     return model;
   }
@@ -2802,9 +2855,11 @@
     // the writing: every line on its rule, with the small unevenness of a hand
     list(m.content.paragraphs).forEach((para, pi) => {
       const font = { family: HAND, size: 21 };
-      wrapIndent(para, font, inner, measure, pi ? 16 : 0).forEach((l, k) => {
+      const lines = wrapIndent(para, font, inner, measure, pi ? 16 : 0);
+      const grp = ++b.groups;
+      lines.forEach((l, k) => {
         const jitter = ((pi * 7 + k * 13) % 5) - 2;
-        b.text(L + (k === 0 && pi ? 16 : 0) + jitter, rule(n) - 7, l, { family: HAND, size: 21 + (jitter % 2) * 0.3 }, { color: ink, role: 'body' });
+        b.text(L + (k === 0 && pi ? 16 : 0) + jitter, rule(n) - 7, l, { family: HAND, size: 21 + (jitter % 2) * 0.3 }, { color: ink, role: 'body', grp, li: k, ln: lines.length });
         n += 1;
       });
       n += 1;
@@ -2812,7 +2867,7 @@
     // a picture stuck into the diary, slightly askew, with tape over the corners
     let bottom = rule(n + 1) + 10;
     if (photo.isSubject(chrome.photoSubject)) {
-      const pw = Math.min(260, inner * 0.6), ph = Math.round(pw * 0.78);
+      const pw = Math.min(d.fit && d.fit.has('photo') ? 190 : 260, inner * 0.6), ph = Math.round(pw * 0.78);
       const px = L + (inner - pw) / 2, py = bottom + 12;
       b.rect(px - 10, py - 10, pw + 20, ph + 44, { fill: '#FFFDF8', shadow: 'soft' });
       b.photo(px, py, pw, ph, { subject: chrome.photoSubject, seed: photo.hashOf(m.content.title || 'diary'), colour: true, frame: false, picRole: 'lead' });
@@ -2823,14 +2878,21 @@
       bottom = py + ph + 56;
     }
 
-    // the ruling, the red margin and the punched holes go under the writing
-    const under = [];
-    for (let ry = top; ry < bottom; ry += lh) under.push({ type: 'line', x1: P + 16, y1: ry, x2: W - P - 16, y2: ry, color: '#CBDDF6', width: 1 });
-    under.push({ type: 'line', x1: L - 22, y1: P + 6, x2: L - 22, y2: bottom, color: '#F4A6A6', width: 1.5 });
-    b.blocks.unshift(...under);
-    const holes = [0.22, 0.5, 0.78].map(f => ({ type: 'circle', x: P + 24, y: P + (bottom - P) * f, r: 9, fill: '#D8D2C6' }));
-    b.blocks.push(...holes);
-    return paperFinish(b, W, bottom + P, d);
+    // The ruling, the red margin and the punched holes belong to every sheet
+    // of the notebook; the writing goes on over the next sheet on its rules.
+    const pageW = W - 2 * P;
+    return pagedPaper(b, W, d, {
+      pageH: Math.round(pageW * A4_RATIO), top: 34 + 2 * lh - 26, bottom: 30, grid: lh,
+      decorate(out, box, k, nPages) {
+        const end = box.y + box.h - 10;
+        const under = [];
+        for (let ry = box.y + (top - P); ry < end; ry += lh) under.push({ type: 'line', x1: P + 16, y1: ry, x2: W - P - 16, y2: ry, color: '#CBDDF6', width: 1 });
+        under.push({ type: 'line', x1: L - 22, y1: box.y + 6, x2: L - 22, y2: end, color: '#F4A6A6', width: 1.5 });
+        out.blocks.unshift(...under);
+        [0.22, 0.5, 0.78].forEach(f => out.circle(P + 24, box.y + (box.h) * f, 9, { fill: '#D8D2C6' }));
+        if (nPages > 1 && k > 0) out.text(R, box.y + (top - P) + lh - 7, '(' + (k + 1) + ')', { family: HAND, size: 19 }, { color: '#475569', align: 'right' });
+      },
+    });
   }
 
   /** A printed sheet: report, info sheet, or any screen text forced onto paper. */
@@ -2872,7 +2934,7 @@
     paras.forEach((p, i) => {
       y = b.para(L, y, p, font, inner, { color: '#1C1917', role: 'body', lineHeight: 22 }) + 16;
       if (i === figureAt) {
-        const fw = Math.min(inner, 460), fh = Math.round(fw * 0.5);
+        const fw = Math.min(inner, d.fit && d.fit.has('photo') ? 320 : 460), fh = Math.round(fw * 0.5);
         const fx = L + (inner - fw) / 2;
         b.rect(fx - 8, y - 2, fw + 16, fh + 46, { fill: '#F5F3EE', radius: 4 });
         b.photo(fx, y + 6, fw, fh, { subject: chrome.photoSubject, seed: photo.hashOf(m.content.title || 'fig'), colour: true, print: true, picRole: 'lead' });
@@ -2886,14 +2948,29 @@
     const S = moduleStyle({ accent, ui: SANS, title: SANS, body: SANS });
     const sheetMods = modulesFor(chrome, 'print', 'column').concat(modulesFor(chrome, 'print', 'below'));
     if (sheetMods.length) y = placeModules(b, sheetMods, L, y + 6, inner, S, { max: 2 }) + 6;
-    b.line(L, y, R, y, { color: '#D6D3D1' });
-    b.text(L, y + 22, String(chrome.footerNote || ''), { family: SANS, size: 10 }, { color: '#78716C' });
-    if (chrome.pageLabel) {
-      const f = { family: SANS, size: 10, weight: 700 };
-      const w = approxMeasure(chrome.pageLabel, f) + 20;
-      b.pill(R - w, y + 8, w, 20, chrome.pageLabel, f, { fill: '#EDEAE3', color: '#78716C' });
-    }
-    const model = paperFinish(b, W, y + 52 + P, d);
+    // Every sheet carries the foot line with the note and its page number;
+    // a following sheet repeats the name and the title small at its head.
+    const pageW = W - 2 * P;
+    const model = pagedPaper(b, W, d, {
+      pageH: Math.round(pageW * A4_RATIO), top: 96, bottom: 70,
+      decorate(out, box, k, n) {
+        if (k > 0) {
+          const hy = box.y + 46;
+          out.text(L, hy, name, { family: SANS, size: 11, weight: 800 }, { color: '#1C1917' });
+          out.text(R, hy, clipText(meta.subject || m.content.title, 70), { family: SANS, size: 10 }, { color: '#78716C', align: 'right' });
+          out.line(L, hy + 10, R, hy + 10, { color: accent, width: 1.5 });
+        }
+        const fy = box.y + box.h - 52;
+        out.line(L, fy, R, fy, { color: '#D6D3D1' });
+        out.text(L, fy + 22, String(chrome.footerNote || ''), { family: SANS, size: 10 }, { color: '#78716C' });
+        const pl = n > 1 ? (k + 1) + ' / ' + n : String(chrome.pageLabel || '');
+        if (pl) {
+          const f = { family: SANS, size: 10, weight: 700 };
+          const w = (b.measure || approxMeasure)(pl, f) + 24;
+          out.pill(R - w, fy + 8, w, 20, pl, f, { fill: '#EDEAE3', color: '#78716C' });
+        }
+      },
+    });
     // a staple in the top corner, as a handout from the copier has
     model.blocks.push({ type: 'line', x1: P + 20, y1: P + 34, x2: P + 46, y2: P + 20, color: '#A8A29E', width: 3 });
     model.blocks.push({ type: 'line', x1: P + 22, y1: P + 37, x2: P + 48, y2: P + 23, color: '#E7E2D6', width: 1.4 });
@@ -2934,6 +3011,204 @@
     // background blocks were drawn tall on purpose; clip them to the real height
     const blocks = b.blocks.map(x => (x.type === 'rect' && x.h > h ? Object.assign({}, x, { h }) : x));
     return { width, height: h, blocks };
+  }
+
+  /* ------------------------------------------------------------------ */
+  /* Pages: every medium on the A4 pages it may fill (concept §37)        */
+  /* ------------------------------------------------------------------ */
+
+  /*
+   * A page edge may never run through a line of text, a picture, a button or
+   * a box: those are atoms. Backgrounds — the page of a site, the card of a
+   * long post, the wallpaper of a chat, the rule down a margin — may be cut:
+   * a screenshot that goes on over the next page shows them on both.
+   */
+  const ATOM_SHARE = 0.4;   // a box taller than this share of a page is a background
+  function blockSpan(b) {
+    if (b.type === 'text') { const s = b.font ? b.font.size : 12; return [b.y - s * 0.86, b.y + s * 0.3]; }
+    if (b.type === 'line') return [Math.min(b.y1, b.y2), Math.max(b.y1, b.y2)];
+    if (b.type === 'circle') return [b.y - b.r, b.y + b.r];
+    if (b.type === 'poly') { const ys = (b.points || []).map(p => p[1]); return [Math.min.apply(null, ys), Math.max.apply(null, ys)]; }
+    if (b.type === 'icon') return [b.y, b.y + (b.size || 0)];
+    return [b.y || 0, (b.y || 0) + (b.h || 0)];
+  }
+  function isAtom(b, pageH) {
+    if (b.page || b.deco === 'span') return false;
+    const [t, u] = blockSpan(b);
+    if (b.type === 'text' || b.type === 'photo' || b.type === 'icon' || b.type === 'circle' || b.type === 'poly') return true;
+    return u - t <= pageH * ATOM_SHARE;
+  }
+  /** A heading or a label belongs to what follows it: no page ends under one. */
+  function isHeading(b) {
+    return b.type === 'text' && b.role !== 'body' && b.role !== 'quote' && !!b.font && (b.font.weight || 400) >= 700 && b.font.size >= 13;
+  }
+
+  /**
+   * Where the pages break. `limitOf(k, start)` is the lowest point page k may
+   * reach when its content starts at `start`. A break is only ever put into
+   * a gap between atoms; among the gaps near the foot of the page the one
+   * between two paragraphs wins over one inside a paragraph, and a gap that
+   * would leave a heading at the foot of a page, or a single line of a
+   * paragraph alone on either page, is avoided. Returns the segments
+   * [{ start, end }] of content, in the coordinates of the unbroken picture.
+   */
+  function pageBreaks(blocks, from, contentEnd, pageH, limitOf) {
+    const atoms = blocks.filter(b => isAtom(b, pageH)).map(b => { const [t, u] = blockSpan(b); return { t, u, b }; }).filter(a => a.u > from - 0.5);
+    atoms.sort((a, z) => a.t - z.t);
+    // the free gaps: where no atom stands, across the whole width
+    const gaps = [];
+    let reach = from;
+    for (const a of atoms) {
+      if (a.t > reach + 0.5) gaps.push({ top: reach, bottom: a.t });
+      reach = Math.max(reach, a.u);
+    }
+    const segments = [];
+    let start = from, forced = false;
+    for (let k = 0; k < 60; k++) {
+      const limit = limitOf(k, start);
+      if (contentEnd <= limit + 0.5) { segments.push({ start, end: contentEnd }); break; }
+      const room = Math.max(1, limit - start);
+      let best = null;
+      for (const g of gaps) {
+        if (g.top <= start + 1 || g.top > limit) continue;
+        const above = atoms.filter(a => a.u <= g.top + 0.5 && a.u > g.top - 3);
+        const below = atoms.filter(a => a.t >= g.bottom - 0.5 && a.t < g.bottom + 3);
+        let score = (g.top - start) / room;
+        if (above.some(a => isHeading(a.b))) score -= 0.6;
+        const lineA = above.find(a => a.b.grp), lineB = below.find(a => a.b.grp);
+        if (lineA && lineB && lineA.b.grp === lineB.b.grp) {
+          score -= 0.05;
+          // a paragraph is split: two lines at least on either page
+          if (lineA.b.li < 1 || lineB.b.ln - lineB.b.li < 2) score -= 0.4;
+        }
+        if (g.bottom - g.top >= 12) score += 0.03;
+        if (!best || score > best.score) best = { g, score };
+      }
+      if (!best || best.score < 0.35) {
+        // nothing good near the foot: the latest gap there is at all
+        const last = gaps.filter(g => g.top > start + 1 && g.top <= limit).pop();
+        if (last) best = { g: last, score: 0 };
+      }
+      if (!best) {
+        // an atom taller than the page: it is cut, and the cut is reported
+        forced = true;
+        segments.push({ start, end: limit });
+        start = limit;
+        continue;
+      }
+      segments.push({ start, end: best.g.top });
+      start = best.g.bottom;
+    }
+    segments.forced = forced;
+    return segments;
+  }
+
+  /*
+   * A screen medium is printed the way a long page is: as screenshots one
+   * under the other, each an A4 page. The picture itself stays one piece;
+   * the pages are windows onto it that never cut through an atom.
+   */
+  const SHOT_PAD = 18;
+  // a messenger is printed as phone screens: one screen, as tall as a phone's, per page
+  const PHONE_RATIO = 2;
+  function paginateScreen(model, opts) {
+    const W = model.width;
+    const pageH = Math.round(W * (model.kind === 'chat' ? PHONE_RATIO : A4_RATIO));
+    // first the text decides where the pages end, then the column beside it
+    // is filled around those edges (see drawMedium)
+    const blocks = opts && opts.withoutRail ? model.blocks.filter(b => !b.rail) : model.blocks;
+    const atoms = blocks.filter(b => isAtom(b, pageH));
+    const contentEnd = Math.min(model.height, atoms.length ? Math.max.apply(null, atoms.map(b => blockSpan(b)[1])) : model.height);
+    if (model.height <= pageH) {
+      model.pages = [{ x: 0, y: 0, w: W, h: model.height }];
+      model.pageMode = 'screen';
+      return model;
+    }
+    const segs = pageBreaks(blocks, 0, contentEnd, pageH, (k, start) => (k === 0 ? pageH - SHOT_PAD : start + pageH - 2 * SHOT_PAD));
+    // the windows never overlap: a line near the edge is on one page only
+    const pad = (i) => (i < segs.length - 1 ? Math.min(SHOT_PAD, (segs[i + 1].start - segs[i].end) / 2) : SHOT_PAD);
+    model.pages = segs.map((s, i) => {
+      const top = i === 0 ? 0 : Math.max(0, s.start - pad(i - 1));
+      const bottom = i === segs.length - 1 ? model.height : Math.min(model.height, s.end + pad(i));
+      // exact edges, not rounded: a rounded edge can reach into the next line
+      return { x: 0, y: top, w: W, h: Math.min(pageH, bottom - top) };
+    });
+    model.pageMode = 'screen';
+    if (segs.forced) model.pageCut = true;
+    return model;
+  }
+
+  /*
+   * A paper medium is printed on real sheets: what does not fit on the first
+   * page goes on to the next sheet, below the head that page carries, and
+   * every page gets its furniture (running head, page number, the ruling of
+   * a notebook). `spec`:
+   *   pageH   — height of a sheet
+   *   top     — where the text starts again on a following sheet
+   *   bottom  — what the foot of every sheet keeps free
+   *   grid    — the text must stay on this grid (the rules of a notebook)
+   *   decorate(b, box, k, n) — draws the furniture of sheet k of n
+   */
+  function pagedPaper(b, W, d, spec) {
+    const P = PAGE_PAD;
+    const pageW = W - 2 * P;
+    const pageH = spec.pageH || Math.round(pageW * A4_RATIO);
+    const top = spec.top || 60, bottom = spec.bottom || 60;
+    const content = b.blocks.filter(x => x.deco !== 'span');
+    const atoms = content.filter(x => isAtom(x, pageH));
+    const end = atoms.length ? Math.max.apply(null, atoms.map(x => blockSpan(x)[1])) : P + 100;
+    const sheetTop = (k) => P + k * (pageH + PAGE_GAP);
+    const shift = [];
+    const segs = pageBreaks(content, 0, end, pageH, (k, start) => {
+      if (k === 0) return P + pageH - bottom;
+      return start + (pageH - top - bottom);
+    });
+    segs.forEach((s, k) => {
+      if (!k) { shift.push(0); return; }
+      let dy = sheetTop(k) + top - s.start;
+      if (spec.grid) {
+        const base = sheetTop(k) - sheetTop(0);
+        dy = base + Math.ceil((dy - base) / spec.grid - 1e-6) * spec.grid;
+      }
+      shift.push(dy);
+    });
+    const segOf = (y) => { let k = 0; for (let i = 1; i < segs.length; i++) if (y >= segs[i].start - 0.5) k = i; return k; };
+    const moved = [];
+    const move = (x, dy) => {
+      if (!dy) return x;
+      const o = Object.assign({}, x);
+      if (o.type === 'line') { o.y1 += dy; o.y2 += dy; }
+      else if (o.type === 'poly') o.points = o.points.map(([px, py]) => [px, py + dy]);
+      else o.y += dy;
+      return o;
+    };
+    for (const x of content) {
+      const [t, u] = blockSpan(x);
+      const k0 = segOf(t), k1 = segOf(u - 0.5);
+      if (k0 === k1 || isAtom(x, pageH)) { moved.push(move(x, shift[k0])); continue; }
+      // a background that runs over a break: one piece on every sheet
+      for (let k = k0; k <= k1; k++) {
+        const a = Math.max(t, k === k0 ? t : segs[k].start), z = Math.min(u, k === k1 ? u : segs[k].end);
+        if (z <= a) continue;
+        if (x.type === 'line') moved.push(move(Object.assign({}, x, { y1: a, y2: z }), shift[k]));
+        else if (x.type === 'rect' || x.type === 'wallpaper' || x.type === 'gradient') moved.push(move(Object.assign({}, x, { y: a, h: z - a }), shift[k]));
+      }
+    }
+    const n = segs.length;
+    const lastBottom = segs[n - 1].end + shift[n - 1];
+    // the last sheet ends under its content, like the last page of the paper
+    const lastH = Math.max(Math.round(pageH * 0.3), Math.round(Math.min(pageH, lastBottom + bottom - sheetTop(n - 1))));
+    const pages = segs.map((_, k) => ({ x: P, y: sheetTop(k), w: pageW, h: k === n - 1 ? lastH : pageH }));
+    const out = builder(W, b.measure);
+    out.blocks.push(...moved);
+    if (spec.decorate) pages.forEach((box, k) => spec.decorate(out, box, k, n));
+    // the spanning decorations the model drew for the unbroken page are drawn
+    // again per sheet by `decorate`; without it they stay under the first
+    if (!spec.decorate) out.blocks.unshift(...b.blocks.filter(x => x.deco === 'span'));
+    const model = paperFinish(out, W, sheetTop(n - 1) + lastH + P, d, pages);
+    model.pageMode = 'paper';
+    if (segs.forced) model.pageCut = true;
+    return model;
   }
 
   /* ------------------------------------------------------------------ */
@@ -2994,7 +3269,7 @@
     const pages = (model && Array.isArray(model.pages) && model.pages.length) ? model.pages : null;
     if (!pages) return [{ x: 0, y: 0, w: model.width, h: model.height }];
     const photographed = model.finish && model.finish.rotate;
-    const m = photographed ? PAGE_PAD * (model.scaledBy || 1) : 1;
+    const m = photographed ? PAGE_PAD * (model.scaledBy || 1) : model.pageMode === 'screen' ? 0 : 1;
     return pages.map(p => {
       const x = Math.max(0, p.x - m), y = Math.max(0, p.y - m);
       return { x, y, w: Math.min(model.width - x, p.w + 2 * m), h: Math.min(model.height - y, p.h + 2 * m) };
@@ -3002,9 +3277,16 @@
   }
   /** On which page a block stands (by its top). */
   function blockPage(b, boxes) {
-    const top = b.type === 'line' ? Math.min(b.y1, b.y2) : b.type === 'text' ? b.y - (b.font ? b.font.size * 0.8 : 0) : b.type === 'circle' ? b.y - b.r : b.y;
+    const top = b.type === 'text' ? b.y - (b.font ? b.font.size * 0.8 : 0) : blockSpan(b)[0];
     for (let i = boxes.length - 1; i >= 0; i--) if (top >= boxes[i].y - PAGE_GAP / 2) return i;
     return 0;
+  }
+
+  /** The pages a binding shadow runs along: every sheet, or the one page. */
+  function gutterPages(model) {
+    const fin = model.finish || {};
+    if (Array.isArray(model.pages) && model.pages.length) return model.pages;
+    return [fin.page || { x: 0, y: 0, w: model.width, h: model.height }];
   }
 
   function toSVG(model, opts) {
@@ -3012,7 +3294,12 @@
     // one page of a printed medium: the same drawing, cropped to that page
     const boxes = o.page != null ? pageBoxes(model) : null;
     const box = boxes ? boxes[Math.max(0, Math.min(boxes.length - 1, o.page))] : null;
-    const onPage = box ? (b) => blockPage(b, boxes) === boxes.indexOf(box) : () => true;
+    // a screenshot page is a window onto the one picture: whatever reaches
+    // into it is drawn (the window cuts it); a sheet of paper holds what
+    // stands on it
+    const onPage = !box ? () => true
+      : model.pageMode === 'screen' ? (b) => { const [t, u] = blockSpan(b); const pg = model.pages[boxes.indexOf(box)]; return u > pg.y && t < pg.y + pg.h; }
+      : (b) => blockPage(b, boxes) === boxes.indexOf(box);
     const W = model.width, H = model.height;
     const uid = 'lr' + (o.uid || photo.hashOf(String(model.blocks.length) + W + H));
     const defs = [];
@@ -3110,7 +3397,8 @@
     if (fin && fin.gutter) {
       const gid = id('gut');
       defs.push(`<linearGradient id="${gid}" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="rgb(60,50,35)" stop-opacity=".3"/><stop offset=".55" stop-color="rgb(60,50,35)" stop-opacity=".08"/><stop offset="1" stop-color="rgb(60,50,35)" stop-opacity="0"/></linearGradient>`);
-      out.push(`<rect x="${fmt(fin.gutter.x)}" y="${fmt(fin.page ? fin.page.y : 0)}" width="${fmt(fin.gutter.w)}" height="${fmt(fin.page ? fin.page.h : H)}" fill="url(#${gid})"/>`);
+      // along the binding of every page of the book
+      for (const pg of gutterPages(model)) out.push(`<rect x="${fmt(fin.gutter.x)}" y="${fmt(pg.y)}" width="${fmt(fin.gutter.w)}" height="${fmt(pg.h)}" fill="url(#${gid})"/>`);
     }
     if (fin && fin.grain) {
       // the grain of the paper lies on the paper, not on the table around a flat page
@@ -3306,25 +3594,163 @@
     return model;
   }
 
-  function buildModel(material, chrome, opts) {
-    opts = opts || {};
-    const measure = opts.measure || approxMeasure;
+  /*
+   * The page limit (concept §37). The teacher says how many A4 pages the
+   * text may fill in its medium, 1 to 4. When the medium needs more, the
+   * page is made up again the way a make-up editor would, one step at a
+   * time, each step only if the one before was not enough: the lead picture
+   * at its smallest, the lines set closer, no pull quote, fewer things
+   * beside the text, none, no second picture. The type is never made
+   * smaller and the text is never cut — what still does not fit is reported
+   * (`pageFit.over`), and the text is shortened by Claude, not by the layout.
+   */
+  const PAGE_LIMIT_MIN = 1, PAGE_LIMIT_MAX = 4;
+  const FIT_STEPS = [
+    { key: 'photo', label: 'kleineres Aufmacherbild' },
+    { key: 'dense', label: 'engerer Satz' },
+    { key: 'quote', label: 'ohne Zitatkasten' },
+    { key: 'modules', label: 'weniger Elemente neben dem Text' },
+    { key: 'bare', label: 'keine Elemente neben dem Text' },
+    { key: 'figure', label: 'ohne zweites Bild' },
+  ];
+  /** The page limit a material asks for, or null (no limit). */
+  function pageLimitOf(settings) {
+    const s = settings || {};
+    if (s.kind && s.kind !== 'reading') return null;
+    const n = Math.round(Number(s.a4Pages));
+    return n >= PAGE_LIMIT_MIN && n <= PAGE_LIMIT_MAX ? n : null;
+  }
+  function mediumKeyOf(d) { return d.kind === 'print' ? 'print' : d.kind; }
+
+  /** The material and the interface as one fitting step leaves them. */
+  function fittedInput(material, chrome, d, fit) {
+    if (!fit.size) return { m: material, c: chrome };
+    const c = Object.assign({}, chrome);
+    const comp = Object.assign({}, chrome.composition && typeof chrome.composition === 'object' ? chrome.composition : {});
+    if (fit.has('dense')) comp.density = 'dense';
+    if (fit.has('quote')) comp.pullQuote = '';
+    if (fit.has('figure')) comp.figure = null;
+    c.composition = comp;
+    let m = material;
+    if (fit.has('quote') && material.content && material.content.meta && material.content.meta.pullQuote) {
+      const meta = Object.assign({}, material.content.meta);
+      delete meta.pullQuote;
+      m = Object.assign({}, material, { content: Object.assign({}, material.content, { meta }) });
+    }
+    if (fit.has('modules') || fit.has('bare')) {
+      // the column beside the text grows with the text and costs no page
+      const key = mediumKeyOf(d);
+      const mods = list(chrome.modules);
+      const beside = (mod) => key !== 'print' && modulesFor({ modules: [mod] }, key, 'rail').length > 0;
+      const rest = mods.filter(x => !beside(x));
+      const keep = fit.has('bare') ? [] : rest.slice(0, Math.floor(rest.length / 2));
+      c.modules = mods.filter(x => beside(x) || keep.includes(x));
+    }
+    return { m, c };
+  }
+
+  /** One drawing of the medium, broken into its pages. */
+  function drawMedium(material, chrome, measure, fit, edges) {
     const d = layoutFor(material);
+    d.pageEdges = edges || null;
     if (d.kind === 'print') d.look = paperLook(material.settings, d);
-    const c = chrome || {};
-    const model = d.kind === 'print' ? (d.print.kind === 'press' ? pressModel(material, c, d, measure)
-        : d.print.kind === 'book' ? bookModel(material, c, d, measure)
-        : d.print.kind === 'notebook' ? notebookModel(material, c, d, measure)
-        : sheetModel(material, c, d, measure))
-      : d.kind === 'mail' ? mailModel(material, c, d, measure)
-      : d.kind === 'thread' ? threadModel(material, c, d, measure)
-      : d.kind === 'chat' ? chatModel(material, c, d, measure)
-      : pageModel(material, c, d, measure);
+    d.fit = fit;
+    const inp = fittedInput(material, chrome || {}, d, fit);
+    const m = inp.m, c = inp.c;
+    const model = d.kind === 'print' ? (d.print.kind === 'press' ? pressModel(m, c, d, measure)
+        : d.print.kind === 'book' ? bookModel(m, c, d, measure)
+        : d.print.kind === 'notebook' ? notebookModel(m, c, d, measure)
+        : sheetModel(m, c, d, measure))
+      : d.kind === 'mail' ? mailModel(m, c, d, measure)
+      : d.kind === 'thread' ? threadModel(m, c, d, measure)
+      : d.kind === 'chat' ? chatModel(m, c, d, measure)
+      : pageModel(m, c, d, measure);
     model.kind = d.kind;
     model.medium = d.medium || 'screen';
     model.label = d.label;
     model.designId = core.designIdFor(material.settings || {});
     fitChromeText(model, measure);
+    // a screen medium becomes a series of screenshots; paper comes in sheets already
+    if (!model.pageMode) {
+      if (d.kind === 'print') model.pageMode = 'paper';
+      else if (!edges && model.blocks.some(b => b.rail)) {
+        // the text decides the page edges; the column beside it is then
+        // drawn again so that none of its boxes is cut by an edge
+        const probe = paginateScreen(Object.assign({}, model, { blocks: model.blocks }), { withoutRail: true });
+        if (probe.pages.length > 1) return drawMedium(material, chrome, measure, fit, probe.pages.slice(1).map(p => p.y));
+        paginateScreen(model);
+      } else paginateScreen(model);
+    }
+    return model;
+  }
+
+  function pageCount(model) { return Array.isArray(model.pages) && model.pages.length ? model.pages.length : 1; }
+  /**
+   * How far the text reaches, in pages: 2.25 is two full pages and a quarter
+   * of the third. Measured from the lines of the text itself.
+   */
+  function pageReach(model) {
+    const pages = Array.isArray(model.pages) && model.pages.length ? model.pages : [{ x: 0, y: 0, w: model.width, h: model.height }];
+    const full = Math.max.apply(null, pages.map(p => p.h));
+    const last = pages[pages.length - 1];
+    const body = (model.blocks || []).filter(b => b.type === 'text' && b.role === 'body' && b.y >= last.y - 1 && b.y <= last.y + last.h + 1);
+    const lines = new Set(body.map(b => Math.round(b.y)));
+    const low = body.length ? Math.max.apply(null, body.map(b => b.y)) : last.y;
+    return { reach: pages.length - 1 + Math.max(0, Math.min(1, (low - last.y) / Math.max(1, full))), lastLines: lines.size, lastShare: last.h / Math.max(1, full) };
+  }
+  /** A last page with a few lines of the text only, or with nothing but the footer. */
+  function isRunt(model) {
+    if (pageCount(model) < 2) return false;
+    const r = pageReach(model);
+    return (r.lastLines > 0 && r.lastLines < 6) || r.lastShare < 0.2;
+  }
+
+  function buildModel(material, chrome, opts) {
+    opts = opts || {};
+    const measure = opts.measure || approxMeasure;
+    const limit = opts.pageLimit !== undefined ? (opts.pageLimit || null) : pageLimitOf(material.settings);
+    let fit = new Set();
+    let model = drawMedium(material, chrome, measure, fit);
+    const natural = pageCount(model);
+    const fitTo = (target) => {
+      // one step after the other until the medium fits, then every step that
+      // turns out not to be needed is taken back
+      const tried = new Set();
+      let hit = null, least = null;
+      for (const st of FIT_STEPS) {
+        tried.add(st.key);
+        const cand = drawMedium(material, chrome, measure, new Set(tried));
+        if (!least || pageCount(cand) < pageCount(least.model)) least = { model: cand, fit: new Set(tried) };
+        if (pageCount(cand) <= target) { hit = { model: cand, fit: new Set(tried) }; break; }
+      }
+      if (!hit) return least;
+      for (const st of FIT_STEPS.slice().reverse()) {
+        if (!hit.fit.has(st.key)) continue;
+        const fewer = new Set(hit.fit); fewer.delete(st.key);
+        const cand = drawMedium(material, chrome, measure, fewer);
+        if (pageCount(cand) <= target) hit = { model: cand, fit: fewer };
+      }
+      return hit;
+    };
+    let why = '';
+    if (limit && natural > limit) {
+      // over the limit: the make-up gives way; if even that is not enough the
+      // page keeps its normal make-up and the text has to become shorter
+      const r = fitTo(limit);
+      why = 'limit';
+      if (r && pageCount(r.model) <= limit) { model = r.model; fit = r.fit; }
+    } else if (isRunt(model)) {
+      // a last page with three lines on it: pulled back when the page allows
+      const r = fitTo(natural - 1);
+      if (r && pageCount(r.model) < natural) { model = r.model; fit = r.fit; why = 'runt'; }
+    }
+    const pages = pageCount(model);
+    const reach = pageReach(model);
+    model.pageFit = {
+      limit, pages, natural, reach: Math.round(reach.reach * 100) / 100,
+      steps: FIT_STEPS.filter(st => fit.has(st.key)).map(st => st.key), why,
+      over: !!(limit && pages > limit), runt: isRunt(model), cut: !!model.pageCut,
+    };
     return fitModel(model);
   }
 
@@ -3663,7 +4089,7 @@
       g.addColorStop(0.55, 'rgba(60,50,35,.08)');
       g.addColorStop(1, 'rgba(60,50,35,0)');
       ctx.fillStyle = g;
-      ctx.fillRect(fin.gutter.x, fin.page ? fin.page.y : 0, fin.gutter.w, fin.page ? fin.page.h : H);
+      for (const pg of gutterPages(model)) ctx.fillRect(fin.gutter.x, pg.y, fin.gutter.w, pg.h);
     }
     if (fin.vignette) {
       const g = ctx.createRadialGradient(W / 2, H / 2, Math.min(W, H) * 0.35, W / 2, H / 2, Math.max(W, H) * 0.72);
@@ -3697,7 +4123,7 @@
     };
   }
 
-  return { LAYOUTS, CHROME_SPECS, ICONS, MAX_SIDE, PAPERS, A4_RATIO, paperLook, shade, hyphenPoints, wrapJustified, joinBody, svgBodyText, pageBoxes, fitChromeText,
+  return { LAYOUTS, CHROME_SPECS, ICONS, MAX_SIDE, PAPERS, A4_RATIO, PHONE_RATIO, FIT_STEPS, PAGE_LIMIT_MIN, PAGE_LIMIT_MAX, pageLimitOf, pageBreaks, paginateScreen, pagedPaper, pageReach, isRunt, clearOfBreaks, paperLook, shade, hyphenPoints, wrapJustified, joinBody, svgBodyText, pageBoxes, fitChromeText,
     credits, ownPicture, composition, verbatim, SUBJECTS: photo.SUBJECTS, isSubject: photo.isSubject, subjectFor: photo.subjectFor, subjectHints: photo.subjectHints, hashOf: photo.hashOf, layoutFor, chromeSpec, fallbackChrome, buildModel, fitModel, canvasScale, drawPhoto, drawIcon, bodyText, chromeText, validate, proportions, draw, toSVG, iconPath,
     MODULES, MODULE_KEYS, SHAPES, SHAPE_KEYS, MEDIUM_SLOTS, shapeOf, moduleRenderer, moduleHints, modulesFor, placeModules, moduleStyle, canvasMeasure, approxMeasure, wrap, fontString };
 });

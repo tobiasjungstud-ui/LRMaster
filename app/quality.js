@@ -855,6 +855,21 @@
           : (cols.length > 1 ? `${cols.length} columns, evenly filled (${cols.map(c => pct(c.filled)).join(' / ')}).` : `One column, the page ends ${pct(p.tail)} below the text.`);
         return finding(this, status, detail, { measured: { balance: Math.round(p.balance * 100) / 100, tail: Math.round(p.tail * 100) / 100, columns: cols.map(c => Math.round(c.filled * 100) / 100) } });
       } },
+    { id: 'layout.page_limit', group: 'layout', kind: 'deterministic', title: 'The text fits the pages it may fill', needsLayout: true, blocking: true, repair: 'content',
+      check(ctx) {
+        const f = pageFit({ settings: ctx.state, content: ctx.content, layout: ctx.layout });
+        if (!f.limit) return finding(this, 'pass', `${f.label}: ${f.pages} page(s), no page limit set.`, { measured: f });
+        const steps = f.steps.map(k => (mock.FIT_STEPS.find(x => x.key === k) || {}).label || k).join(', ');
+        if (f.over) {
+          return finding(this, 'fail', `${f.label} needs ${f.pages} A4 pages, ${f.limit} are allowed${steps ? ' — even with ' + steps : ''}. Shorten the text from ${f.words} to about ${f.fitWords} words: the layout already gives way where it can, and it never cuts the text or sets it smaller.`, { measured: f, fitWords: f.fitWords });
+        }
+        const notes = [];
+        if (f.cut) notes.push('an element taller than a page had to be cut by the page edge');
+        if (f.runt) notes.push('the last page carries only a few lines of the text');
+        if (ctx.state.lengthMode === 'a4' && f.reach < f.limit - 0.75) notes.push(`the text fills only ${f.reach} of the ${f.limit} pages`);
+        const done = `${f.label}: ${f.pages} of at most ${f.limit} page(s), the text reaches ${f.reach}` + (steps ? `; made up with ${steps}` : '') + '.';
+        return finding(this, notes.length ? 'warn' : 'pass', notes.length ? done + ' ' + notes.join('; ') + '.' : done, { measured: f, advisory: notes.length > 0 && !f.cut });
+      } },
     { id: 'layout.authentic', group: 'layout', kind: 'llm', title: 'The medium looks real and fits the text', needsLayout: true,
       criterion: 'the interface around the text (address, site or app name, navigation, buttons, counts, times) is what that medium really looks like and fits this text: same world, names, places and dates agree, nothing contradicts the text', failsWhen: 'the interface contradicts the text (other names, places, dates) or shows something this medium does not have', evidence: 'chrome', whenUnsure: 'pass', notMine: 'completeness of the interface fields and whether the picture shows the text unchanged — both are measured', blocking: false },
   ];
@@ -967,6 +982,75 @@
   function layoutModel(material, opts) {
     const chrome = (material.layout && material.layout.chrome) || {};
     return mock.buildModel(material, chrome, opts);
+  }
+
+  /**
+   * After the text was shortened to fit its pages, the editor's plan still
+   * points at paragraphs of the longer text: the second picture after ¶9, a
+   * crosshead before ¶12. Those places are moved into the shorter text
+   * instead of letting the picture or the crosshead silently fall away.
+   */
+  function fitComposition(chrome, paragraphs) {
+    const c = chrome && chrome.composition && typeof chrome.composition === 'object' ? chrome.composition : null;
+    const n = (paragraphs || []).length;
+    if (!c || !n) return chrome;
+    const comp = Object.assign({}, c);
+    if (comp.figure && typeof comp.figure === 'object' && Number(comp.figure.after) >= n) {
+      comp.figure = n >= 2 ? Object.assign({}, comp.figure, { after: Math.max(1, Math.floor(n / 2)) }) : null;
+    }
+    if (Array.isArray(comp.crossheads)) {
+      const seen = new Set();
+      comp.crossheads = comp.crossheads.map(h => (h && Number(h.before) >= n ? Object.assign({}, h, { before: n - 1 }) : h))
+        .filter(h => h && Number(h.before) >= 1 && !seen.has(Number(h.before)) && seen.add(Number(h.before)));
+    }
+    return Object.assign({}, chrome, { composition: comp });
+  }
+
+  /** The measure of the fonts the page is really set in, where there is a browser. */
+  function realMeasure() {
+    try {
+      return (typeof document !== 'undefined' && document.createElement) ? mock.canvasMeasure(document.createElement('canvas')) : undefined;
+    } catch (e) { return undefined; }
+  }
+
+  /**
+   * How the reading text fills the pages it may fill (concept §37), measured
+   * on the layout the teacher will print: the pages, how far the text itself
+   * reaches, the make-up steps the page needed, and — when it is too long —
+   * how many words it should have to fit. The estimate takes what one page
+   * of this medium held of this text, so it is the medium's own measure.
+   */
+  function pageFit(material) {
+    const measure = realMeasure();
+    const model = layoutModel(material, measure ? { measure } : undefined);
+    const pf = model.pageFit || { pages: 1, limit: null, reach: 1, steps: [], over: false };
+    const words = wordCount(((material.content && material.content.paragraphs) || []).join(' '));
+    const pages = Array.isArray(model.pages) && model.pages.length ? model.pages : [{ h: model.height }];
+    const full = Math.max.apply(null, pages.map(p => p.h));
+    const total = pages.length - 1 + pages[pages.length - 1].h / Math.max(1, full);
+    let fitWords = words;
+    if (pf.over && pf.limit) {
+      // How long may THIS text be in THIS medium? The page is laid out again
+      // with the first sentences of the text only, until the longest start
+      // that still fits is found — the medium's own answer, not a rule of thumb.
+      const paras = (material.content.paragraphs || []).map(p => String(p).match(/[^.!?]+[.!?]+["'\u2019\u201D)\]]*\s*|[^.!?]+$/g) || [String(p)]);
+      const flat = [];
+      paras.forEach((ss, pi) => ss.forEach(t => flat.push({ pi, t })));
+      const prefix = (k) => {
+        const out = [];
+        for (const x of flat.slice(0, k)) { out[x.pi] = (out[x.pi] ? out[x.pi] + ' ' : '') + x.t.trim(); }
+        return out.filter(Boolean);
+      };
+      const fits = (k) => {
+        const content = Object.assign({}, material.content, { paragraphs: prefix(k) });
+        const mm = layoutModel(Object.assign({}, material, { content }), measure ? { measure } : undefined);
+        return !(mm.pageFit && mm.pageFit.over);
+      };
+      let lo = 0, hi = flat.length;
+      for (let i = 0; i < 12 && hi - lo > 1; i++) { const mid = Math.floor((lo + hi) / 2); if (fits(mid)) lo = mid; else hi = mid; }
+      fitWords = lo ? Math.max(60, Math.floor(wordCount(prefix(lo).join(' ')) * 0.97 / 10) * 10) : 60;
+    }
+    return { label: model.label || 'The medium', pages: pf.pages, limit: pf.limit, reach: pf.reach, total: Math.round(total * 100) / 100, words, fitWords, over: !!pf.over, runt: !!pf.runt, cut: !!pf.cut, steps: pf.steps || [] };
   }
 
   /**
@@ -1224,7 +1308,7 @@
     repairable, repairPlan, problemScore, applyQuestionPatch, applyTaskPatch, applyPreTaskPatch, applyPostTaskPatch,
     changedQuestions, changedTasks, changedPreTasks, changedPostTasks, STRUCTURAL, applicableRules, runDeterministic,
     normalizePreTask, preTaskText, socialLabel, taskRules, normalizeChrome, mergeChrome, layoutModel, sharedRun,
-    photoCredits, layoutSVG, mediumOf, runContentChecks, llmRules, mergeReview, verdictSupported, blockingFailures, summarize,
+    photoCredits, layoutSVG, mediumOf, pageFit, fitComposition, runContentChecks, llmRules, mergeReview, verdictSupported, blockingFailures, summarize,
     chronologyReport, enforceChronology, normalizeGlossary, slimMeasurement,
   };
 });

@@ -332,7 +332,7 @@
     { key: 'customTextType', type: 'text', default: '', section: 4, mode: 'reading', simple: true, label: 'Custom text type' },
     { key: 'lengthMode', type: 'select', default: 'words', options: ['words', 'a4'], section: 4, mode: 'reading', simple: true, label: 'Length' },
     { key: 'wordCount', type: 'number', default: 450, min: 80, max: 2000, section: 4, mode: 'reading', simple: true, label: 'Word count' },
-    { key: 'a4Pages', type: 'select', default: '1', options: ['0.5', '1', '1.5', '2'], section: 4, mode: 'reading', simple: true, label: 'Approximate A4 length' },
+    { key: 'a4Pages', type: 'select', default: '2', options: ['1', '2', '3', '4'], migrate: { '0.5': '1', '1.5': '2' }, section: 4, mode: 'reading', simple: true, label: 'Pages (at most)' },
     { key: 'paragraphLength', type: 'select', default: 'medium', options: ['short', 'medium', 'long'], section: 9, mode: 'reading', simple: false, label: 'Paragraph length' },
     { key: 'dialogueProportion', type: 'range', default: 20, min: 0, max: 100, section: 9, mode: 'reading', simple: false, label: 'Dialogue proportion' },
     { key: 'styleBalance', type: 'range', default: 50, min: 0, max: 100, section: 9, mode: 'reading', simple: false, label: 'Narrative vs. informational style' },
@@ -421,6 +421,8 @@
           break;
         }
         case 'select': {
+          // an older stored value that has a new name (½ page → 1 page)
+          if (def.migrate && def.migrate[String(v)] !== undefined) { s[def.key] = def.migrate[String(v)]; break; }
           if (!def.options || def.options.some(o => String(o) === String(v))) {
             const opt = def.options ? def.options.find(o => String(o) === String(v)) : v;
             s[def.key] = opt === undefined ? v : opt;
@@ -472,13 +474,94 @@
 
   const WORDS_PER_A4 = 450;
 
-  /** Approximate word target for the text/script (concept §12 and §17). */
+  /*
+   * How many words fit on 1, 2, 3 and 4 A4 pages of a medium (concept §37).
+   * A page holds very different amounts: a newspaper page in three columns
+   * carries a thousand words, a handwritten diary page a hundred and fifty,
+   * a screenshot of a news site spends half its first page on the site
+   * itself. The numbers are measured with the layout engine and the fonts of
+   * the app (tests/calibrate.js prints them; the audit checks that they still
+   * hold) — the words a medium carries when its page is made up normally,
+   * with the pictures and the things around the text it usually has.
+   * `plain` is the text without its medium, typed on the worksheet.
+   */
+  const PAGE_CAPACITY = {
+    plain: [380, 880, 1380, 1880],
+  };
+  // measured by tests/calibrate.js (Chromium, fonts of the app)
+  const PAGE_CAPACITY_MEDIA = {
+    story: { screen: [270, 1140, 1750, 2490], paper: [210, 500, 780, 1060] },
+    article: { screen: [180, 760, 1490, 2240], paper: [810, 1970, 3110, 4160] },
+    blog: { screen: [160, 650, 1230, 1780], paper: [300, 690, 1160, 1630] },
+    interview: { screen: [180, 770, 1500, 2260], paper: [830, 1980, 3130, 4170] },
+    email: { screen: [500, 1260, 2030, 2790], paper: [300, 690, 1160, 1630] },
+    forum: { screen: [130, 400, 700, 990], paper: [320, 690, 1160, 1630] },
+    review: { screen: [190, 800, 1540, 2290], paper: [860, 2010, 3160, 4180] },
+    news: { screen: [120, 630, 1230, 1800], paper: [700, 1840, 2990, 4130] },
+    report: { screen: [270, 910, 1520, 2130], paper: [300, 690, 1160, 1630] },
+    diary: { screen: [320, 1180, 1820, 2560], paper: [110, 330, 540, 750] },
+    informational: { screen: [240, 730, 1310, 1890], paper: [320, 690, 1160, 1630] },
+    opinion: { screen: [200, 790, 1530, 2260], paper: [1000, 2160, 3290, 4190] },
+    dialogue: { screen: [210, 510, 850, 1180], paper: [320, 690, 1160, 1630] },
+    custom: { screen: [240, 940, 1680, 2400], paper: [210, 670, 1130, 1600] },
+  };
+  const PAGE_SHORT_PARAGRAPHS = {
+    story: { screen: 1, paper: 1 },
+    article: { screen: 1, paper: 0.96 },
+    blog: { screen: 0.93, paper: 0.7 },
+    interview: { screen: 1, paper: 0.96 },
+    email: { screen: 0.97, paper: 0.7 },
+    forum: { screen: 0.89, paper: 0.87 },
+    review: { screen: 1, paper: 0.97 },
+    news: { screen: 0.91, paper: 0.96 },
+    report: { screen: 0.84, paper: 0.7 },
+    diary: { screen: 0.99, paper: 0.9 },
+    informational: { screen: 0.94, paper: 0.87 },
+    opinion: { screen: 1, paper: 0.96 },
+    dialogue: { screen: 0.9, paper: 0.87 },
+    custom: { screen: 1, paper: 0.91 },
+  };
+  /** Text types whose medium is paper unless the teacher says otherwise. */
+  const PAPER_BY_DEFAULT = ['article', 'news', 'opinion', 'review', 'interview', 'story', 'diary', 'informational', 'report'];
+
+  /** The medium the reading text will fill: 'paper', 'screen' or 'plain'. */
+  function textMedium(state) {
+    if (!state || state.kind !== 'reading' || !state.authenticLayout) return 'plain';
+    const wish = state.layoutMedium || 'auto';
+    if (wish === 'paper' || wish === 'screen') return wish;
+    return PAPER_BY_DEFAULT.includes(designIdFor(state)) ? 'paper' : 'screen';
+  }
+  /** How many A4 pages the reading text may fill (1–4). */
+  function pageLimit(state) {
+    const n = Math.round(Number(state && state.a4Pages));
+    return n >= 1 && n <= 4 ? n : 2;
+  }
+  /** How many words fit on `pages` pages of the medium this state shows the text in. */
+  function pageCapacity(state, pages) {
+    const n = Math.max(1, Math.min(4, Math.round(Number(pages) || pageLimit(state))));
+    const medium = textMedium(state);
+    const id = designIdFor(state);
+    const row = medium === 'plain' ? PAGE_CAPACITY.plain
+      : ((PAGE_CAPACITY_MEDIA[id] || PAGE_CAPACITY_MEDIA.custom || {})[medium] || PAGE_CAPACITY.plain);
+    // short paragraphs cost room: a gap each, in a forum a whole post each
+    const short = state.paragraphLength === 'short' && medium !== 'plain' ? ((PAGE_SHORT_PARAGRAPHS[id] || {})[medium] || 0.9) : 1;
+    return Math.round(row[n - 1] * short / 10) * 10;
+  }
+
+  /**
+   * Approximate word target for the text/script (concept §12 and §17). A
+   * reading text is written for the pages it may fill: with "pages" as the
+   * length it fills seven eighths of them (the rest is the room a page needs
+   * to end well), with a word count it takes that count — but never more
+   * than the pages hold (§37).
+   */
   function targetWordCount(state) {
     if (state.kind === 'listening') {
       return Math.round(audioSeconds(state) / 60 * wordsPerMinute(state.speakingSpeed));
     }
-    if (state.lengthMode === 'a4') return Math.round(Number(state.a4Pages) * WORDS_PER_A4);
-    return clamp(Number(state.wordCount) || WORDS_PER_A4, 80, 2000);
+    const cap = pageCapacity(state, pageLimit(state));
+    if (state.lengthMode === 'a4') return Math.max(60, Math.round(cap * 0.88 / 10) * 10);
+    return Math.min(clamp(Number(state.wordCount) || WORDS_PER_A4, 80, 2000), Math.max(60, Math.round(cap * 0.95 / 10) * 10));
   }
 
   function effectiveSpeakerCount(state) {
@@ -1319,6 +1402,11 @@
       layoutMedium: state.layoutMedium || 'auto',
       levelMeter: state.levelMeter !== false,
       targetWords: targetWordCount(state),
+      // the pages the reading text may fill, and what they hold (§37)
+      pageLimit: state.kind === 'reading' ? pageLimit(state) : null,
+      pageMedium: state.kind === 'reading' ? textMedium(state) : null,
+      pageCapacity: state.kind === 'reading' ? pageCapacity(state, pageLimit(state)) : null,
+      wordsCapped: state.kind === 'reading' && state.lengthMode !== 'a4' && targetWordCount(state) < clamp(Number(state.wordCount) || WORDS_PER_A4, 80, 2000),
       wpm: state.kind === 'listening' ? wordsPerMinute(state.speakingSpeed) : null,
       seconds: state.kind === 'listening' ? audioSeconds(state) : null,
       speakerCount: n,
@@ -1441,6 +1529,7 @@
     AUDIO_LENGTHS, QUESTION_COUNTS, PRESETS, TURN_PRESETS, TASK_PRESETS, SETUP_PRESETS,
     META_SPECS, TEXT_TYPE_DESIGN, designIdFor,
     SCHEMA, SCHEMA_BY_KEY, SIMPLE_MODE_KEYS, EXAMPLE_CONFIG, WORDS_PER_A4,
+    PAGE_CAPACITY, PAGE_CAPACITY_MEDIA, PAGE_SHORT_PARAGRAPHS, PAPER_BY_DEFAULT, textMedium, pageLimit, pageCapacity,
     defaults, normalizeState, clone,
     wordsPerMinute, audioSeconds, targetWordCount, effectiveSpeakerCount, speakerLabels,
     effectiveShares, roundToHundred, normalizeShares, applyPreset, presetByKey, applyTurnPreset,

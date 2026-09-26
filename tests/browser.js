@@ -129,6 +129,11 @@ function claudeStub({ scenario, text, xss, worksheet }) {
       if (scenario === 'wrongTypes') return { title: 42, paragraphs: 'one string', meta: [1, 2], vocabularyUsed: 'argue' };
       if (scenario === 'xss') return Object.assign({}, text, { title: xss, paragraphs: text.paragraphs.map(p => p + ' ' + xss), meta: Object.assign({}, text.meta, { byline: xss }) });
       if (scenario === 'tooShort') return Object.assign({}, text, { paragraphs: ['Much too short.'] });
+      // far too long for the pages it may fill — until the page check asks for less
+      if (scenario === 'long') {
+        if (/Shorten the text from \d+ to about \d+ words/.test(s)) { window.__shorten = (window.__shorten || 0) + 1; return text; }
+        return Object.assign({}, text, { paragraphs: Array.from({ length: 10 }, () => text.paragraphs).reduce((a, x) => a.concat(x), []) });
+      }
       return text;
     }
     if (kind === 'photoPrompts') {
@@ -556,6 +561,82 @@ const SETTINGS = (extra) => `(() => {
     check('the page is white by default and the paper can be switched in the viewer, also to an own colour', r.whiteBefore && r.ivoryNow && r.setting !== 'white' && r.custom, JSON.stringify(r));
     check('the Word file carries every page of the newspaper as a page', r.wordPages === r.pages && r.mediumPages === r.pages && r.wordValid, JSON.stringify(r));
     check('pages and paper raise no page error', errors.length === 0, errors[0]);
+    await page.close();
+  }
+
+  console.log('\nBrowser audit: the page limit — the text fills at most the pages allowed (2.4, 2.3, 2.5)');
+  {
+    const { page, errors } = await open({ scenario: 'long' });
+    await run(page, { textType: 'Blog Post', a4Pages: '1', lengthMode: 'words', wordCount: 300 });
+    const r = await page.evaluate(async () => {
+      const { ui, quality, mock, word, ooxml } = window.LR;
+      const m = ui.app.material;
+      if (!m) return { none: true };
+      const fit = quality.pageFit(m);
+      const f = (m.quality.findings || []).find(x => x.id === 'layout.page_limit');
+      const li = document.querySelector('#progress li[data-step="pages"]');
+      ui.openViewer(m, 'creator');
+      await new Promise(r => setTimeout(r, 500));
+      const svgs = document.querySelectorAll('#vw-sheet .medium-sheet svg.lr-medium').length;
+      const medium = await ui.mediumPng(m);
+      const parts = word.partsFor(m, 'student', null, { medium });
+      const doc = String(parts.find(p => p.name === 'word/document.xml').data);
+      return {
+        shorten: window.__shorten || 0, pages: fit.pages, limit: fit.limit, words: fit.words, finding: f && f.status,
+        repaired: (m.quality.repairs || []).some(x => x.target === 'pages' && x.accepted), maxWords: m.plan.pageMaxWords, target: m.plan.targetWords,
+        step: li && li.dataset.status, note: li && li.querySelector('.note').textContent, svgs, wordPages: (doc.match(/<w:drawing>/g) || []).length, wordValid: ooxml.validate(parts).length === 0,
+        prompt: /may fill at most 1 A4 page/.test(String((m.prompts || {}).content || '')),
+      };
+    });
+    check('a text far too long for its one page is shortened by Claude to the length measured on the layout', !r.none && r.shorten >= 1 && r.repaired && r.pages <= 1 && r.limit === 1 && r.maxWords > 0 && r.target <= r.maxWords, JSON.stringify(r));
+    check('the page check passes afterwards and the progress says so', r.finding !== 'fail' && r.step === 'done' && /1 von höchstens 1 Seite/.test(r.note || ''), JSON.stringify(r));
+    check('the prompt tells Claude the page limit from the start', r.prompt, JSON.stringify(r));
+    check('sheet and Word carry exactly the pages the text fills', r.svgs === r.pages && r.wordPages === r.pages && r.wordValid, JSON.stringify(r));
+    check('the page limit raises no page error', errors.length === 0, errors[0]);
+    await page.close();
+  }
+  {
+    // with the real fonts: every medium, three lengths, three limits
+    const { page, errors } = await open({});
+    const r = await page.evaluate(async () => {
+      const { fixture, mock, quality, core } = window.LR;
+      await document.fonts.ready;
+      const measure = mock.canvasMeasure(document.createElement('canvas'));
+      const S = ['The council met on Tuesday evening to talk about the new sports centre by the river.', 'Many families came because they wanted to know what would happen to the old park.', 'Some were worried about the traffic, others were excited about the pool and the climbing wall.', 'A student asked if young people could help to choose the activities.', 'The mayor promised that teenagers would join the planning team next month.'];
+      const text = (words) => { const out = []; let cur = [], n = 0, i = 0; while (n < words) { const x = S[i++ % S.length]; cur.push(x); n += x.split(' ').length; if (cur.length === 3) { out.push(cur.join(' ')); cur = []; } } if (cur.length) out.push(cur.join(' ')); return out; };
+      const bad = [], planMiss = [];
+      let n = 0;
+      for (const type of Object.keys(core.TEXT_TYPE_DESIGN)) {
+        for (const medium of ['screen', 'paper']) {
+          for (const [words, limit] of [[90, 1], [600, 2], [1400, 4]]) {
+            const m = fixture.material({ textType: type, authenticLayout: true, layoutMedium: medium, a4Pages: String(limit) }, 'reading');
+            m.content.paragraphs = text(words);
+            const model = mock.buildModel(m, m.layout.chrome, { measure });
+            n++;
+            const boxes = mock.pageBoxes(model);
+            const where = `${type}/${medium}/${words}/${limit}`;
+            const src = m.content.paragraphs.join(' ');
+            if (mock.svgBodyText(boxes.map((_, i) => mock.toSVG(model, { page: i })).join('')).replace(/\s+/g, ' ') !== src) bad.push(where + ': text');
+            const cut = model.blocks.find(b => (b.type === 'text' || b.type === 'photo') && !boxes.some(x => (b.type === 'text' ? b.y - b.font.size * 0.8 : b.y) >= x.y - 1 && (b.type === 'text' ? b.y + b.font.size * 0.25 : b.y + b.h) <= x.y + x.h + 1));
+            if (cut) bad.push(where + ': cut ' + cut.type);
+            if (model.pageFit.pages > limit && !model.pageFit.over) bad.push(where + ': too many pages unreported');
+          }
+          // what the plan promises for 1 and 2 pages fits with the real fonts
+          for (const limit of [1, 2]) {
+            const st = core.normalizeState({ kind: 'reading', textType: type, authenticLayout: true, layoutMedium: medium, lengthMode: 'a4', a4Pages: String(limit) });
+            const m = fixture.material({ textType: type, authenticLayout: true, layoutMedium: medium, lengthMode: 'a4', a4Pages: String(limit) }, 'reading');
+            m.content.paragraphs = text(core.targetWordCount(st));
+            const model = mock.buildModel(m, m.layout.chrome, { measure });
+            if (model.pageFit.over) planMiss.push(`${type}/${medium}/${limit}: ${core.targetWordCount(st)} words → ${model.pageFit.pages} pages`);
+          }
+        }
+      }
+      return { n, bad: bad.slice(0, 5), badN: bad.length, planMiss };
+    });
+    check('with the real fonts, no medium cuts a line or a picture at a page edge and every page carries its text once', r.n >= 80 && r.badN === 0, JSON.stringify(r));
+    check('with the real fonts, the length the plan asks for fits the pages in (almost) every medium', r.planMiss.length <= 3, JSON.stringify(r.planMiss));
+    if (r.planMiss.length) console.log('      (plan misses: ' + r.planMiss.join('; ') + ')');
+    check('pages with the real fonts raise no page error', errors.length === 0, errors[0]);
     await page.close();
   }
 

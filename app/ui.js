@@ -503,7 +503,7 @@
     show('layoutMedium', s.authenticLayout); show('paperColor', s.authenticLayout);
     show('paperColorCustom', s.authenticLayout && s.paperColor === 'custom');
     show('wordCount', s.lengthMode === 'words');
-    show('a4Pages', s.lengthMode === 'a4');
+    show('a4Pages', s.kind === 'reading');
     show('selectedVocab', s.vocabSelectionMode === 'manual');
     const PRE_KEYS = ['preTaskFocus', 'preTaskCount', 'preTaskTypes', 'preTaskSocialMode', 'customPreTaskSocial', 'preTaskOralCount', 'preTaskDifficulty', 'preTaskLevel', 'preTaskScaffolding', 'preTaskCriteria', 'preTaskMinutes'];
     const POST_KEYS = PRE_KEYS.map(k => k.replace(/^preTask/, 'postTask').replace(/^customPreTaskSocial$/, 'customPostTaskSocial'));
@@ -585,6 +585,8 @@
       ['Topic', plan.topic || '–', plan.topicSource === 'unit' ? '(Unit-Thema)' : '(eigenes Thema)'],
       ['Sprache', plan.cefr, `Complexity ${app.state.languageComplexity}/100`],
       app.state.kind === 'listening' ? ['Audio', `${Math.round(plan.seconds / 60 * 10) / 10} min → ≈ ${plan.targetWords} Wörter`, plan.preset.label] : ['Text', `≈ ${plan.targetWords} Wörter`, app.state.textType],
+      app.state.kind === 'reading' ? ['Seiten', `höchstens ${plan.pageLimit} A4 · ${PAGE_MEDIUM_LABEL[plan.pageMedium] || ''} ≈ ${plan.pageCapacity} Wörter`,
+        plan.wordsCapped ? `(${app.state.wordCount} Wörter passen nicht auf ${plan.pageLimit} Seite${plan.pageLimit > 1 ? 'n' : ''} – auf ${plan.targetWords} begrenzt)` : ''] : null,
       app.state.kind === 'listening' ? ['Sprecher', plan.speakers.map(sp => `${sp.label} ${sp.share} %`).join(' · '), ''] : null,
       ['Vokabular', app.state.vocabSelectionMode === 'manual' ? `${plan.vocabulary.length} manuell gewählt` : `${plan.vocabRange[0]}–${plan.vocabRange[1]} aus ${plan.vocabulary.length} Unit-Einträgen`, ''],
       plan.questionCount ? ['Fragen', `${plan.questionCount} · ${plan.questionLevelLabel ? plan.questionLevelLabel + ' (' + plan.questionBands.join('–') + ')' : 'Niveau ' + plan.questionBand} · ` + core.SKILLS.filter(sk => plan.skillMix[sk.key]).map(sk => `${plan.skillMix[sk.key]} × ${sk.short}`).join(', '), ''] : ['Worksheet', 'aus – nur Skript/Text', ''],
@@ -595,6 +597,8 @@
     ].filter(Boolean);
     p.innerHTML = '<h3>Plan</h3><dl>' + rows.map(r => `<div><dt>${esc(r[0])}</dt><dd>${esc(r[1])} <span class="muted">${esc(r[2])}</span></dd></div>`).join('') + '</dl>';
   }
+
+  const PAGE_MEDIUM_LABEL = { paper: 'gedruckt', screen: 'als Screenshots', plain: 'ohne Medium' };
 
   function setMode(mode) {
     app.uiMode = mode;
@@ -633,7 +637,7 @@
 
   const STEPS = [
     ['plan', 'Plan & Validierung'], ['content', 'Skript / Text schreiben'], ['content-check', 'Content prüfen'], ['content-fix', 'Content korrigieren'],
-    ['questions', 'Aufgaben erstellen'], ['question-check', 'Aufgaben prüfen'], ['review', 'Claude-Review'], ['question-fix', 'Aufgaben korrigieren'], ['pretask-fix', 'Pre-Task korrigieren'], ['posttask-fix', 'Post-Task korrigieren'], ['glossary', 'Fremdwörter erklären'], ['layout', 'Layout des Mediums'], ['done', 'Ausgabe'],
+    ['questions', 'Aufgaben erstellen'], ['question-check', 'Aufgaben prüfen'], ['review', 'Claude-Review'], ['question-fix', 'Aufgaben korrigieren'], ['pretask-fix', 'Pre-Task korrigieren'], ['posttask-fix', 'Post-Task korrigieren'], ['glossary', 'Fremdwörter erklären'], ['layout', 'Layout des Mediums'], ['pages', 'Seiten einpassen'], ['done', 'Ausgabe'],
   ];
   function progress(step, status, note) {
     const el = $('#progress');
@@ -731,7 +735,8 @@
           const check = (c) => quality.runContentChecks(state, plan, content, { layout: { chrome: c } }).filter(f => f.group === 'layout');
           layoutFindings = check(chrome);
           for (let round = 1; round <= maxRounds; round++) {
-            const items = quality.repairable(layoutFindings, state.autoFix);
+            // the page limit is a matter of the text's length (step 3c), not of the interface
+            const items = quality.repairable(layoutFindings, state.autoFix).filter(f => f.id !== 'layout.page_limit');
             if (!items.length) break;
             progress('layout', 'running', `Runde ${round}: ${findingsLabel(items)}`);
             usedPrompts['layoutRepair' + round] = prompts.buildLayoutRepairPrompt(state, plan, content, chrome, items, spec);
@@ -750,6 +755,42 @@
           progress('layout', 'warn', `${spec.label} ohne Claude-Oberfläche · ${errorCopy(e)}`);
         }
       } else progress('layout', 'skip', state.kind === 'reading' ? 'nicht gewählt' : 'nur für Reading');
+
+      /* 3c. The pages (§37): the text in its medium fills at most the pages
+         the teacher allows. The layout has already given way where it can;
+         what still does not fit is a text that is too long — Claude shortens
+         it to the length measured on this very layout. Never cut, never smaller. */
+      if (layout && state.kind === 'reading') {
+        const fitOf = (c) => quality.pageFit({ settings: state, content: c, layout });
+        let fit = fitOf(content);
+        const note = (f) => `${f.pages} von höchstens ${f.limit} Seite${f.limit > 1 ? 'n' : ''} · ${layout.label || ''}` + (f.steps.length ? ' · Layout angepasst' : '');
+        if (fit.limit) {
+          for (let round = 1; round <= maxRounds && fit.over; round++) {
+            progress('pages', 'running', `Runde ${round}: ${fit.pages} statt ${fit.limit} Seite${fit.limit > 1 ? 'n' : ''} – Claude kürzt auf ≈ ${fit.fitWords} Wörter`);
+            const item = quality.runContentChecks(state, plan, content, { layout }).find(f => f.id === 'layout.page_limit');
+            // the new length becomes the plan's: the word count check measures against it
+            const planned = plans.map(p => p.targetWords);
+            plans.forEach(p => { p.targetWords = Math.min(p.targetWords, fit.fitWords); p.pageMaxWords = fit.fitWords; });
+            usedPrompts['pageFit' + round] = prompts.buildContentRevisionPrompt(state, plan, content, [item]);
+            let candidate;
+            try { candidate = quality.normalizeContent(await askJSON(usedPrompts['pageFit' + round], Object.assign({ signal: ctl.signal }, stream)), state, plan); }
+            catch (e) { if (e.code === 'cancelled') throw e; plans.forEach((p, i) => { p.targetWords = planned[i]; }); progress('pages', 'warn', errorCopy(e)); break; }
+            const candFit = fitOf(candidate);
+            const candFindings = quality.runContentChecks(state, plan, candidate);
+            // better: fewer pages, and no content rule broken that held before
+            const newFails = candFindings.filter(f => f.status === 'fail' && f.blocking && !contentFindings.some(g => g.id === f.id && g.status === 'fail'));
+            // (the same pages but clearly shorter counts too: the next round goes on from there)
+            const better = !newFails.length && (candFit.pages < fit.pages || (candFit.pages === fit.pages && candFit.words <= fit.words * 0.93));
+            repairs.push({ round, target: 'pages', fixed: [item ? item.title : 'The text fits the pages it may fill'], accepted: better });
+            if (!better) { plans.forEach((p, i) => { p.targetWords = planned[i]; }); break; }
+            content = candidate; contentFindings = candFindings;
+            // the picture and the crossheads keep a place in the shorter text
+            layout = Object.assign({}, layout, { chrome: quality.fitComposition(layout.chrome, content.paragraphs) });
+            fit = fitOf(content);
+          }
+          progress('pages', fit.over ? 'fail' : 'done', fit.over ? `${fit.pages} statt höchstens ${fit.limit} Seite${fit.limit > 1 ? 'n' : ''} – Text zu lang (≈ ${fit.fitWords} Wörter würden passen)` : note(fit));
+        } else progress('pages', 'skip', 'kein Seitenlimit');
+      } else progress('pages', 'skip', state.kind === 'reading' ? 'ohne Medium' : 'nur für Reading');
 
       /* 4. Worksheet(s): one per question level */
       const results = [];
@@ -789,6 +830,8 @@
         plan: plans[i], worksheet: r.worksheet,
         quality: { findings: r.questionFindings.concat(r.reviewFindings), review: r.review },
       }));
+      // the text may have changed in the worksheet stage: the medium is measured again on the final text
+      if (layout) layoutFindings = quality.runContentChecks(state, plan, content, { layout }).filter(f => f.group === 'layout');
       const findingsAll = contentFindings.concat(
         variantsOut.flatMap(v => v.quality.findings.map(f => v.key ? Object.assign({}, f, { variant: v.key }) : f)),
         layoutFindings, contentOnlyReview);
@@ -1311,17 +1354,24 @@
    * picture is, so the teacher can compare it with their own eyes.
    */
   function proportionNote(m) {
-    let p;
-    try { p = mock.proportions(quality.layoutModel(m)); } catch (e) { return ''; }
+    let p, model;
+    try { model = quality.layoutModel(m, { measure: mock.canvasMeasure(document.createElement('canvas')) }); p = mock.proportions(model); } catch (e) { return ''; }
     const pct = (x) => Math.round(x * 100) + ' %';
     const pages = p.pages || 1;
-    const perPage = Math.round(p.columns.length / pages);
+    // the columns of a newspaper are counted per page; a web page has one grid over all
+    const perPage = Math.max(1, Math.round(p.columns.length / ((model.columns || []).some(c => c.page > 0) ? pages : 1)));
     const cols = p.columns.length > 1
       ? `${perPage} Spalten${pages > 1 ? ` auf ${pages} Seiten` : ''}, gefüllt zu ${p.columns.map(c => pct(c.filled)).join(' / ')}`
       : 'eine Spalte';
     const even = p.columns.length > 1 ? (p.balance >= 0.8 ? 'ausgeglichen' : p.balance >= 0.6 ? 'ungleich' : 'eine Spalte bleibt fast leer') : '';
     const state = p.balance >= 0.8 ? 'pass' : p.balance >= 0.6 ? 'warn' : 'fail';
-    return `<p class="layout-proportions qc-${state}">Proportionen geprüft: ${esc(cols)}${even ? ' — ' + esc(even) : ''}; die Seite endet ${pct(p.tail)} ihrer Höhe unter dem letzten Element.</p>`;
+    // the pages (§37): how many, of how many allowed, and what the make-up gave up for it
+    const pf = model.pageFit || {};
+    const stepNames = (pf.steps || []).map(k => (mock.FIT_STEPS.find(x => x.key === k) || {}).label || k);
+    const pageLine = pf.limit
+      ? ` ${pf.pages} von höchstens ${pf.limit} A4-Seite${pf.limit > 1 ? 'n' : ''}${model.pageMode === 'screen' && pf.pages > 1 ? ' (als Screenshot-Folge)' : ''}` + (stepNames.length ? ` · Layout angepasst: ${stepNames.join(', ')}` : '') + (pf.over ? ' · der Text ist zu lang für das Seitenlimit' : '') + '.'
+      : '';
+    return `<p class="layout-proportions qc-${pf.over ? 'fail' : state}">Proportionen geprüft: ${esc(cols)}${even ? ' — ' + esc(even) : ''}; die Seite endet ${pct(p.tail)} ihrer Höhe unter dem letzten Element.${esc(pageLine)}</p>`;
   }
 
   /* ------------------------------------------------------------------ */
@@ -2096,6 +2146,22 @@
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       ctx.scale(dpr, dpr);
       mock.draw(ctx, model);
+      // a screen medium is printed as a series of screenshots: where each
+      // printed page begins is marked here (only on screen, never exported)
+      if (model.pageMode === 'screen' && Array.isArray(model.pages) && model.pages.length > 1) {
+        ctx.save();
+        ctx.font = '700 12px "Source Sans 3", Arial, sans-serif';
+        model.pages.slice(1).forEach((pg, i) => {
+          ctx.setLineDash([8, 6]); ctx.strokeStyle = 'rgba(185, 28, 28, .8)'; ctx.lineWidth = 1.5;
+          ctx.beginPath(); ctx.moveTo(0, pg.y); ctx.lineTo(model.width, pg.y); ctx.stroke();
+          const label = `A4-Seite ${i + 2} von ${model.pages.length}`;
+          const w = ctx.measureText(label).width + 14;
+          ctx.setLineDash([]); ctx.fillStyle = 'rgba(185, 28, 28, .92)';
+          ctx.fillRect(model.width - w - 6, pg.y + 3, w, 18);
+          ctx.fillStyle = '#FFFFFF'; ctx.fillText(label, model.width - w + 1, pg.y + 16);
+        });
+        ctx.restore();
+      }
       canvas._lrModel = model;
       renderHotspots(m, canvas, model);
       // the teacher's own pictures load once; the picture is drawn again when

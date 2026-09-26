@@ -2,7 +2,7 @@
 
 Erzeugt von `npm run coverage`. Jede Zeile ist eine Anforderung aus `docs/Konzept_Listening_Reading_Creator.md`, gebunden an die Stelle im Code, die sie umsetzt, und das Ergebnis der automatischen Prüfung (`npm test`).
 
-**Ergebnis: 329 von 329 Anforderungen bestanden.**
+**Ergebnis: 333 von 333 Anforderungen bestanden.**
 
 Prüfarten: **setting** – Steuerelement vorhanden und Änderung des Werts verändert nachweislich den Prompt an Claude · **function** – Verhalten wird mit echten Eingaben ausgeführt und verglichen · **rule** – Qualitätsregel existiert als Messung oder Claude-Review-Kriterium · **render** – Ausgabe wird auf einer Fixture gerendert und inhaltlich geprüft · **ui** – Navigations-/Strukturelement existiert.
 
@@ -169,7 +169,7 @@ Prüfarten: **setting** – Steuerelement vorhanden und Änderung des Werts ver�
 | ✅ | `S17.custom_type` | Custom text type | setting | Setting `customTextType` (core.SCHEMA → Control `[data-setting="customTextType"]` → prompts.js) |
 | ✅ | `S17.length_mode` | Length: word count oder approximate A4 length | setting | Setting `lengthMode` (core.SCHEMA → Control `[data-setting="lengthMode"]` → prompts.js) |
 | ✅ | `S17.word_count` | Word count (z. B. 450 words) | setting | Setting `wordCount` (core.SCHEMA → Control `[data-setting="wordCount"]` → prompts.js) |
-| ✅ | `S17.a4` | A4-Länge wird in Wortzahl umgerechnet | setting | Setting `a4Pages` (core.SCHEMA → Control `[data-setting="a4Pages"]` → prompts.js) |
+| ✅ | `S17.a4` | Seitenzahl 1–4 wird in die Wortzahl umgerechnet, die auf so viele Seiten des Mediums passt | setting | Setting `a4Pages` (core.SCHEMA → Control `[data-setting="a4Pages"]` → prompts.js) |
 
 ## §18 Worksheet (1/1)
 
@@ -271,7 +271,7 @@ Prüfarten: **setting** – Steuerelement vorhanden und Änderung des Werts ver�
 | ✅ | `S28.viewer` | Viewer: das fertige Material als Dokument – Blatt in A4-Breite mit Druckumbruch, Inhaltsverzeichnis, Schüler-/Lehrerfassung, Niveaus, Zoom, Bild des Mediums, Qualität und allen Downloads an einem Ort | ui | Element `#view-viewer` |
 | ✅ | `X.no_hardcoded_content` | Kontrolle: keine hartkodierten Textbausteine für Titel, Instruktion, Fragen, Pre-Tasks oder Themen | function | Funktion (siehe Check im Manifest) |
 
-## §29 Quality Check (37/37)
+## §29 Quality Check (38/38)
 
 | Status | ID | Anforderung | Art | Umsetzung |
 |---|---|---|---|---|
@@ -312,6 +312,7 @@ Prüfarten: **setting** – Steuerelement vorhanden und Änderung des Werts ver�
 | ✅ | `X.rule_questions.formats` | Quality rule „questions.formats“ (Only enabled response formats are used) – zusätzliche Regel über das Konzept hinaus | meta | `questions.formats` — extra rule |
 | ✅ | `X.rule_questions.evidence` | Quality rule „questions.evidence“ (Every question has verifiable evidence) – zusätzliche Regel über das Konzept hinaus | meta | `questions.evidence` — extra rule |
 | ✅ | `X.rule_layout.furniture` | Quality rule „layout.furniture“ (The medium shows more than the text alone) – zusätzliche Regel über das Konzept hinaus | meta | `layout.furniture` — extra rule |
+| ✅ | `X.rule_layout.page_limit` | Quality rule „layout.page_limit“ (The text fits the pages it may fill) – zusätzliche Regel über das Konzept hinaus | meta | `layout.page_limit` — extra rule |
 
 ## §30 Advanced Settings (25/25)
 
@@ -479,7 +480,7 @@ Prüfarten: **setting** – Steuerelement vorhanden und Änderung des Werts ver�
 | ✅ | `S36.repair` | Beanstandete Post-Task wird gezielt neu erstellt, Fragen und Pre-Task bleiben unverändert | function | Funktion (siehe Check im Manifest) |
 | ✅ | `S36.output` | Post-Task steht nach den Fragen auf dem Arbeitsblatt (Bildschirm, Word, Markdown) mit Sozialform, Arbeitsweise, Zeit, Produkt und Kriterien; Lehrerversion mit Übersicht | render | render.js (renderStudentHTML / renderTeacherHTML) |
 
-## §37 Authentisches Layout (Screenshot des Mediums) (29/29)
+## §37 Authentisches Layout (Screenshot des Mediums) (32/32)
 
 | Status | ID | Anforderung | Art | Umsetzung |
 |---|---|---|---|---|
@@ -508,6 +509,9 @@ Prüfarten: **setting** – Steuerelement vorhanden und Änderung des Werts ver�
 | ✅ | `S37.photo_prompts` | Höchstens drei Fotos pro Artikel (Aufmacher, zweites Bild, ein weiteres); in jedem Fotoplatz ohne echtes Foto stehen drei allgemeine Google-Bildsuchen und ein ChatGPT-Prompt für ein fotorealistisches Kamerafoto – nur am Bildschirm, nie im Druck oder Export | function | Funktion (siehe Check im Manifest) |
 | ✅ | `S37.photo_batch` | Alle Bilder eines Artikels auf einmal mit ChatGPT: die Bild-Prompts schreibt das Sprachmodell (Claude) – fehlen sie nach dem Layout, fragt die Pipeline eigens danach; ein Klick kopiert alle Fotos nummeriert in eine Nachricht für ChatGPT; die gespeicherten Bilder werden zusammen hineingezogen oder ausgewählt und kommen der Reihe nach in Foto 1, 2, 3 (mit Kontrolle); dazu der Anweisungstext für ein ChatGPT-Projekt | function | Funktion (siehe Check im Manifest) |
 | ✅ | `S37.press_pages` | Die Zeitung ist eine echte A4-Seite: ein längerer Artikel läuft auf einer Folgeseite weiter („Continued on page 2“, Fortsetzungskopf, Seitenzahlen) – nie kleinere Schrift, nie gekürzt; jede Seite ist im Blatt und im Word-Export eine eigene Seite; Silbentrennung im Blocksatz | function | Funktion (siehe Check im Manifest) |
+| ✅ | `S37.page_capacity` | Seitenlimit: wie viele Wörter auf 1–4 A4-Seiten passen, hängt vom Medium ab (Zeitung, Buch, Tagebuch in Handschrift, Screenshot, Handy-Chat) – gemessen mit dem Layout selbst; eine Wortzahl wird nie über das hinaus geplant, was auf die erlaubten Seiten passt, und der Plan sagt es | function | Funktion (siehe Check im Manifest) |
+| ✅ | `S37.page_breaks` | Jedes Medium kommt auf A4-Seiten: Papier (Buch, Tagebuch, Bericht) als einzelne Blätter mit Kopf, Seitenzahl und Linierung auf jedem Blatt, Bildschirm (Webseite, Mail, Forum) als Screenshot-Folge, der Chat als Handy-Bildschirme; kein Seitenrand schneidet je eine Zeile, ein Bild oder einen Kasten, keine Zwischenüberschrift steht am Seitenfuss, kein Absatz lässt eine einzelne Zeile allein | function | Funktion (siehe Check im Manifest) |
+| ✅ | `S37.page_fit` | Seitenlimit eingehalten: passt der Text nicht, gibt zuerst das Layout nach (kleineres Aufmacherbild, engerer Satz, ohne Zitatkasten, weniger/keine Elemente neben dem Text, ohne zweites Bild – nur so viel wie nötig); die Schrift wird nie kleiner, der Text nie abgeschnitten; bleibt er zu lang, sagt die Kontrolle (blockierend), auf wie viele Wörter – gemessen am Layout selbst – und Claude kürzt; eine letzte Seite mit drei Zeilen wird zurückgeholt | function | Funktion (siehe Check im Manifest) |
 | ✅ | `S37.press_makeup` | Die Zeitungsseite ist umbrochen wie eine echte: Titelkopf mit Namen, Motto und Ausgabezeile, Rubrik, schwarze, eng gesetzte Schlagzeile, Vorspann ohne Etikett, Autorenzeile zwischen Linien, Initial (Titelseite) oder Ortsmarke (Innenseite), neben dem Aufmacher Zitat und Fakten statt Textstreifen, kein Abstand zwischen Absätzen (nur Einzug), Zwischentitel nie allein am Spaltenfuss, zweites Bild nie neben dem Aufmacher, Zitat und Kästen rücken an den Text | function | Funktion (siehe Check im Manifest) |
 | ✅ | `S37.modules` | Um den Text steht, was auf so einer Seite wirklich steht: Werbung, Umfrage, Meistgelesen, Anmeldekasten, Kleinanzeigen – Claude wählt aus dem Katalog und darf Eigenes ergänzen | function | Funktion (siehe Check im Manifest) |
 | ✅ | `S37.rule_proportions` | Kontrolle: das Bild ist proportioniert – die Spalten tragen gleich viel, keine bleibt fast leer, und die Seite endet kurz nach dem Text | rule | Quality rule `layout.proportions` (gemessen in quality.js) |
@@ -559,7 +563,7 @@ Prüfarten: **setting** – Steuerelement vorhanden und Änderung des Werts ver�
 | `customTextType` | text | 4 | reading | ja | `""` |
 | `lengthMode` | select | 4 | reading | ja | `"words"` |
 | `wordCount` | number | 4 | reading | ja | `450` |
-| `a4Pages` | select | 4 | reading | ja | `"1"` |
+| `a4Pages` | select | 4 | reading | ja | `"2"` |
 | `paragraphLength` | select | 9 | reading | nein | `"medium"` |
 | `dialogueProportion` | range | 9 | reading | nein | `20` |
 | `styleBalance` | range | 9 | reading | nein | `50` |
@@ -680,4 +684,5 @@ Prüfarten: **setting** – Steuerelement vorhanden und Änderung des Werts ver�
 | `layout.image_valid` | layout | deterministic | ja | The picture can be drawn and handed out |
 | `layout.furniture` | layout | deterministic | nein | The medium shows more than the text alone |
 | `layout.proportions` | layout | deterministic | nein | The picture is in proportion |
+| `layout.page_limit` | layout | deterministic | ja | The text fits the pages it may fill |
 | `layout.authentic` | layout | llm | nein | The medium looks real and fits the text |

@@ -455,6 +455,8 @@
     if (r.target === 'order') return v + 'Fragen in die Reihenfolge des Materials gebracht: Q' + (r.questions || []).join(', Q');
     if (r.target === 'pretask') return v + 'Pre-Task neu erstellt' + ((r.preTasks || []).length ? ': P' + r.preTasks.join(', P') : '');
     if (r.target === 'content') return 'Text überarbeitet';
+    if (r.target === 'pages') return 'Text auf die erlaubten Seiten gekürzt';
+    if (r.target === 'layout') return 'Oberfläche des Mediums überarbeitet';
     if (r.target === 'content+worksheet') return v + 'Text und Aufgaben neu erstellt';
     if (r.questions && r.questions.length) return v + 'Fragen ersetzt: Q' + r.questions.join(', Q');
     return v + 'Aufgaben überarbeitet';

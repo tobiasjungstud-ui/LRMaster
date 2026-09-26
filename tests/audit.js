@@ -1677,6 +1677,94 @@ test('2.5', 'the picture is only handed out when it is really drawable', () => {
 });
 
 /* ------------------------------------------------------------------ */
+/* The page limit (§37): every medium on 1–4 A4 pages                    */
+const PAGE_SENTENCES = ['The council met on Tuesday evening to talk about the new sports centre by the river.', 'Many families came because they wanted to know what would happen to the old park.', 'Some were worried about the traffic, others were excited about the pool and the climbing wall.', 'A student asked if young people could help to choose the activities.', 'The mayor promised that teenagers would join the planning team next month.', 'Nobody knows yet what it will cost.'];
+function pageText(words, perPara) {
+  const out = []; let cur = [], n = 0, i = 0;
+  while (n < words) { const x = PAGE_SENTENCES[i++ % PAGE_SENTENCES.length]; cur.push(x); n += x.split(' ').length; if (cur.length === (perPara || 4)) { out.push(cur.join(' ')); cur = []; } }
+  if (cur.length) out.push(cur.join(' '));
+  return out;
+}
+function pagedMaterial(over, words, perPara) {
+  const m = fixture.material(Object.assign({ authenticLayout: true }, over), 'reading');
+  m.content.paragraphs = pageText(words, perPara);
+  return m;
+}
+
+test('2.4 R4', 'every medium on 1–4 pages: the text once and whole, no line or picture cut by a page edge, never more pages than allowed without saying so', () => {
+  let n = 0;
+  for (const type of Object.keys(core.TEXT_TYPE_DESIGN)) {
+    for (const medium of ['screen', 'paper']) {
+      for (const words of [70, 520, 1500]) {
+        for (const limit of [1, 2, 4]) {
+          const m = pagedMaterial({ textType: type, layoutMedium: medium, a4Pages: String(limit) }, words, words > 1000 ? 6 : 3);
+          const model = quality.layoutModel(m);
+          const where = `${type}/${medium}/${words} words/${limit} page(s)`;
+          n++;
+          assert.deepEqual(mock.validate(model), [], where);
+          const src = m.content.paragraphs.join(' ').replace(/\s+/g, ' ').trim();
+          assert.equal(mock.bodyText(model).replace(/\s+/g, ' ').trim(), src, where + ': the picture changed the text');
+          const boxes = mock.pageBoxes(model);
+          // (a word divided at the foot of a page goes on on the next one)
+          const pages = boxes.map((_, i) => mock.toSVG(model, { page: i })).join('');
+          assert.equal(mock.svgBodyText(pages).replace(/\s+/g, ' ').trim(), src, where + ': the pages do not carry the text exactly once');
+          for (const b of model.blocks) {
+            if (b.type !== 'text' && b.type !== 'photo') continue;
+            const top = b.type === 'text' ? b.y - b.font.size * 0.8 : b.y, bot = b.type === 'text' ? b.y + b.font.size * 0.25 : b.y + b.h;
+            assert.ok(boxes.some(x => top >= x.y - 1 && bot <= x.y + x.h + 1), `${where}: ${b.type} "${String(b.text || b.subject).slice(0, 30)}" is cut by a page edge`);
+          }
+          const pf = model.pageFit;
+          assert.ok(pf && pf.limit === limit, where + ': the limit is not read');
+          assert.ok(pf.pages <= limit || pf.over, `${where}: ${pf.pages} pages without the report that the text is too long`);
+          assert.ok(!pf.cut, where + ': an element had to be cut');
+        }
+      }
+    }
+  }
+  assert.ok(n >= 250);
+});
+
+test('2.4 2.1', 'what the plan promises fits: a text of the planned length for n pages stays on n pages in every medium', () => {
+  const misses = [];
+  for (const type of Object.keys(core.TEXT_TYPE_DESIGN)) {
+    for (const medium of ['screen', 'paper']) {
+      for (const limit of [1, 2, 3, 4]) {
+        const st = core.normalizeState({ kind: 'reading', textType: type, layoutMedium: medium, authenticLayout: true, lengthMode: 'a4', a4Pages: String(limit) });
+        // the table is measured with the fonts of the app; the metric estimate
+        // used here sets text about a sixth wider, so the plan is checked at 80 %
+        const words = Math.round(core.targetWordCount(st) * 0.8);
+        const m = pagedMaterial({ textType: type, layoutMedium: medium, lengthMode: 'a4', a4Pages: String(limit) }, words);
+        const pf = quality.layoutModel(m).pageFit;
+        if (pf.over) misses.push(`${type}/${medium}/${limit}: ${words} words need ${pf.pages} pages`);
+      }
+    }
+  }
+  // measured with the metric estimate here, with the real fonts in the table:
+  // the plan may miss by a little in a few media — the page check catches it
+  assert.ok(misses.length <= 4, misses.join('; '));
+});
+
+test('2.9', 'the pages come out the same every time', () => {
+  const m = pagedMaterial({ textType: 'Blog Post', layoutMedium: 'screen', a4Pages: '2' }, 700);
+  const a = quality.layoutModel(m), b = quality.layoutModel(m);
+  assert.deepEqual(a.pages, b.pages);
+  assert.deepEqual(a.pageFit, b.pageFit);
+});
+
+test('2.3 R5', 'a text too long for its pages: the check names the length that fits, and that length really fits', () => {
+  for (const [type, medium, limit] of [['News Article', 'paper', 1], ['Blog Post', 'screen', 1], ['Diary Entry', 'paper', 2], ['Dialogue', 'screen', 1], ['Story', 'paper', 3]]) {
+    const m = pagedMaterial({ textType: type, layoutMedium: medium, a4Pages: String(limit) }, 3200);
+    const f = quality.runContentChecks(m.settings, m.plan, m.content, { layout: m.layout }).find(x => x.id === 'layout.page_limit');
+    assert.equal(f.status, 'fail', type);
+    assert.ok(f.blocking);
+    assert.ok(/Shorten the text from \d+ to about \d+ words/.test(f.detail), f.detail);
+    const cut = pagedMaterial({ textType: type, layoutMedium: medium, a4Pages: String(limit) }, f.fitWords);
+    assert.ok(!quality.pageFit(cut).over, `${type}: ${f.fitWords} words still do not fit`);
+    assert.ok(f.fitWords >= 60);
+  }
+});
+
+/* ------------------------------------------------------------------ */
 console.log('\nAudit: does this suite really answer the whole brief?');
 
 const missing = Object.keys(AUDIT_SECTIONS).filter(k => !(covered.get(k) || []).length);

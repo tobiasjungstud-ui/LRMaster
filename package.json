@@ -9,6 +9,7 @@
     "serve": "python3 -m http.server 8080 --directory app",
     "audit": "node tests/audit.js",
     "audit:browser": "node tests/browser.js",
+    "calibrate": "node tests/calibrate.js",
     "photos": "node scripts/fetch-photos.js"
   },
   "engines": {

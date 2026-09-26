@@ -200,15 +200,32 @@
     return `Paragraph length: ${key} — ${n} sentences per paragraph. Never one sentence per paragraph: a paragraph holds one idea and the sentences that develop it. Break paragraphs where a real writer of this text type would; only a quoted line of speech or a deliberate one-line punch (at most one in the text) may stand alone.`;
   }
 
+  /*
+   * The page limit (concept §37): the text is printed in its medium and may
+   * fill at most N A4 pages of it. What that means in words depends on the
+   * medium; the plan carries the measured number, and it is a ceiling.
+   */
+  const MEDIUM_WORDS = { paper: 'printed in its medium', screen: 'shown as screenshots of its medium', plain: 'on the worksheet' };
+  function pageLine(state, plan) {
+    if (!plan || !plan.pageLimit) return '';
+    const n = plan.pageLimit;
+    const where = MEDIUM_WORDS[plan.pageMedium] || MEDIUM_WORDS.plain;
+    const max = plan.pageMaxWords || plan.pageCapacity;
+    return `Pages: the text is ${where} and may fill at most ${n} A4 page${n > 1 ? 's' : ''} there — never more than ${max} words. `
+      + (state.lengthMode === 'a4' ? `Fill ${n > 1 ? 'those pages' : 'that page'}: write close to ${plan.targetWords} words.` : 'Stay at the length above.')
+      + (n > 1 ? ' A text over several pages needs a structure a reader can follow across a page turn: paragraphs that each carry one step.' : '');
+  }
+
   function readingStructureBlock(state, plan) {
     const type = state.textType === 'Custom' ? String(state.customTextType || '').trim() : state.textType;
     return [
       `Text type: ${type}.`,
-      `Length: approximately ${plan.targetWords} words (±10 %)` + (state.lengthMode === 'a4' ? ` (about ${state.a4Pages} A4 page(s))` : '') + '.',
+      `Length: approximately ${plan.targetWords} words (±10 %).`,
+      pageLine(state, plan),
       paragraphLine(state.paragraphLength),
       `Dialogue proportion: ${scale(state.dialogueProportion, ['none — no direct speech', 'a little direct speech', 'some dialogue passages', 'dialogue-heavy', 'almost entirely dialogue'])}.`,
       `Style: ${scale(state.styleBalance, ['strongly narrative', 'mostly narrative', 'balanced narrative/informational', 'mostly informational', 'strongly informational'])}.`,
-    ].join('\n');
+    ].filter(Boolean).join('\n');
   }
 
   /* ------------------------------------------------------------------ */
@@ -752,6 +769,7 @@
         'Write the plan into "composition": {"lead": ' + (spec.kind === 'print' ? '"wide" (across the columns) | "column" (one column wide) | "none"' : '"wide" (across the text) | "inset" (set into the first paragraphs, the text runs around it) | "none"') + ', ' + (spec.kind === 'print' ? '"columns": 2 | 3 | 4, ' : '') + '"pullQuote": "one sentence copied EXACTLY from the text, or an empty string", "crossheads": [{"before": <paragraph number, counting from 1>, "text": "two to four words of your own"}], "figure": {"after": <paragraph number>, "subject": "<a picture subject>", "caption": "one sentence, nothing from the text", "size": "column" | "wide"}, "density": "dense" | "normal" | "airy"}.',
         'Rules: the text is never changed, shortened or added to \u2014 a crosshead is a heading of yours, never a sentence of the text; the pull quote is a sentence of the text word for word, otherwise it is dropped. Plan pictures with intent: every picture has a role (lead, portrait, place, detail) and a caption that describes it. Use hierarchy: one thing must dominate. Match the density of the medium: a tabloid is dense, a magazine airy.',
       ].join('\n\n') : '',
+      pagesBlock(state, plan, content, spec),
       ['## The rest of the page',
         'A real page is never one text alone. Around it stands whatever that medium lives on: advertisements, a poll, the most-read list, a sign-up box, the small ads, the weather, a promoted post, a consent banner, the comments. Decide what THIS publication would really show around THIS text and write it into "modules".',
         'These are the kinds you can use, with the places they can stand:',
@@ -769,6 +787,25 @@
         + `- Required: ${spec.required.map(r => '"' + r + '"').join(', ')}.`,
       'Reply with only a JSON object with exactly these keys: ' + spec.fields.map(f => '"' + f[0] + '"').join(', ') + '.',
     ].filter(Boolean).join('\n\n');
+  }
+
+  /**
+   * What the page limit asks of the design (§37): the medium fills at most N
+   * A4 pages, and the text takes most of them. The designer plans the
+   * pictures, the crossheads and the things around the text for that many
+   * pages — the app still makes the page give way if it does not fit.
+   */
+  function pagesBlock(state, plan, content, spec) {
+    if (!plan || !plan.pageLimit || state.kind !== 'reading') return '';
+    const n = plan.pageLimit;
+    const words = (content.paragraphs || []).join(' ').split(/\s+/).filter(Boolean).length;
+    const share = plan.pageCapacity ? Math.min(n, Math.round((words / plan.pageCapacity) * n * 10) / 10) : n;
+    const takes = share < 1 ? 'less than one page' : `about ${share} page${share > 1 ? 's' : ''}`;
+    const lines = [`## The pages\nThe medium (${spec.label}) may fill at most ${n} A4 page${n > 1 ? 's' : ''}; the text alone takes ${takes} of that. Design for exactly that:`];
+    if (n === 1) lines.push('- One page: a lead picture of moderate size, at most one crosshead, no second picture unless the text is short, and only the two to four things around the text that matter most — a page that spills onto a second sheet is a failed page.');
+    else lines.push(`- ${n} pages: the reader turns the page${n > 2 ? 's' : ''}. Crossheads break the long run (about one every three or four paragraphs); the second picture belongs in the second half of the text, where the first picture is out of sight; the pull quote stands where the text is longest without a picture.`);
+    lines.push('- The things around the text fill the room the text leaves, not more: the fewer pages, the fewer of them. Never plan anything that needs the text to be shorter or smaller.');
+    return lines.join('\n');
   }
 
   /** Repair round for the interface: the findings in front of it, same shape back. */
