@@ -716,6 +716,26 @@
    * counts — everything a screenshot would show besides the text itself.
    * The text is never rewritten here; only the surroundings are invented.
    */
+  /**
+   * The picture prompts for a page, when the layout answer did not bring them
+   * for every photo place: Claude writes them from the text, place by place.
+   * `places`: [{ role, subject, caption, heading }] in the order of the page.
+   */
+  function buildPhotoPromptsPrompt(state, content, chrome, places, mediumLabel, medium) {
+    const type = state.textType === 'Custom' ? state.customTextType : state.textType;
+    const c = chrome || {};
+    const roleText = { lead: 'the lead picture at the top', second: 'the second picture inside the text', extra: 'a smaller picture elsewhere on the page (another story, an ad or a teaser)' };
+    return [
+      `You write image prompts for a teacher who needs the photos for an English reading worksheet. The text below is a ${type}, shown as ${mediumLabel || 'its medium'}. The page has ${places.length} photo place${places.length === 1 ? '' : 's'}; the teacher finds each photo on Google or has ChatGPT generate it.`,
+      '## Text\nTitle: ' + content.title + '\n' + contentAsText(content, state),
+      '## The photo places, in this order\n' + places.map((p, i) => `${i + 1}. ${roleText[p.role] || 'a picture'} — it should show: ${[p.caption || (p.role === 'lead' ? c.photoCaption : ''), p.heading ? 'for "' + p.heading + '"' : '', p.subject ? '(subject: ' + p.subject + ')' : ''].filter(Boolean).join(' ') || 'what fits the text'}`).join('\n'),
+      '## For each photo place write\n'
+        + '- "google": three short Google image searches in English, 2–5 words each, generic enough to have many real results — the kind of place, the scene, the everyday subject. Never an invented name, business, person or event: the text may be invented, the searches must find real photos of the general setting.\n'
+        + '- "chatgpt": one prompt for ChatGPT to generate a photorealistic photo as if taken with a real camera: what the photo shows as this text describes it (place, people and what they do, objects), the setting, season, time of day and light, camera and lens (e.g. 35 mm at eye level), depth of field and the photo style of this medium — ' + (medium === 'print' ? 'documentary news photography for a newspaper' : 'editorial photography for a magazine, blog or news site') + '. Landscape 3:2. No text, no captions, no logos, no watermarks, no recognisable real or famous people. 40–90 words, in English.',
+      `## Answer\nOnly JSON: {"photoPrompts": [${places.map(() => '{"google": ["…", "…", "…"], "chatgpt": "…"}').join(', ')}]} — exactly ${places.length} object${places.length === 1 ? '' : 's'}, in the order of the photo places above.`,
+    ].join('\n\n');
+  }
+
   function buildLayoutPrompt(state, plan, content, spec) {
     const meta = content.meta || {};
     const type = state.textType === 'Custom' ? state.customTextType : state.textType;
@@ -862,6 +882,6 @@
     buildContentRevisionPrompt, buildQuestionRevisionPrompt, buildQuestionRepairPrompt, findingsBlock, buildVocabParsePrompt,
     buildUnitDetectPrompt, buildUnitTopicPrompt, buildAllPrompts, buildGlossaryPrompt, buildLevelOpinionPrompt,
     chronologyRule, levelTargetBlock, questionLevelLines, taskBlock, preTaskBlock, postTaskBlock,
-    buildTaskRepairPrompt, buildPreTaskRepairPrompt, buildPostTaskRepairPrompt, buildLayoutPrompt, buildLayoutRepairPrompt, buildTemplateVariantPrompt,
+    buildTaskRepairPrompt, buildPreTaskRepairPrompt, buildPostTaskRepairPrompt, buildLayoutPrompt, buildLayoutRepairPrompt, buildTemplateVariantPrompt, buildPhotoPromptsPrompt,
   };
 });

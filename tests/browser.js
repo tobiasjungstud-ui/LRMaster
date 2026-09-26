@@ -107,7 +107,8 @@ function claudeStub({ scenario, text, xss, worksheet }) {
   const sample = async () => ({ text: '{}' });
   sample.json = async (prompt) => {
     const s = String(prompt);
-    const kind = /You design how a text looks/.test(s) ? 'layout'
+    const kind = /You write image prompts/.test(s) ? 'photoPrompts'
+      : /You design how a text looks/.test(s) ? 'layout'
       : /strict reviewer/.test(s) ? 'review'
         : /materials writer/.test(s) ? 'content'
           : /test writer/.test(s) ? 'questions' : 'other';
@@ -129,6 +130,11 @@ function claudeStub({ scenario, text, xss, worksheet }) {
       if (scenario === 'xss') return Object.assign({}, text, { title: xss, paragraphs: text.paragraphs.map(p => p + ' ' + xss), meta: Object.assign({}, text.meta, { byline: xss }) });
       if (scenario === 'tooShort') return Object.assign({}, text, { paragraphs: ['Much too short.'] });
       return text;
+    }
+    if (kind === 'photoPrompts') {
+      const n = (s.match(/^\d\. /gm) || []).length || 1;
+      return { photoPrompts: Array.from({ length: n }, (_, i) => ({ google: ['claude search ' + (i + 1) + ' a', 'claude search ' + (i + 1) + ' b', 'claude search ' + (i + 1) + ' c'],
+        chatgpt: 'Claude prompt ' + (i + 1) + ': a photorealistic photo of an English market town square on a grey Saturday morning, traders at their stalls, 35 mm, eye level, landscape 3:2, no text.' })) };
     }
     if (kind === 'layout') {
       if (scenario === 'xss') return { url: xss, siteName: xss, navItems: [xss], actions: [{ label: xss, count: xss }] };
@@ -625,6 +631,101 @@ const SETTINGS = (extra) => `(() => {
     });
     check('with the real fonts and long entries, no text runs into another or off its page', o.length === 0, o.slice(0, 4).join(' | '));
     check('prompts and fitting raise no page error', errors.length === 0, errors[0]);
+    await page.close();
+  }
+
+  console.log('\nBrowser audit: all pictures with ChatGPT in one go (2.4, 2.11)');
+  {
+    const { page, errors } = await open({ scenario: 'ok' });
+    await page.evaluate(() => { window.__copied = null; try { Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: async (t) => { window.__copied = t; } } }); } catch (e) { /* keep */ } });
+    await run(page, { textType: 'News Article', layoutMedium: 'paper', wordCount: 450 });
+    await page.waitForTimeout(300);
+    const a = await page.evaluate(async () => {
+      const { ui } = window.LR;
+      const m = ui.app.material;
+      const bar = document.querySelector('#out-student .photo-tools');
+      const places = ui.photoPlaces(m);
+      bar.querySelector('[data-pt="batch"]').click();
+      await new Promise(r => setTimeout(r, 100));
+      const cardLinks = Array.from(document.querySelectorAll('#out-student .photo-prompts .pp-google a')).map(a => decodeURIComponent(a.href.split('q=')[1] || '').replace(/\+/g, ' '));
+      return { calls: window.__calls.filter(c => c === 'photoPrompts').length, stored: (m.layout.chrome.photoPrompts || []).filter(p => p && p.chatgpt).length, places: places.map(p => ({ n: p.n, role: p.role, from: p.set.from })),
+        copied: window.__copied, bar: !!bar, cardLinks, toolsInExport: /photo-tools|pp-google/.test(window.LR.render.renderStudentHTML(m)) };
+    });
+    check('the picture prompts come from the language model: asked for when the layout did not bring them', a.calls >= 1 && a.places.length >= 1 && a.places.every(p => p.from === 'claude') && a.stored >= a.places.length && a.cardLinks.every(q => /^claude search \d [abc]$/.test(q)), JSON.stringify(a));
+    check('one click copies all pictures for ChatGPT, numbered like the photo places, in one style', a.bar && /^Please create/.test(a.copied || '') && a.places.every(p => (a.copied || '').includes('Photo ' + p.n + ' (') && (a.copied || '').includes('Claude prompt ' + p.n)) && /35 mm camera/.test(a.copied) && /3:2/.test(a.copied) && /No text/.test(a.copied), JSON.stringify(a.copied));
+    check('the photo bar and the prompts are on the screen only, not in the worksheet', !a.toolsInExport, JSON.stringify(a));
+    // three saved pictures dropped together on the page: in order, checked, taken over
+    const b = await page.evaluate(async () => {
+      const { ui } = window.LR;
+      const m = ui.app.material;
+      const mk = async (name, rgb, t) => {
+        const c = document.createElement('canvas'); c.width = 320; c.height = 200;
+        const x = c.getContext('2d'); x.fillStyle = `rgb(${rgb})`; x.fillRect(0, 0, 320, 200);
+        const blob = await new Promise(r => c.toBlob(r, 'image/png'));
+        return new File([blob], name, { type: 'image/png', lastModified: t });
+      };
+      const places = ui.photoPlaces(m);
+      // saved in the order made, names without numbers: the time decides
+      const files = [await mk('ChatGPT Image c.png', '30,170,60', 3000), await mk('ChatGPT Image a.png', '214,38,196', 1000), await mk('ChatGPT Image b.png', '40,90,200', 2000)];
+      const order = ui.orderImages(files).map(f => f.name);
+      const dt = new DataTransfer(); files.forEach(f => dt.items.add(f));
+      document.querySelector('#out-student figure.medium-sheet').dispatchEvent(new DragEvent('drop', { dataTransfer: dt, bubbles: true, cancelable: true }));
+      await new Promise(r => setTimeout(r, 300));
+      const dlg = document.querySelector('#picture-assign');
+      const rows = Array.from(dlg.querySelectorAll('.pa-row')).map(r => ({ slot: r.dataset.slot, pick: r.querySelector('select').value, thumb: !!r.querySelector('.pa-thumb img') }));
+      const credit = dlg.querySelector('input[name=credit]').value;
+      dlg.querySelector('[data-pa="apply"]').click();
+      for (let i = 0; i < 50 && dlg.open; i++) await new Promise(r => setTimeout(r, 100));
+      await new Promise(r => setTimeout(r, 500));
+      const names = places.map(p => (m.layout.images[p.slot] || {}).name || '');
+      const credits = places.map(p => (m.layout.images[p.slot] || {}).credit || '');
+      const cardsLeft = document.querySelectorAll('#out-student .photo-prompts').length;
+      const stored = (await ui.store.list('materials')).find(x => x.id === m.id);
+      return { places: places.length, order, rows, credit, names, credits, cardsLeft, stored: stored && Object.keys(stored.layout.images || {}).length, open: dlg.open };
+    });
+    const expect = ['ChatGPT Image a.png', 'ChatGPT Image b.png', 'ChatGPT Image c.png'];
+    check('several pictures dropped on the page go into Foto 1, 2, 3 in the order they were made', b.order.join('|') === expect.join('|') && b.rows.every(r => r.thumb) && b.names.every((n, i) => n === expect[i]) && !b.open, JSON.stringify(b));
+    check('after copying the prompts the credit says the pictures are made with ChatGPT; the prompts disappear, all is stored', b.credit === 'KI-generiert mit ChatGPT' && b.credits.every(c => c === 'KI-generiert mit ChatGPT') && b.cardsLeft === 0 && b.stored === b.places, JSON.stringify(b));
+    // numbered file names decide the order; the file button; the project text
+    const c = await page.evaluate(async () => {
+      const { ui, photo } = window.LR;
+      const f = (name, t) => new File([new Uint8Array(10)], name, { type: 'image/png', lastModified: t });
+      const byName = ui.orderImages([f('foto-3.png', 1), f('foto-1.png', 3), f('foto-2.png', 2)]).map(x => x.name);
+      document.querySelector('#out-student .photo-tools [data-pt="project"]').click();
+      await new Promise(r => setTimeout(r, 100));
+      const td = document.querySelector('#text-dialog textarea').value;
+      document.querySelector('#text-dialog [data-td="close"]').click();
+      return { byName, project: td === photo.PROJECT_INSTRUCTIONS && /35 mm/.test(td) && /Photo 1, Photo 2, Photo 3/.test(td) };
+    });
+    check('numbered file names decide the order; the ChatGPT project text is ready to copy', c.byName.join('|') === 'foto-1.png|foto-2.png|foto-3.png' && c.project, JSON.stringify(c));
+    await page.evaluate(() => { const m = window.LR.ui.app.material; m.layout.images = {}; window.LR.ui.renderOutput(m); });
+    await page.waitForTimeout(300);
+    await page.setInputFiles('#out-student .photo-tools input[type=file]', [{ name: 'eins.png', mimeType: 'image/png', buffer: Buffer.from(await page.evaluate(async () => { const c = document.createElement('canvas'); c.width = 200; c.height = 120; c.getContext('2d').fillRect(0, 0, 200, 120); return c.toDataURL('image/png').split(',')[1]; }), 'base64') }]);
+    await page.waitForTimeout(300);
+    const d = await page.evaluate(() => { const dlg = document.querySelector('#picture-assign'); const r = { open: !!(dlg && dlg.open), rows: dlg ? dlg.querySelectorAll('.pa-row select').length : 0 }; if (dlg && dlg.open) dlg.querySelector('[data-pa="cancel"]').click(); return r; });
+    check('the button "Bilder einfügen" takes the pictures from a file dialog, too', d.open && d.rows >= 1, JSON.stringify(d));
+    check('the ChatGPT way raises no page error', errors.length === 0, errors[0]);
+    await page.close();
+  }
+  {
+    // an older material with the app's own prompts: Claude writes them on request
+    const { page, errors } = await open({ scenario: 'ok' });
+    const r = await page.evaluate(async () => {
+      const { fixture, ui } = window.LR;
+      const m = fixture.material({ textType: 'News Article', authenticLayout: true, createWorksheet: true }, 'reading');
+      m.id = 'old-material'; delete m.layout.chrome.photoPrompts;
+      for (let i = 0; i < 30 && !ui.caps.sample; i++) await new Promise(r => setTimeout(r, 100));
+      ui.app.material = m; ui.openViewer(m, 'library');
+      await new Promise(r => setTimeout(r, 400));
+      const before = ui.photoPlaces(m).map(p => p.set.from);
+      const btn = document.querySelector('#vw-sheet .photo-tools [data-pt="claude"]');
+      if (btn) btn.click();
+      for (let i = 0; i < 50 && ui.photoPlaces(m).some(p => p.set.from !== 'claude'); i++) await new Promise(r => setTimeout(r, 100));
+      await new Promise(r => setTimeout(r, 300));
+      return { before, button: !!btn, after: ui.photoPlaces(m).map(p => p.set.from), gone: !document.querySelector('#vw-sheet .photo-tools [data-pt="claude"]') };
+    });
+    check('for an older material Claude writes the picture prompts on request', r.button && r.before.some(f => f !== 'claude') && r.after.every(f => f === 'claude') && r.gone, JSON.stringify(r));
+    check('the prompt request raises no page error', errors.length === 0, errors[0]);
     await page.close();
   }
 

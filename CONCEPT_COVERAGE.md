@@ -2,7 +2,7 @@
 
 Erzeugt von `npm run coverage`. Jede Zeile ist eine Anforderung aus `docs/Konzept_Listening_Reading_Creator.md`, gebunden an die Stelle im Code, die sie umsetzt, und das Ergebnis der automatischen Prüfung (`npm test`).
 
-**Ergebnis: 328 von 328 Anforderungen bestanden.**
+**Ergebnis: 329 von 329 Anforderungen bestanden.**
 
 Prüfarten: **setting** – Steuerelement vorhanden und Änderung des Werts verändert nachweislich den Prompt an Claude · **function** – Verhalten wird mit echten Eingaben ausgeführt und verglichen · **rule** – Qualitätsregel existiert als Messung oder Claude-Review-Kriterium · **render** – Ausgabe wird auf einer Fixture gerendert und inhaltlich geprüft · **ui** – Navigations-/Strukturelement existiert.
 
@@ -479,7 +479,7 @@ Prüfarten: **setting** – Steuerelement vorhanden und Änderung des Werts ver�
 | ✅ | `S36.repair` | Beanstandete Post-Task wird gezielt neu erstellt, Fragen und Pre-Task bleiben unverändert | function | Funktion (siehe Check im Manifest) |
 | ✅ | `S36.output` | Post-Task steht nach den Fragen auf dem Arbeitsblatt (Bildschirm, Word, Markdown) mit Sozialform, Arbeitsweise, Zeit, Produkt und Kriterien; Lehrerversion mit Übersicht | render | render.js (renderStudentHTML / renderTeacherHTML) |
 
-## §37 Authentisches Layout (Screenshot des Mediums) (28/28)
+## §37 Authentisches Layout (Screenshot des Mediums) (29/29)
 
 | Status | ID | Anforderung | Art | Umsetzung |
 |---|---|---|---|---|
@@ -506,6 +506,7 @@ Prüfarten: **setting** – Steuerelement vorhanden und Änderung des Werts ver�
 | ✅ | `S37.web_picture` | Nach dem Generieren sucht die App ein echtes, passendes Foto für das Aufmacherbild (offene Bildsammlungen: Wikimedia Commons, Openverse) – Suchbegriff aus dem generierten Text, nur freie Lizenzen ohne ND, mit vollständigem Nachweis; ein erfundenes Ereignis bekommt nie das Foto eines echten Ereignisses, nur eine allgemeine Szene als Illustration; die Bildlegende sagt nur, was die Quelle sagt; das Foto wird ins Material übernommen und steht in Vorschau, Wiederöffnen und Export; scheitert irgendetwas (auch die Sicherheitsregeln eines veröffentlichten Artifacts), bleibt das gezeichnete Bild und das Material entsteht wie immer | function | Funktion (siehe Check im Manifest) |
 | ✅ | `S37.no_overlap` | Kein Element läuft in ein anderes: jede Oberflächen-Zeile (Datumszeile, Bildnachweis, Navigation, Modultexte …) passt in ihren Platz – zu lange Angaben werden mit „…“ gekürzt, nie der Text des Materials oder ein wörtliches Zitat; nichts ragt über Seite oder Kasten | function | Funktion (siehe Check im Manifest) |
 | ✅ | `S37.photo_prompts` | Höchstens drei Fotos pro Artikel (Aufmacher, zweites Bild, ein weiteres); in jedem Fotoplatz ohne echtes Foto stehen drei allgemeine Google-Bildsuchen und ein ChatGPT-Prompt für ein fotorealistisches Kamerafoto – nur am Bildschirm, nie im Druck oder Export | function | Funktion (siehe Check im Manifest) |
+| ✅ | `S37.photo_batch` | Alle Bilder eines Artikels auf einmal mit ChatGPT: die Bild-Prompts schreibt das Sprachmodell (Claude) – fehlen sie nach dem Layout, fragt die Pipeline eigens danach; ein Klick kopiert alle Fotos nummeriert in eine Nachricht für ChatGPT; die gespeicherten Bilder werden zusammen hineingezogen oder ausgewählt und kommen der Reihe nach in Foto 1, 2, 3 (mit Kontrolle); dazu der Anweisungstext für ein ChatGPT-Projekt | function | Funktion (siehe Check im Manifest) |
 | ✅ | `S37.press_pages` | Die Zeitung ist eine echte A4-Seite: ein längerer Artikel läuft auf einer Folgeseite weiter („Continued on page 2“, Fortsetzungskopf, Seitenzahlen) – nie kleinere Schrift, nie gekürzt; jede Seite ist im Blatt und im Word-Export eine eigene Seite; Silbentrennung im Blocksatz | function | Funktion (siehe Check im Manifest) |
 | ✅ | `S37.press_makeup` | Die Zeitungsseite ist umbrochen wie eine echte: Titelkopf mit Namen, Motto und Ausgabezeile, Rubrik, schwarze, eng gesetzte Schlagzeile, Vorspann ohne Etikett, Autorenzeile zwischen Linien, Initial (Titelseite) oder Ortsmarke (Innenseite), neben dem Aufmacher Zitat und Fakten statt Textstreifen, kein Abstand zwischen Absätzen (nur Einzug), Zwischentitel nie allein am Spaltenfuss, zweites Bild nie neben dem Aufmacher, Zitat und Kästen rücken an den Text | function | Funktion (siehe Check im Manifest) |
 | ✅ | `S37.modules` | Um den Text steht, was auf so einer Seite wirklich steht: Werbung, Umfrage, Meistgelesen, Anmeldekasten, Kleinanzeigen – Claude wählt aus dem Katalog und darf Eigenes ergänzen | function | Funktion (siehe Check im Manifest) |

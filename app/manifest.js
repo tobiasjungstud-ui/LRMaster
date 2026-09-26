@@ -1991,6 +1991,31 @@
       if (src && !(/function photoPromptCard/.test(src) && /tbm=isch/.test(src) && /chatgpt\.com/.test(src) && /clipboard\.writeText/.test(src))) problems.push('the photo places do not offer the searches and the prompt');
       return ok(!problems.length, problems.slice(0, 3).join(' | '));
     } });
+  add({ id: 'S37.photo_batch', section: 37, title: 'Alle Bilder eines Artikels auf einmal mit ChatGPT: die Bild-Prompts schreibt das Sprachmodell (Claude) – fehlen sie nach dem Layout, fragt die Pipeline eigens danach; ein Klick kopiert alle Fotos nummeriert in eine Nachricht für ChatGPT; die gespeicherten Bilder werden zusammen hineingezogen oder ausgewählt und kommen der Reihe nach in Foto 1, 2, 3 (mit Kontrolle); dazu der Anweisungstext für ein ChatGPT-Projekt', kind: 'function',
+    check(env) {
+      const problems = [];
+      const P = env.photo;
+      const places = [
+        { n: 1, role: 'lead', set: { chatgpt: 'A photorealistic photo of a market square on a grey Saturday morning, traders at their stalls, 35 mm, eye level.' } },
+        { n: 2, role: 'second', set: { chatgpt: 'A photorealistic photo of a bus stop on a quiet street at dusk, people waiting, 35 mm, eye level.' } },
+      ];
+      const batch = P.batchPrompt(places, 'print');
+      if (!/^Please create 2 separate photorealistic photos for a newspaper page/.test(batch)) problems.push('the message does not ask for all photos at once');
+      if (!/Photo 1 \(the lead picture at the top\): A photorealistic photo of a market square/.test(batch) || !/Photo 2 \(the second picture inside the text\): A photorealistic photo of a bus stop/.test(batch)) problems.push('the photos are not numbered like the places, with the model\'s descriptions');
+      if (!/35 mm camera/.test(batch) || !/landscape format 3:2/.test(batch) || !/No text/.test(batch) || !/not as a collage/.test(batch)) problems.push('the common style is missing');
+      if (P.batchPrompt([], 'print') !== '') problems.push('an empty page gets a message');
+      if (!/35 mm/.test(P.PROJECT_INSTRUCTIONS) || !/Photo 1, Photo 2, Photo 3/.test(P.PROJECT_INSTRUCTIONS) || !/recognisable real/.test(P.PROJECT_INSTRUCTIONS)) problems.push('the project instructions are incomplete');
+      // the request to the model: from the text, every place, JSON in order
+      const m = layoutMaterial(env, { textType: 'News Article', layoutMedium: 'paper' });
+      const req = env.prompts.buildPhotoPromptsPrompt(m.settings, m.content, m.layout.chrome, [{ role: 'lead', subject: 'market' }, { role: 'second', subject: 'transport', caption: 'Bus 14' }], 'Zeitungsseite', 'print');
+      if (!/You write image prompts/.test(req) || !req.includes(m.content.paragraphs[0].slice(0, 30)) || !/exactly 2 objects/.test(req) || !/"photoPrompts"/.test(req) || !/Never an invented name/.test(req) || !/documentary news photography/.test(req)) problems.push('the model is not asked for the prompts from the text');
+      // the pipeline asks for them, the page offers the rest
+      const pipe = env.pipelineSource || '';
+      if (pipe && !/ensurePhotoPrompts\(material, ctl\.signal\)/.test(pipe)) problems.push('the pipeline does not ask the model for missing picture prompts');
+      const src = env.uiSource || '';
+      if (src && !(/function photoToolbar/.test(src) && /batchPrompt/.test(src) && /function openAssignDialog/.test(src) && /multiple/.test(src) && /function orderImages/.test(src) && /PROJECT_INSTRUCTIONS/.test(src))) problems.push('the page does not offer the copy of all prompts, the pictures at once or the project text');
+      return ok(!problems.length, problems.slice(0, 3).join(' | '));
+    } });
   add({ id: 'S37.press_pages', section: 37, title: 'Die Zeitung ist eine echte A4-Seite: ein längerer Artikel läuft auf einer Folgeseite weiter („Continued on page 2“, Fortsetzungskopf, Seitenzahlen) – nie kleinere Schrift, nie gekürzt; jede Seite ist im Blatt und im Word-Export eine eigene Seite; Silbentrennung im Blocksatz', kind: 'function',
     check(env) {
       const problems = [];

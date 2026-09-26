@@ -1344,13 +1344,45 @@
     return { google: google.slice(0, 3), chatgpt, from: 'app' };
   }
 
+  /*
+   * One message for all photos of a page: the teacher pastes it into ChatGPT
+   * once and gets the pictures one after another, numbered like the photo
+   * places on the page. The picture descriptions are the model's (Claude's
+   * photoPrompts); the frame around them keeps the style the same.
+   */
+  const ROLE_NAME = { lead: 'the lead picture at the top', second: 'the second picture inside the text', extra: 'a smaller picture elsewhere on the page' };
+  function batchPrompt(places, medium) {
+    const list = (places || []).filter(p => p && p.set && p.set.chatgpt);
+    if (!list.length) return '';
+    const print = medium === 'print';
+    const n = list.length;
+    return [
+      `Please create ${n === 1 ? 'one photorealistic photo' : n + ' separate photorealistic photos'} for a ${print ? 'newspaper page' : 'magazine or news website'}${n > 1 ? ', one image after another, in exactly this order' : ''}.`,
+      `Same style for ${n > 1 ? 'all of them' : 'it'}: ${print ? 'documentary news photography' : 'editorial photography'}, as if taken with a real 35 mm camera at eye level; natural light, realistic colours and textures, slight film grain, candid; landscape format 3:2. No text, no captions, no logos, no watermarks, no recognisable real people or brands.`,
+      '',
+      list.map((p, i) => `Photo ${i + 1} (${ROLE_NAME[p.role] || 'a picture on the page'}): ${p.set.chatgpt}`).join('\n\n'),
+      '',
+      n > 1 ? `Generate Photo 1 first, then Photo 2${n > 2 ? ', then Photo 3' : ''} — each as its own image, not as a collage.` : 'Generate it as a single image, not as a collage.',
+    ].join('\n');
+  }
+
+  /** What a teacher puts once into a ChatGPT project, so every picture comes out alike. */
+  const PROJECT_INSTRUCTIONS = [
+    'You create photos for English reading worksheets (newspaper, magazine and blog pages).',
+    'Every image: photorealistic, as if taken with a real 35 mm camera at eye level; natural light, realistic colours and textures, slight film grain, candid and unposed; landscape format 3:2.',
+    'Newspaper pages: documentary news photography. Magazines and blogs: editorial photography.',
+    'Never: text, captions, signs with readable words, logos, watermarks, brands, recognisable real or famous people, collages, frames.',
+    'When a message asks for several photos, create them one after another as separate images, in the order given (Photo 1, Photo 2, Photo 3).',
+    'Answer with the images only, without explanations.',
+  ].join('\n');
+
   useLibrary(photolib);
 
   return {
     SUBJECTS, SCENES, subjectFor, subjectHints, isSubject, draw, hashOf, LIGHTS, SKIN, HAIR, CLOTHES,
     useLibrary, photosFor, pick, byId, preload, imageFor, library: () => LIBRARY.slice(),
     isOwnSource, loadSrc, imageForSrc,
-    promptsFor, promptSetOk,
+    promptsFor, promptSetOk, batchPrompt, PROJECT_INSTRUCTIONS, ROLE_INDEX,
     webQueryFor, webPlan, webLicenseOk, commonsCandidates, openverseCandidates, findWebPicture, decodeImage, isPending, sourceCaption,
     PENDING_TONE, webBlockedNow: () => webBlocked, resetWebBlocked: () => { webBlocked = false; },
   };

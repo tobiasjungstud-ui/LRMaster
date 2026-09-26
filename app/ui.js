@@ -803,6 +803,16 @@
       };
       // a real photo for the lead picture, when one can be found (never blocks the material)
       if (material.layout && material.layout.chrome) {
+        // the picture prompts come from the language model, for every photo place
+        try {
+          const places = photoPlaces(material);
+          const have = material.layout.chrome.photoPrompts || [];
+          if (places.some(p => !window.LR.photo.promptSetOk(have[window.LR.photo.ROLE_INDEX[p.role]]))) {
+            progress('done', 'running', 'Claude schreibt die Bild-Prompts …');
+            await ensurePhotoPrompts(material, ctl.signal);
+          }
+        } catch (e) { if (e && e.code === 'cancelled') throw e; /* the app's own prompts stand in */ }
+        if (ctl.signal.aborted) throw { code: 'cancelled' };
         progress('done', 'running', 'Suche ein echtes Foto zum Text …');
         await attachWebPicture(material, ctl.signal);
         if (ctl.signal.aborted) throw { code: 'cancelled' };
@@ -1258,6 +1268,8 @@
       repaintMedium(m);
     }));
     bindPaperChips(pane, m);
+    const tools = photoToolbar(m);
+    if (tools) pane.querySelector('.layout-shot').before(tools);
     const canvas = $('#layout-canvas');
     paintLayoutCanvas(m, canvas);
     $$('#out-layout [data-download]').forEach(b => b.addEventListener('click', () => download('png')));
@@ -1353,6 +1365,23 @@
    */
   function renderSheetHotspots(m, root) {
     if (!root || !m || !m.layout) return;
+    // above the page: all prompts for ChatGPT, all pictures at once (screen only)
+    $$('figure.medium-sheet', root).forEach((fig) => {
+      const prev = fig.previousElementSibling;
+      if (prev && prev.classList.contains('photo-tools')) prev.remove();
+      const bar = photoToolbar(m);
+      if (bar) fig.parentElement.insertBefore(bar, fig);
+      if (!fig.__lrDrop) {
+        fig.__lrDrop = true;
+        fig.addEventListener('dragover', (e) => { if (e.dataTransfer && Array.from(e.dataTransfer.types || []).includes('Files')) e.preventDefault(); });
+        fig.addEventListener('drop', (e) => {
+          const files = imageFiles(e.dataTransfer && e.dataTransfer.files);
+          if (!files.length || e.defaultPrevented) return;
+          e.preventDefault();
+          openAssignDialog(m, files);
+        });
+      }
+    });
     // every page of the medium is an SVG of its own; its viewBox says which
     // part of the whole drawing it shows
     $$('figure.medium-sheet svg.lr-medium', root).forEach((svg) => {
@@ -1377,6 +1406,7 @@
   /** The buttons themselves: one per picture, placed in per cent of the picture of the medium. */
   function hotspotLayer(m, frame, pics, width, height) {
     frame.__lrHeight = height;
+    frame.__lrPlaces = null;   // numbered afresh for each drawing
     let layer = frame.querySelector('.photo-hotspots');
     if (!layer) { layer = document.createElement('div'); layer.className = 'photo-hotspots'; frame.appendChild(layer); }
     layer.innerHTML = '';
@@ -1399,6 +1429,8 @@
       const onDrop = async (e) => {
         e.preventDefault();
         btn.classList.remove('is-drop');
+        const many = imageFiles(e.dataTransfer && e.dataTransfer.files);
+        if (many.length > 1) { openAssignDialog(m, many); return; }
         try {
           const file = await imageFromTransfer(e.dataTransfer);
           await replacePicture(m, b.slot, await prepareImage(file), { name: file.name, credit: file.lrCredit || '' });
@@ -1430,10 +1462,10 @@
   function photoPromptCard(m, b, pics, frame, width) {
     const P = window.LR.photo;
     if (!P || !P.promptsFor || !m.layout) return null;
-    const photos = [...new Map(pics.filter(x => !x.round && x.picRole).map(x => [x.slot, x])).values()]
-      .sort((x, y) => (PHOTO_ROLE_ORDER[x.picRole] - PHOTO_ROLE_ORDER[y.picRole]) || (y.w * y.h - x.w * x.h));
-    const n = photos.findIndex(x => x.slot === b.slot) + 1;
-    const set = P.promptsFor({ role: b.picRole, chrome: m.layout.chrome, content: m.content, subject: b.subject, medium: quality.mediumOf(m), caption: b.caption || '' });
+    const places = frame.__lrPlaces || (frame.__lrPlaces = photoPlaces(m));
+    const place = places.find(x => x.slot === b.slot);
+    if (!place) return null;
+    const photos = places, n = place.n, set = place.set;
     if (!set || !set.google.length) return null;
     const card = document.createElement('div');
     card.className = 'photo-prompts';
@@ -1682,6 +1714,191 @@
       if (uploaded && caps.assets) caps.assets.delete(uploaded).catch(() => {});
       return null;
     }
+  }
+
+  /**
+   * The photo places of a material, numbered as the page shows them: the lead
+   * picture, the second picture, one more — at most three. Each with the
+   * prompts to find or make it (Claude's, else built by the app).
+   */
+  function photoPlaces(m) {
+    const P = window.LR.photo;
+    if (!P || !m || !m.layout || !m.layout.chrome) return [];
+    let model;
+    // measured like the sheet, so the places are exactly the ones it shows
+    try { model = quality.layoutModel(m, { measure: mock.canvasMeasure(document.createElement('canvas')) }); } catch (e) { return []; }
+    const medium = quality.mediumOf(m);
+    const comp = mock.composition(m.layout.chrome, (m.content && m.content.paragraphs) || [], medium === 'print' ? 'print' : 'page');
+    const byslot = new Map();
+    for (const b of model.blocks) if (b.type === 'photo' && !b.round && b.picRole && !byslot.has(b.slot)) byslot.set(b.slot, b);
+    const places = [...byslot.values()].sort((x, y) => (PHOTO_ROLE_ORDER[x.picRole] - PHOTO_ROLE_ORDER[y.picRole]) || (y.w * y.h - x.w * x.h)).slice(0, 3);
+    return places.map((b, i) => {
+      const caption = b.picRole === 'lead' ? (m.layout.chrome.photoCaption || '') : b.picRole === 'second' ? ((comp.figure && comp.figure.caption) || '') : '';
+      const set = P.promptsFor({ role: b.picRole, chrome: m.layout.chrome, content: m.content, subject: b.subject, medium, caption });
+      return { n: i + 1, slot: b.slot, role: b.picRole, subject: b.subject, caption, own: !!b.own, set };
+    });
+  }
+
+  /**
+   * The picture prompts come from the language model: when the layout answer
+   * did not bring them for every photo place, Claude writes them now, from
+   * the text. Resolves true when Claude wrote them; the page never waits on it.
+   */
+  async function ensurePhotoPrompts(m, signal) {
+    const P = window.LR.photo;
+    if (!P || !caps.sample || !m || !m.layout || !m.layout.chrome) return false;
+    const places = photoPlaces(m);
+    if (!places.length) return false;
+    const have = Array.isArray(m.layout.chrome.photoPrompts) ? m.layout.chrome.photoPrompts : [];
+    const missing = places.filter(p => !P.promptSetOk(have[P.ROLE_INDEX[p.role]]));
+    if (!missing.length) return false;
+    const medium = quality.mediumOf(m);
+    const prompt = prompts.buildPhotoPromptsPrompt(m.settings || {}, m.content, m.layout.chrome, places, m.layout.label, medium);
+    const raw = await askJSON(prompt, { signal });
+    const got = raw && Array.isArray(raw.photoPrompts) ? raw.photoPrompts : [];
+    const str = (x, n) => (typeof x === 'string' ? x.replace(/\s+/g, ' ').trim().slice(0, n) : '');
+    const out = have.slice(0, 3);
+    while (out.length < 3) out.push({ google: [], chatgpt: '' });
+    places.forEach((p, i) => {
+      const g = got[i];
+      if (!g || typeof g !== 'object') return;
+      const set = { google: (Array.isArray(g.google) ? g.google : []).map(q => str(q, 80)).filter(q => q.split(' ').length >= 2).slice(0, 3), chatgpt: str(g.chatgpt, 1200) };
+      if (P.promptSetOk(set)) out[P.ROLE_INDEX[p.role]] = set;
+    });
+    m.layout.chrome = Object.assign({}, m.layout.chrome, { photoPrompts: out });
+    if (m.prompts) m.prompts.photoPrompts = prompt;
+    return true;
+  }
+
+  /*
+   * Above the page in the preview and the viewer, on screen only: one copy of
+   * all picture prompts for ChatGPT, one way to put all the pictures in at
+   * once, and the instructions for a ChatGPT project.
+   */
+  const batchCopied = new WeakSet();   // materials whose prompts went to ChatGPT in this session
+  function photoToolbar(m) {
+    const P = window.LR.photo;
+    const places = photoPlaces(m);
+    if (!P || !places.length) return null;
+    const bar = document.createElement('div');
+    bar.className = 'photo-tools';
+    const open = places.filter(p => !p.own).length;
+    const fromApp = places.some(p => p.set.from !== 'claude');
+    bar.innerHTML = `<span class="pt-title">Fotos: ${places.length} ${places.length === 1 ? 'Platz' : 'Plätze'}${open < places.length ? ` · ${places.length - open} eingesetzt` : ''}</span>
+      <button type="button" class="btn tiny primary" data-pt="batch">Alle Bilder für ChatGPT kopieren</button>
+      <label class="btn tiny pt-files">Bilder einfügen …<input type="file" accept="image/png,image/jpeg,image/webp,image/gif" multiple hidden></label>
+      <button type="button" class="btn tiny" data-pt="project">ChatGPT-Projekt einrichten</button>
+      ${fromApp && caps.sample ? '<button type="button" class="btn tiny" data-pt="claude">Prompts von Claude schreiben lassen</button>' : ''}
+      <span class="pt-hint">Die gespeicherten Bilder einfach zusammen auf die Seite ziehen – sie kommen der Reihe nach in Foto 1, 2, 3.</span>`;
+    bar.querySelector('[data-pt="batch"]').addEventListener('click', async () => {
+      const text = P.batchPrompt(photoPlaces(m), quality.mediumOf(m));
+      batchCopied.add(m);
+      try { await navigator.clipboard.writeText(text); toast('Kopiert: alle Bild-Prompts. In ChatGPT einfügen, die Bilder speichern und zusammen auf die Seite ziehen.'); }
+      catch (e) { showTextDialog('Alle Bilder für ChatGPT', 'Die Zwischenablage ist hier gesperrt – markiere den Text und kopiere ihn mit Strg+C.', text); }
+    });
+    bar.querySelector('input[type=file]').addEventListener('change', (e) => { const files = imageFiles(e.target.files); e.target.value = ''; if (files.length) openAssignDialog(m, files); });
+    bar.querySelector('[data-pt="project"]').addEventListener('click', () => showTextDialog('ChatGPT-Projekt einrichten',
+      'Einmal in ChatGPT: links „Projekte“ → „Neues Projekt“ (z. B. „Arbeitsblatt-Fotos“) → „Anweisungen“ → diesen Text einfügen. Danach die Bild-Prompts in diesem Projekt einfügen – alle Bilder kommen im gleichen Stil.', P.PROJECT_INSTRUCTIONS));
+    const claudeBtn = bar.querySelector('[data-pt="claude"]');
+    if (claudeBtn) claudeBtn.addEventListener('click', async () => {
+      claudeBtn.disabled = true; claudeBtn.textContent = 'Claude schreibt …';
+      try { if (await ensurePhotoPrompts(m)) { await saveMaterial(m).catch(() => {}); repaintMedium(m); toast('Claude hat die Bild-Prompts geschrieben.'); } }
+      catch (e) { toast(errorCopy(e)); claudeBtn.disabled = false; claudeBtn.textContent = 'Prompts von Claude schreiben lassen'; }
+    });
+    // the bar is a place to drop the pictures, too
+    bar.addEventListener('dragover', (e) => { e.preventDefault(); bar.classList.add('is-drop'); });
+    bar.addEventListener('dragleave', () => bar.classList.remove('is-drop'));
+    bar.addEventListener('drop', (e) => { e.preventDefault(); bar.classList.remove('is-drop'); const files = imageFiles(e.dataTransfer && e.dataTransfer.files); if (files.length) openAssignDialog(m, files); });
+    return bar;
+  }
+
+  function imageFiles(list) {
+    return Array.from(list || []).filter(f => f && /^image\/(png|jpeg|webp|gif)$/.test(f.type));
+  }
+
+  /**
+   * The order in which the pictures were made: a number in the name
+   * ("foto-2.png") if every file has its own, else the time they were saved.
+   */
+  function orderImages(files) {
+    const num = (f) => { const mt = /(?:^|\D)([1-9])(?:\D|$)/.exec(f.name || ''); return mt ? Number(mt[1]) : 0; };
+    const nums = files.map(num);
+    if (nums.every(Boolean) && new Set(nums).size === nums.length) return files.slice().sort((a, b) => num(a) - num(b));
+    return files.slice().sort((a, b) => (a.lastModified - b.lastModified) || String(a.name).localeCompare(String(b.name), undefined, { numeric: true }));
+  }
+
+  /** Several pictures at once: each goes to a photo place, in order; the teacher sees and may change it. */
+  function openAssignDialog(m, files) {
+    const places = photoPlaces(m);
+    if (!places.length) { toast('Dieses Material hat keine Fotoplätze.'); return; }
+    const images = orderImages(files).slice(0, 6);
+    if (!$('#picture-assign')) document.body.insertAdjacentHTML('beforeend', '<dialog id="picture-assign" class="picture-editor" aria-label="Bilder zuordnen"></dialog>');
+    const dlg = $('#picture-assign');
+    const urls = images.map(f => URL.createObjectURL(f));
+    // the free places first, in order; places that already have a photo keep it unless chosen
+    const free = places.filter(p => !p.own);
+    const pick = new Map();
+    (free.length >= Math.min(images.length, places.length) ? free : places).forEach((p, i) => { if (i < images.length) pick.set(p.slot, i); });
+    const roleName = { lead: 'Aufmacherbild', second: 'zweites Bild', extra: 'weiteres Bild' };
+    dlg.innerHTML = `<form method="dialog" class="pe-form">
+        <h3>Bilder einsetzen</h3>
+        <p class="muted">Die Bilder kommen der Reihe nach in die Fotoplätze. Stimmt eine Zuordnung nicht, wähle hier ein anderes Bild.</p>
+        <div class="pa-rows">${places.map(p => `<div class="pa-row" data-slot="${esc(p.slot)}">
+            <div class="pa-thumb">${pick.has(p.slot) ? `<img alt="" src="${urls[pick.get(p.slot)]}">` : ''}</div>
+            <label>Foto ${p.n} · ${esc(roleName[p.role] || '')}${p.own ? ' (hat schon ein Bild)' : ''}
+              <select>${['<option value="">– nicht ändern –</option>'].concat(images.map((f, i) => `<option value="${i}"${pick.get(p.slot) === i ? ' selected' : ''}>Bild ${i + 1}: ${esc(String(f.name || '').slice(0, 40))}</option>`)).join('')}</select>
+            </label></div>`).join('')}</div>
+        <label class="pe-credit">Bildnachweis <input type="text" name="credit" maxlength="120" value="${batchCopied.has(m) ? 'KI-generiert mit ChatGPT' : ''}" placeholder="z. B. KI-generiert mit ChatGPT · oder die Quelle"></label>
+        <p class="pe-error" role="alert" hidden></p>
+        <div class="pe-actions"><span class="pe-spacer"></span>
+          <button type="button" class="btn" data-pa="cancel">Abbrechen</button>
+          <button type="button" class="btn primary" data-pa="apply">Übernehmen</button></div>
+      </form>`;
+    $$('.pa-row', dlg).forEach(row => row.querySelector('select').addEventListener('change', (e) => {
+      const i = e.target.value === '' ? -1 : Number(e.target.value);
+      row.querySelector('.pa-thumb').innerHTML = i >= 0 ? `<img alt="" src="${urls[i]}">` : '';
+    }));
+    const close = () => { urls.forEach(u => URL.revokeObjectURL(u)); dlg.close(); };
+    dlg.querySelector('[data-pa="cancel"]').addEventListener('click', close);
+    dlg.querySelector('[data-pa="apply"]').addEventListener('click', async (ev) => {
+      const btn = ev.currentTarget, err = dlg.querySelector('.pe-error');
+      btn.disabled = true; err.hidden = true;
+      const credit = dlg.querySelector('input[name=credit]').value;
+      let done = 0;
+      try {
+        for (const row of $$('.pa-row', dlg)) {
+          const v = row.querySelector('select').value;
+          if (v === '') continue;
+          const file = images[Number(v)];
+          await replacePicture(m, row.dataset.slot, await prepareImage(file, { inline: !caps.assets }), { credit, name: file.name, quiet: true });
+          done++;
+        }
+        await saveMaterial(m);
+        close();
+        repaintMedium(m);
+        toast(done === 1 ? '1 Bild eingesetzt.' : done + ' Bilder eingesetzt.');
+      } catch (e) {
+        err.textContent = pictureError(e); err.hidden = false;
+        if (done) { saveMaterial(m).catch(() => {}); repaintMedium(m); }
+      } finally { btn.disabled = false; }
+    });
+    if (typeof dlg.showModal === 'function') dlg.showModal(); else dlg.setAttribute('open', '');
+  }
+
+  /** A text to copy by hand, where the clipboard is refused — or instructions to keep. */
+  function showTextDialog(title, note, text) {
+    if (!$('#text-dialog')) document.body.insertAdjacentHTML('beforeend', '<dialog id="text-dialog" class="picture-editor" aria-label="Text"></dialog>');
+    const dlg = $('#text-dialog');
+    dlg.innerHTML = `<form method="dialog" class="pe-form"><h3>${esc(title)}</h3><p class="muted">${esc(note)}</p>
+      <textarea class="td-text" rows="10" readonly>${esc(text)}</textarea>
+      <div class="pe-actions"><span class="pe-spacer"></span><button type="button" class="btn" data-td="copy">Kopieren</button><button type="button" class="btn primary" data-td="close">Schliessen</button></div></form>`;
+    const area = dlg.querySelector('textarea');
+    dlg.querySelector('[data-td="copy"]').addEventListener('click', async () => {
+      try { await navigator.clipboard.writeText(text); toast('Kopiert.'); } catch (e) { area.focus(); area.select(); toast('Markiert – mit Strg+C kopieren.'); }
+    });
+    dlg.querySelector('[data-td="close"]').addEventListener('click', () => dlg.close());
+    if (typeof dlg.showModal === 'function') dlg.showModal(); else dlg.setAttribute('open', '');
+    area.focus(); area.select();
   }
 
   /** Load the stored photos of a material (own or found), so a drawing or an export shows them. */
@@ -2596,5 +2813,5 @@
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init); else init();
 
-  window.LR.ui = { app, generate, produceWorksheet, openViewer, renderViewer, markPageBreaks, syncViewerOffsets, buildViewerRail, buildViewerDownloads, paintLayoutCanvas, proportionNote, mediumPng, renderHotspots, renderSheetHotspots, hotspotLayer, paperChips, bindPaperChips, attachWebPicture, loadOwnPictures, photoPromptCard, imageURLFrom, fetchWebImage, pictureError, openPictureEditor, replacePicture, resetPicture, prepareImage, viewer, store, caps, showView, openCreator, importState, detectUnits, fetchTopics, confirmImport, newTextbook, askText, askConfirm, clone, parsePasted, initLevelPage, download, renderOutput, renderQualityPanel, renderTaskPreview, refreshDerived, renderLayout, renderSetupBar, openCustomSetup, backToTemplates, redrawTemplate, templateState, buildForm };
+  window.LR.ui = { app, generate, produceWorksheet, openViewer, renderViewer, markPageBreaks, syncViewerOffsets, buildViewerRail, buildViewerDownloads, paintLayoutCanvas, proportionNote, mediumPng, renderHotspots, renderSheetHotspots, hotspotLayer, paperChips, bindPaperChips, attachWebPicture, loadOwnPictures, photoPromptCard, photoPlaces, ensurePhotoPrompts, photoToolbar, openAssignDialog, orderImages, imageURLFrom, fetchWebImage, pictureError, openPictureEditor, replacePicture, resetPicture, prepareImage, viewer, store, caps, showView, openCreator, importState, detectUnits, fetchTopics, confirmImport, newTextbook, askText, askConfirm, clone, parsePasted, initLevelPage, download, renderOutput, renderQualityPanel, renderTaskPreview, refreshDerived, renderLayout, renderSetupBar, openCustomSetup, backToTemplates, redrawTemplate, templateState, buildForm };
 })();

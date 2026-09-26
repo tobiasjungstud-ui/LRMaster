@@ -183,6 +183,13 @@ Jeder Bildschirmtyp hat eigene Typografie, Akzentfarbe und Interface. Jedes Form
 
 Claude schreibt diese Prompts im Layout-Schritt (`photoPrompts`: je Foto drei Suchen und ein Bildprompt, in der Reihenfolge Aufmacher, zweites Bild, weiteres Bild); für ältere Materialien baut die App sie aus Bildlegende, Motiv und Suchbegriff. Ist das Foto gefunden oder erzeugt: speichern und über *Bild ersetzen* einfügen (Datei wählen, hineinziehen oder Strg+V) – die Hinweise im Bild verschwinden dann. Ist ein Bild klein, öffnet ein Knopf *Bildideen* dieselben Hinweise.
 
+**Alle Bilder auf einmal mit ChatGPT (ohne API, mit dem normalen ChatGPT-Zugang).** Über der Seite (Vorschau, Viewer, Layout-Tab; nur am Bildschirm) steht eine Leiste:
+- **Alle Bilder für ChatGPT kopieren** – eine einzige Nachricht mit allen (höchstens drei) Fotos, nummeriert wie die Fotoplätze („Photo 1 (the lead picture at the top): …“), im gleichen Stil (fotorealistisch, 35 mm, Querformat 3:2, ohne Text, Logos, erkennbare reale Personen) und mit der Bitte, die Bilder einzeln der Reihe nach zu erzeugen. In ChatGPT einfügen – fertig.
+- **Bilder einfügen …** oder **die gespeicherten Bilder zusammen auf die Seite ziehen** – sie kommen der Reihe nach in Foto 1, 2, 3: nach einer Zahl im Dateinamen, sonst in der Reihenfolge, in der sie gespeichert wurden. Ein kurzer Dialog zeigt die Zuordnung mit Vorschaubildern und lässt sie ändern; der Bildnachweis ist nach dem Kopieren der Prompts mit „KI-generiert mit ChatGPT“ vorbelegt. Danach verschwinden die Hinweise im Bild.
+- **ChatGPT-Projekt einrichten** – ein fertiger Anweisungstext für ein ChatGPT-Projekt (einmal einfügen), damit alle Bilder im gleichen Stil kommen.
+
+Die Bild-Prompts schreibt **das Sprachmodell**: Claude liefert sie im Layout-Schritt; fehlen sie für einen Fotoplatz, fragt die Pipeline Claude eigens danach („Claude schreibt die Bild-Prompts …“). Für ältere Materialien steht in der Leiste **Prompts von Claude schreiben lassen**. Nur wenn Claude nicht erreichbar ist, baut die App einfache Prompts selbst. Der zweite Bildplatz im Text hat jetzt einen festen Namen (nicht mehr nach dem Absatz, bei dem er steht) – ein eingesetztes Foto bleibt, auch wenn sich der Umbruch ändert; unter dem früheren Namen eingesetzte Fotos werden weiter gefunden.
+
 **Nichts läuft in etwas anderes.** Claude schreibt die Oberfläche (Datumszeile, Bildnachweis, Navigation, Modultexte) und kennt den Platz dafür nicht. Deshalb passt ein letzter Schritt jedes Bildes jede einzelne Oberflächen-Zeile in ihren Platz: stoßen zwei Zeilen zusammen, wird die weniger wichtige mit „…“ gekürzt (ein zu kurzer Rest entfällt), keine ragt über Seite oder Kasten hinaus. Der Text des Materials, ein wörtliches Zitat und die Zeilen eines umbrochenen Absatzes (z. B. einer Bildlegende) werden nie gekürzt; die Bildlegende der Zeitung lässt dem Bildnachweis Platz. Knöpfe in Modulen werden mit der echten Schriftbreite bemessen. Geprüft wird das für alle Texttypen auf Bildschirm und Papier mit absichtlich langen Angaben (`S37.no_overlap`, Browser-Audit mit den echten Schriften).
 
 **Ein echtes Foto zum generierten Text.** Nach dem Generieren eines Reading-Textes mit Aufmacherbild (Zeitung, Magazin, Blog …) sucht die App ein echtes Foto, das zu *diesem* Text passt – ein kleiner Schritt am Ende der bestehenden Pipeline, sonst ändert sich nichts.
@@ -309,7 +316,7 @@ Damit Bildschirm und Ausgabe nicht auseinanderlaufen, liefert **eine einzige Fun
 
 ## Kontrollmechanismen
 
-- **Konzept-Manifest** (`app/manifest.js`): 328 Anforderungen aus dem Konzeptdokument und den Auftragserweiterungen (§33 Word-Export, §34 Schwierigkeitsmesser & Niveau der Fragen, §35 Pre-Task, §36 Post-Task, §37 Authentisches Layout, §38 Vorlagen), jede mit Prüfart:
+- **Konzept-Manifest** (`app/manifest.js`): 329 Anforderungen aus dem Konzeptdokument und den Auftragserweiterungen (§33 Word-Export, §34 Schwierigkeitsmesser & Niveau der Fragen, §35 Pre-Task, §36 Post-Task, §37 Authentisches Layout, §38 Vorlagen), jede mit Prüfart:
   - `setting` – Steuerelement existiert **und** die Änderung des Werts verändert nachweislich mindestens einen Prompt (Prompt-Sensitivitätstest; tote Einstellungen fallen durch).
   - `function` – Verhalten wird mit echten Eingaben ausgeführt (z. B. Preset *Interview* ⇒ Anteile 25/75, Skill-Mix verschiebt sich mit der Schwierigkeit, Beispielkonfiguration §32 reproduziert alle Werte).
   - `rule` – Qualitätsregel existiert als Messfunktion oder als Review-Kriterium und wird im Review-Prompt an Claude übergeben.
@@ -326,7 +333,7 @@ Damit Bildschirm und Ausgabe nicht auseinanderlaufen, liefert **eine einzige Fun
 - **Blockierende Befunde sind sichtbar**: Prüfungen, die als blockierend definiert sind (Wortzahl, Zielvokabular, Fragenzahl, Chronologie, Sozialformen, Bildidentität …), färben den Lauf rot, nennen sich im Quality-Check mit eigenem Kasten, stehen in der Lehrerversion und im Word-Export – Material, das sie nicht besteht, wird nicht stillschweigend als fertig ausgegeben.
 
 - **Selbstkontrolle des Auftrags**: jede Audit-Prüfung trägt das Kapitel aus `AUDIT.md`, das sie beantwortet; die Suite listet am Ende alle Kapitel und Schwachstellen mit der Zahl ihrer Prüfungen und **fällt durch, sobald eines ohne Prüfung bleibt**.
-- **Browser-Audit** (`tests/browser.js`, 107 Prüfungen, `npm run audit:browser`): was ohne echten Browser nicht prüfbar ist – die In-App-Konzeptprüfung gegen den exportierten Quelltext, der ganze Durchlauf gegen neun bösartige Claude-Antworten, XSS in allen Tabs, kaputter und voller Speicher, Doppelstart, Stop bei hängendem Aufruf, Tastatur, Fokus, Dunkelmodus, 360 px, Navigation während des Laufs.
+- **Browser-Audit** (`tests/browser.js`, 117 Prüfungen, `npm run audit:browser`): was ohne echten Browser nicht prüfbar ist – die In-App-Konzeptprüfung gegen den exportierten Quelltext, der ganze Durchlauf gegen neun bösartige Claude-Antworten, XSS in allen Tabs, kaputter und voller Speicher, Doppelstart, Stop bei hängendem Aufruf, Tastatur, Fokus, Dunkelmodus, 360 px, Navigation während des Laufs.
 
 ```bash
 npm test          # Unit-Tests + Konzept-Abdeckung + Audit-Suite

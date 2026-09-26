@@ -1056,8 +1056,13 @@
             api.photoSlots.set(spec.slot, spec.picRole);
           }
         }
-        // 1. a picture the teacher put in herself
-        const own = ownPicture(api.images, spec.slot);
+        // 1. a picture the teacher put in herself (also under the name this
+        // place had before its name was made stable)
+        let own = ownPicture(api.images, spec.slot);
+        if (!own && Array.isArray(spec.legacySeeds)) {
+          for (const sd of spec.legacySeeds) { const old = ownPicture(api.images, spec.subject + ':' + sd); if (old) { own = old; spec.slot = spec.subject + ':' + sd; break; } }
+        }
+        delete spec.legacySeeds;
         if (own) {
           spec.own = own.src;
           spec.credit = own.credit;
@@ -1368,12 +1373,12 @@
       if (comp.figure && comp.figure.after === i + 1) {
         if (comp.figure.size === 'wide') {
           const fh = Math.round(colW * 0.52);
-          b.photo(PAD, y + 4, colW, fh, { seed: photo.hashOf(comp.figure.subject + i), subject: comp.figure.subject, colour: true, picRole: 'second' });
+          b.photo(PAD, y + 4, colW, fh, { seed: photo.hashOf(comp.figure.subject + ':second'), legacySeeds: (m.content.paragraphs || []).map((_, k) => photo.hashOf(comp.figure.subject + k)), subject: comp.figure.subject, colour: true, picRole: 'second' });
           y += fh + 18;
           if (comp.figure.caption) y = b.para(PAD, y, comp.figure.caption, ui(12), colW - 40, { color: MUTED, lineHeight: 17 }) + 10;
         } else {
           const fw = Math.round(colW * 0.44), fh = Math.round(fw * 0.7);
-          b.photo(PAD + colW - fw, y + 4, fw, fh, { seed: photo.hashOf(comp.figure.subject + i), subject: comp.figure.subject, colour: true, picRole: 'second' });
+          b.photo(PAD + colW - fw, y + 4, fw, fh, { seed: photo.hashOf(comp.figure.subject + ':second'), legacySeeds: (m.content.paragraphs || []).map((_, k) => photo.hashOf(comp.figure.subject + k)), subject: comp.figure.subject, colour: true, picRole: 'second' });
           let cy = y + 4 + fh + 12;
           if (comp.figure.caption) cy = b.para(PAD + colW - fw, cy, comp.figure.caption, ui(11.5), fw, { color: MUTED, lineHeight: 16 });
           cut = { top: y, bottom: cy + 8, w: fw };
@@ -2482,7 +2487,7 @@
         }
         if (l.kind === 'figure') {
           const ph = Math.round(colW * 0.62);
-          b.photo(x, l.y + 8, colW, ph, { picRole: 'second', seed: photo.hashOf(String(l.fig.subject) + l.pi), subject: l.fig.subject, colour: d.photoColour !== false, print: true, halftone: true });
+          b.photo(x, l.y + 8, colW, ph, { picRole: 'second', seed: photo.hashOf(String(l.fig.subject) + ':second'), legacySeeds: paras.map((_, k) => photo.hashOf(String(l.fig.subject) + k)), subject: l.fig.subject, colour: d.photoColour !== false, print: true, halftone: true });
           l.fig.capLines.forEach((cl, i) => b.text(x, l.y + 8 + ph + 17 + i * 15, cl, capFont2, { color: '#3F3F46' }));
           continue;
         }
