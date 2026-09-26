@@ -468,7 +468,8 @@ const SETTINGS = (extra) => `(() => {
       ui.app.material = m; ui.openViewer(m, 'creator');
       await new Promise(r => setTimeout(r, 400));
       const svg = document.querySelector('#vw-sheet .medium-sheet svg');
-      const words = svg ? Array.from(svg.querySelectorAll('text.body')).map(t => t.textContent).join(' ') : '';
+      // every page of the medium, read back with divided words joined
+      const words = window.LR.mock.svgBodyText(Array.from(document.querySelectorAll('#vw-sheet .medium-sheet svg')).map(x => x.outerHTML).join(''));
       const norm = (t) => quality.normalizeForSearch(t);
       const images = svg ? svg.querySelectorAll('image').length : 0;
       const box = svg ? svg.getBoundingClientRect() : { width: 0 };
@@ -480,21 +481,64 @@ const SETTINGS = (extra) => `(() => {
       const parts = word.partsFor(m, 'student', null, { medium });
       const problems = ooxml.validate(parts);
       const doc = String(parts.find(p => p.name === 'word/document.xml').data);
-      const media = parts.find(p => p.name.startsWith('word/media/'));
+      const media = parts.find(p => p.name === 'word/media/medium.jpg' || p.name === 'word/media/medium.png');
       const teacher = String(word.partsFor(m, 'teacher', null, { medium }).find(p => p.name === 'word/document.xml').data);
       return {
         hasSvg: !!svg, wordsMatch: norm(words) === norm(m.content.paragraphs.join(' ')), images, width: Math.round(box.width), selectable,
         wordValid: problems.length === 0, wordProblems: problems.slice(0, 2), drawing: /<w:drawing>/.test(doc), mediaBytes: media ? media.data.length : 0,
-        mediumW: medium && medium.width, pngBytes: medium && medium.png.length,
+        mediumW: medium && medium.width, mediumH: medium && medium.height, pngBytes: medium && medium.png.length,
         teacherHasBoth: /<w:drawing>/.test(teacher) && teacher.includes('paragraph numbers'),
         studentPlainText: doc.includes(m.content.paragraphs[0].slice(0, 30)) && !/<w:drawing>[\s\S]*<w:t/.test(doc.split('<w:drawing>')[0]),
       };
     });
     check('the sheet shows the text as the page of its medium, word for word', r.hasSvg && r.wordsMatch && r.width > 300, JSON.stringify(r));
     check('the pictures of the medium are in the sheet, and the words are real text', r.images >= 1 && r.selectable, JSON.stringify(r));
-    check('the Word file carries the page of the medium at print resolution and stays valid', r.wordValid && r.drawing && r.mediaBytes > 20000 && r.mediaBytes === r.pngBytes && r.mediumW >= 1000, JSON.stringify(r));
+    check('the Word file carries the page of the medium at print resolution and stays valid', r.wordValid && r.drawing && r.mediaBytes > 20000 && r.mediaBytes === r.pngBytes && r.mediumW >= 900 && Math.abs(r.mediumH / r.mediumW - 297 / 210) < 0.02, JSON.stringify(r));
     check('the Word teacher version has the page and the numbered text', r.teacherHasBoth, JSON.stringify(r));
     check('setting the text as its medium raises no page error', errors.length === 0, errors[0]);
+    await page.close();
+  }
+
+  console.log('\nBrowser audit: the paper and the pages of the newspaper (2.4, 2.5, 2.11)');
+  {
+    const { page, errors } = await open({});
+    const r = await page.evaluate(async () => {
+      const { fixture, ui, word, ooxml, mock, quality } = window.LR;
+      const m = fixture.material({ textType: 'News Article', authenticLayout: true, createWorksheet: true }, 'reading');
+      m.id = 'paper-test';
+      let ps = [];
+      for (let i = 0; i < 12; i++) ps = ps.concat(m.content.paragraphs);
+      m.content.paragraphs = ps;
+      ui.app.material = m; ui.openViewer(m, 'creator');
+      await new Promise(r => setTimeout(r, 500));
+      const svgs = Array.from(document.querySelectorAll('#vw-sheet .medium-sheet svg.lr-medium'));
+      const ratios = svgs.map(x => { const vb = x.getAttribute('viewBox').split(' ').map(Number); return vb[3] / vb[2]; });
+      const spots = svgs.map(x => x.closest('.sheet-frame') ? x.closest('.sheet-frame').querySelectorAll('.photo-hotspot').length : 0);
+      const pageRect = (svg) => { const r = svg.querySelector('rect[fill]'); return svg.innerHTML; };
+      const whiteBefore = /<rect[^>]*fill="#FFFFFF"[^>]*stroke/.test(svgs[0].outerHTML);
+      // switch the paper in the viewer
+      const ivory = document.querySelector('#vw-media [data-paper="ivory"]');
+      if (ivory) ivory.click();
+      await new Promise(r => setTimeout(r, 500));
+      const after = document.querySelector('#vw-sheet .medium-sheet svg.lr-medium');
+      const ivoryNow = after && after.outerHTML.includes('fill="' + mock.PAPERS.ivory + '"');
+      const setting = m.settings.paperColor;
+      const pick = document.querySelector('#vw-media [data-paper-custom]');
+      if (pick) { pick.value = '#ffeecc'; pick.dispatchEvent(new Event('input', { bubbles: true })); }
+      await new Promise(r => setTimeout(r, 700));
+      const custom = document.querySelector('#vw-sheet .medium-sheet svg.lr-medium').outerHTML.includes('fill="#FFEECC"');
+      // Word: one picture per page
+      const medium = await ui.mediumPng(m);
+      const parts = word.partsFor(m, 'student', null, { medium });
+      const doc = String(parts.find(p => p.name === 'word/document.xml').data);
+      return { pages: svgs.length, ratios: ratios.map(x => Math.round(x * 1000) / 1000), spots, whiteBefore, ivoryNow, setting, custom,
+        wordPages: (doc.match(/<w:drawing>/g) || []).length, mediumPages: medium && medium.pages.length, wordValid: ooxml.validate(parts).length === 0,
+        text: quality.normalizeForSearch(mock.svgBodyText(svgs.map(x => x.outerHTML).join(''))) === quality.normalizeForSearch(m.content.paragraphs.join(' ')) };
+    });
+    check('a long article is a series of A4 pages on the sheet, each with its pictures replaceable', r.pages >= 2 && Math.abs(r.ratios[0] - 297 / 210) < 0.01 && r.spots[0] >= 1 && r.text, JSON.stringify(r));
+    check('the page is white by default and the paper can be switched in the viewer, also to an own colour', r.whiteBefore && r.ivoryNow && r.setting !== 'white' && r.custom, JSON.stringify(r));
+    check('the Word file carries every page of the newspaper as a page', r.wordPages === r.pages && r.mediumPages === r.pages && r.wordValid, JSON.stringify(r));
+    check('pages and paper raise no page error', errors.length === 0, errors[0]);
     await page.close();
   }
 
@@ -506,6 +550,8 @@ const SETTINGS = (extra) => `(() => {
       const { fixture, ui } = window.LR;
       const m = fixture.material({ textType: 'News Article', authenticLayout: true, createWorksheet: true }, 'reading');
       m.id = 'web-picture-test';
+      // a story of a real length, so the page carries more than one picture
+      m.content.paragraphs = [].concat(m.content.paragraphs, m.content.paragraphs, m.content.paragraphs, m.content.paragraphs);
       ui.app.material = m; ui.openViewer(m, 'creator');
       await new Promise(r => setTimeout(r, 400));
     });

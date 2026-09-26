@@ -117,6 +117,8 @@
         ['publication', 'name of the paper, magazine, book or notebook as it is printed at the top'],
         ['standingHead', 'the standing head above the headline, as papers print it, e.g. "The Guardian editorial" or "Culture · Film"'],
         ['publicationLine', 'the small line beside it: place, weekday and date, edition or price'],
+        ['tagline', 'the motto a newspaper prints under its name on the front page, e.g. "Small stories. Bigger questions." — empty for other print media'],
+        ['editionLine', 'the edition a front page names on the right of the date line, e.g. "Weekend edition \u00B7 No. 014"'],
         ['sectionLabel', 'the section this page belongs to, e.g. "Culture" or "Chapter 4"'],
         ['photoCaption', 'the caption under the picture on the page — describe what the photo shows, one sentence, nothing from the text'],
         ['captionCredit', 'the small credit under the caption, e.g. a photographer or agency name'],
@@ -871,12 +873,108 @@
    */
   function justifyLine(b, x, y, text, font, width, measure, o) {
     const words = String(text || '').split(/\s+/).filter(Boolean);
-    if (words.length < 2) { b.text(x, y, text, font, o); return; }
+    // a line that ends in a divided word: the hyphen is printed, but it is
+    // not part of the text (a soft hyphen), or the word was divided at its
+    // own hyphen and goes on without a space on the next line
+    const ends = lineEnd(words.length ? words[words.length - 1] : '');
+    if (words.length) words[words.length - 1] = ends.text;
+    const lastOpts = Object.assign({}, o, ends.flag);
+    if (words.length < 2) { if (words.length) b.text(x, y, words[0], font, lastOpts); return; }
     const total = words.reduce((sum, w) => sum + measure(w, font), 0);
     const gap = (width - total) / (words.length - 1);
-    if (!(gap > 0) || gap > font.size * 1.1) { b.text(x, y, text, font, o); return; }
+    if (!(gap > 0) || gap > font.size * 1.1) {
+      const head = words.slice(0, -1).join(' ');
+      b.text(x, y, head, font, o);
+      b.text(x + measure(head + ' ', font), y, words[words.length - 1], font, lastOpts);
+      return;
+    }
     let cx = x;
-    for (const w of words) { b.text(cx, y, w, font, o); cx += measure(w, font) + gap; }
+    words.forEach((w, i) => { b.text(cx, y, w, font, i === words.length - 1 ? lastOpts : o); cx += measure(w, font) + gap; });
+  }
+
+  /** What a wrapped line ends with: a soft hyphen, a divided compound, or nothing. */
+  function lineEnd(word) {
+    const w = String(word || '');
+    if (w.endsWith('\u00AD')) return { text: w.slice(0, -1) + '-', flag: { hyph: true } };
+    if (w.endsWith('\u200B')) return { text: w.slice(0, -1), flag: { glue: true } };
+    return { text: w, flag: {} };
+  }
+
+  /*
+   * Where an English word may be divided at the end of a line. Narrow
+   * justified columns without hyphenation get loose lines and rivers of
+   * white; papers divide words. The rules are cautious: only words of seven
+   * letters or more, never a proper noun, at least three letters on either
+   * side, at common suffixes and prefixes, between double consonants, and
+   * between two consonants that do not belong together (win-ter, traf-fic;
+   * but pro-gram, not prog-ram).
+   */
+  const HY_SUFFIX = ['tion', 'tions', 'sion', 'sions', 'ment', 'ments', 'ness', 'less', 'ful', 'ings', 'ing', 'able', 'ible'];
+  const HY_PREFIX = ['under', 'over', 'trans', 'counter', 'with'];
+  const HY_BLEND = /^(bl|br|cl|cr|dr|fl|fr|gl|gr|pl|pr|tr|wr|sc|sk|sp|sq)$/;
+  const HY_DIGRAPH = /^(ch|sh|th|ph|wh|ck|ng|gh|qu)$/;
+  const HY_BAD_TAIL = /^[^aeiouy]?(ed|es|er|en|est|ly|le)$/;
+  function hyphenPoints(word) {
+    const mt = /^([^A-Za-z]*)([a-z][a-z]*)([^A-Za-z]*)$/.exec(String(word || ''));
+    if (!mt) return [];
+    const lead = mt[1].length, w = mt[2];
+    if (w.length < 7) return [];
+    const V = (c) => /[aeiouy]/.test(c);
+    const pts = new Set();
+    const sufAt = [];
+    for (const suf of HY_SUFFIX) {
+      if (!w.endsWith(suf) || w.length - suf.length < 3) continue;
+      let at = w.length - suf.length;
+      // every-thing is not everyth-ing: a suffix never follows a digraph
+      if (HY_DIGRAPH.test(w.slice(at - 2, at))) continue;
+      // run-ning, not runn-ing
+      if (suf.startsWith('ing') && at >= 4 && w[at - 1] === w[at - 2] && !V(w[at - 1])) at -= 1;
+      pts.add(at);
+      sufAt.push(at);
+    }
+    for (const pre of HY_PREFIX) if (w.startsWith(pre) && w.length - pre.length >= 4) pts.add(pre.length);
+    for (let i = 1; i < w.length - 2; i++) {
+      const a = w[i], c = w[i + 1];
+      if (!V(w[i - 1]) || V(a) || V(c) || !V(w[i + 2])) continue;
+      const pair = a + c;
+      if (HY_DIGRAPH.test(pair)) continue;
+      const at = HY_BLEND.test(pair) ? i : i + 1;
+      // morn-ings, interest-ing: the suffix wins over a split just before it
+      if (sufAt.some(sa => at < sa && at >= sa - 2)) continue;
+      pts.add(at);
+    }
+    return [...pts].filter(p => p >= 3 && w.length - p >= 3 && !HY_BAD_TAIL.test(w.slice(p))).map(p => p + lead).sort((x, y) => y - x);
+  }
+
+  /**
+   * Wrap for a justified column: like `wrap`, but a line that would come out
+   * loose takes the first part of the next word, divided with a hyphen.
+   * `widthAt(i)` is the width of line i (a first-line indent, a drop cap).
+   */
+  function wrapJustified(text, font, widthAt, measure) {
+    const words = String(text || '').split(/\s+/).filter(Boolean);
+    const lines = [];
+    let line = '';
+    for (let k = 0; k < words.length; k++) {
+      const w = words[k];
+      const max = widthAt(lines.length);
+      const next = line ? line + ' ' + w : w;
+      if (!line || measure(next, font) <= max) { line = next; continue; }
+      // loose? then divide the word that does not fit
+      let split = null;
+      if (measure(line, font) < max * 0.93) {
+        const room = (part) => measure(line + ' ' + part, font) <= max;
+        const own = w.indexOf('-');
+        if (own >= 2 && own < w.length - 2 && room(w.slice(0, own + 1))) split = { head: w.slice(0, own + 1) + '\u200B', tail: w.slice(own + 1) };
+        else {
+          for (const p of hyphenPoints(w)) if (room(w.slice(0, p) + '-')) { split = { head: w.slice(0, p) + '\u00AD', tail: w.slice(p) }; break; }
+        }
+      }
+      if (split) { lines.push(line + ' ' + split.head); line = split.tail; }
+      else { lines.push(line); line = w; }
+    }
+    if (line) lines.push(line);
+    return lines.length ? lines : [''];
   }
 
   /* ------------------------------------------------------------------ */
@@ -1706,64 +1804,6 @@
     return { placed: out, height: perCol * lineHeight };
   }
 
-  /**
-   * Pour the body into columns that may start at different heights (the first
-   * ones under the photo, the last one at the top), filling each to the same
-   * baseline — the way a page is actually made up.
-   */
-  function flowUneven(paragraphs, font, colW, cols, measure, lh, tops, indent, reserve, extras) {
-    const kept = (c) => (reserve && reserve[c]) || 0;
-    const ex = extras || {};
-    // A paper sets no space between paragraphs: the indent is the only mark.
-    // Web pages ask for a gap of their own (`extras.gap`).
-    const gap = ex.gap || 0;
-    const items = [];
-    paragraphs.forEach((p, pi) => {
-      // a crosshead the editor put before this paragraph, a figure after it
-      if (ex.heads && ex.heads[pi]) items.push({ kind: 'head', text: ex.heads[pi], h: lh * 2.1, pi });
-      // the first paragraph may open with a dateline, so its first line is shorter
-      const ls = pi === 0 && ex.firstIndent ? wrapIndent(p, font, colW, measure, ex.firstIndent) : wrap(p, font, colW - indent, measure);
-      ls.forEach((l, i) => items.push({ kind: 'line', text: l, first: i === 0, last: i === ls.length - 1, pi }));
-      if (ex.figures && ex.figures[pi]) items.push({ kind: 'figure', fig: ex.figures[pi], h: ex.figures[pi].h, pi });
-      if (gap) items.push({ gap: true });
-    });
-    while (items.length && items[items.length - 1].gap) items.pop();
-    const lowest = Math.max(...tops);
-    // the height at which the columns come out even: everything that has to be
-    // set, spread over the columns, measured from where each one starts. The
-    // fill starts here, so no column is left nearly empty while another is full.
-    let need = items.reduce((sum, it) => sum + (it.gap ? gap : (it.h || lh)), 0);
-    for (let c = 0; c < cols; c++) need += kept(c);
-    const even = (need + tops.reduce((a, t) => a + t, 0)) / cols;
-    const tryFill = (bottom) => {
-      const placed = [];
-      let col = 0, y = tops[0];
-      for (let i = 0; i < items.length; i++) {
-        const it = items[i];
-        if (it.gap) { y += gap; continue; }
-        const h = it.h || lh;
-        // a crosshead keeps two lines of its paragraph with it: it never
-        // stands alone at the foot of a column
-        const keep = it.kind === 'head' ? lh * 2 : 0;
-        if (y + h + keep > bottom - kept(col)) {
-          col += 1;
-          if (col >= cols) return null;
-          y = tops[col];
-        }
-        placed.push({ kind: it.kind, text: it.text, fig: it.fig, h, col, y, first: it.first, last: it.last, pi: it.pi });
-        y += h;
-      }
-      return placed;
-    };
-    let bottom = Math.max(lowest + lh, even);
-    for (let guard = 0; guard < 800; guard++) {
-      const placed = tryFill(bottom);
-      if (placed) return { placed, bottom };
-      bottom += lh / 2;
-    }
-    return { placed: tryFill(bottom) || [], bottom };
-  }
-
   /** Is `quote` a piece of `text`, word for word (quotes, dashes and spacing aside)? */
   function verbatim(text, quote) {
     const norm = (t) => String(t || '').toLowerCase().replace(/[\u2018\u2019\u201c\u201d]/g, "'").replace(/[\u2013\u2014]/g, '-').replace(/[^a-z0-9' -]+/g, ' ').replace(/\s+/g, ' ').trim();
@@ -1822,148 +1862,458 @@
   }
 
   /** Newspaper or magazine page, in the density of a real paper. */
+  /* ------------------------------------------------------------------ */
+  /* The printed page: A4, one page after the other                       */
+  /* ------------------------------------------------------------------ */
+
+  const A4_RATIO = 297 / 210;
+  const PAGE_GAP = 36;       // between two pages in the picture
+  const PRESS_FOOT = 44;     // the footer band at the foot of every page
+
+  /**
+   * The press page is a real page: A4, filled from top to foot. A story that
+   * is longer than the page runs on onto a second page with a continuation
+   * head, as papers print it — the type is never made smaller to squeeze it
+   * in, and nothing is cut. The lead picture is fitted to the story: a short
+   * story gets a bigger picture, a story that spills a few lines over gets a
+   * smaller one, the way a make-up editor fits a story to its page instead of
+   * leaving a hole or a lonely page.
+   */
   function pressModel(m, chrome, d, measure) {
+    const base = pressLayout(m, chrome, d, measure, 0);
+    let best = base;
+    const p = base.photo;
+    if (p) {
+      if (base.pages === 1 && base.gap > 90) {
+        let lo = p.h, hi = p.max;
+        for (let i = 0; i < 7 && hi - lo > 6; i++) {
+          const mid = Math.round((lo + hi) / 2);
+          const r = pressLayout(m, chrome, d, measure, mid);
+          // a bigger picture may take the hole, never the quote box or the modules
+          if (r.pages === 1 && r.gap >= 0 && [...base.placed].every(x => r.placed.has(x)) && r.quote >= base.quote) { lo = mid; best = r; } else hi = mid;
+        }
+      } else if (base.pages > 1 && base.lastFill < 0.3) {
+        const small = pressLayout(m, chrome, d, measure, p.min);
+        if (small.pages < base.pages) {
+          best = small;
+          let lo = p.min, hi = p.h;
+          for (let i = 0; i < 7 && hi - lo > 6; i++) {
+            const mid = Math.round((lo + hi) / 2);
+            const r = pressLayout(m, chrome, d, measure, mid);
+            if (r.pages < base.pages) { lo = mid; best = r; } else hi = mid;
+          }
+        }
+      }
+    }
+    return best.model;
+  }
+
+  /** A colour a little darker than the paper, for boxes printed on it. */
+  function shade(hex, k) {
+    const h = /^#([0-9a-f]{6})$/i.exec(String(hex || '')) ? String(hex).slice(1) : 'FFFFFF';
+    const ch = (i) => Math.max(0, Math.min(255, Math.round(parseInt(h.slice(i, i + 2), 16) * (1 - k))));
+    return '#' + [0, 2, 4].map(i => ch(i).toString(16).padStart(2, '0')).join('').toUpperCase();
+  }
+
+  /** The words of the first paragraph beside a drop cap: the first `n` lines are narrower. */
+  function wrapCap(text, font, width, measure, capW, n) {
+    const words = String(text || '').split(/\s+/).filter(Boolean);
+    const lines = [];
+    let line = '';
+    for (const w of words) {
+      const max = lines.length < n ? width - capW : width;
+      const next = line ? line + ' ' + w : w;
+      if (line && measure(next, font) > max) { lines.push(line); line = w; } else line = next;
+    }
+    if (line) lines.push(line);
+    return lines.length ? lines : [''];
+  }
+
+  /** The first letter of a paragraph as a drop cap — with an opening quote mark if there is one. */
+  function capOf(text) {
+    const mt = /^([\u201C\u2018"'(]*[A-Za-z0-9\u00C0-\u024F])/.exec(String(text || ''));
+    if (!mt) return null;
+    const cap = mt[1];
+    const rest = String(text).slice(cap.length);
+    return { cap, rest: rest.replace(/^\s+/, ''), glue: !/^\s/.test(rest) };
+  }
+
+  /**
+   * Everything the columns carry, in reading order: the lines of every
+   * paragraph, a crosshead before a paragraph, a figure after it.
+   */
+  function flowItems(paragraphs, font, colW, measure, lh, indent, ex) {
+    // (every line but a paragraph's first runs the full width of the column)
+    const items = [];
+    const gap = ex.gap || 0;
+    paragraphs.forEach((p, pi) => {
+      if (ex.heads && ex.heads[pi]) items.push({ kind: 'head', text: ex.heads[pi], h: lh * 2.1, pi });
+      let ls;
+      if (pi === 0 && ex.cap) ls = wrapJustified(ex.cap.rest, font, (i) => (i < ex.cap.lines ? colW - ex.cap.w : colW), measure);
+      else if (pi === 0 && ex.firstIndent) ls = wrapJustified(p, font, (i) => (i === 0 ? colW - ex.firstIndent : colW), measure);
+      else ls = wrapJustified(p, font, (i) => (i === 0 && pi > 0 ? colW - indent : colW), measure);
+      ls.forEach((l, i) => items.push({ kind: 'line', text: l, first: i === 0, last: i === ls.length - 1, pi, li: i,
+        // the lines beside a drop cap stay together in one column
+        keepH: pi === 0 && ex.cap && i === 0 ? (ex.cap.lines - 1) * lh : 0 }));
+      if (ex.figures && ex.figures[pi]) items.push({ kind: 'figure', fig: ex.figures[pi], h: ex.figures[pi].h, pi });
+      if (gap) items.push({ gap: true });
+    });
+    while (items.length && items[items.length - 1].gap) items.pop();
+    return items;
+  }
+
+  /**
+   * Pour items into columns from `from` on, down to `bottom`; stop when the
+   * last column is full and say where the rest begins.
+   */
+  function fillColumns(items, from, cols, tops, bottom, kept, lh, gap) {
+    const placed = [];
+    let col = 0, y = tops[0], i = from;
+    // A picture that does not fit at the foot of a column floats: the text
+    // fills the column first and the picture opens the next one — a column is
+    // never left short because a picture was waiting.
+    let pending = null;
+    const place = (it, h, ix) => {
+      placed.push({ kind: it.kind, text: it.text, fig: it.fig, h, col, y, first: it.first, last: it.last, pi: it.pi, li: it.li, ix });
+      y += h;
+    };
+    const nextCol = () => {
+      col += 1;
+      if (col >= cols) return false;
+      y = tops[col];
+      if (pending) { place(pending.it, pending.h, pending.i); pending = null; }
+      return true;
+    };
+    for (; i < items.length; i++) {
+      const it = items[i];
+      if (it.gap) { if (y > tops[col]) y += gap; continue; }
+      const h = it.h || lh;
+      // a crosshead keeps two lines of its paragraph with it: it never
+      // stands alone at the foot of a column
+      const keep = it.kind === 'head' ? lh * 2 : (it.keepH || 0);
+      if (y + h + keep > bottom - kept(col)) {
+        if (it.kind === 'figure' && !pending && col < cols - 1 && bottom - kept(col) - y >= lh * 2) { pending = { it, h, i }; continue; }
+        if (!nextCol()) break;
+        // what does not fit into an empty column never will: a picture is
+        // set anyway, a line ends the page
+        if (y + h + keep > bottom - kept(col) && it.kind !== 'figure') break;
+      }
+      place(it, h, i);
+    }
+    if (pending) {
+      const done = i >= items.length;
+      if (done && y + pending.h <= bottom - kept(col)) { place(pending.it, pending.h, pending.i); pending = null; }
+      else if (done && nextCol()) { /* placed at the top of the next column */ }
+      else {
+        // the page ends while the picture waits: it goes over, with what follows it
+        const at = pending.i;
+        for (let k = placed.length - 1; k >= 0; k--) if (placed[k].ix > at) placed.splice(k, 1);
+        i = at;
+      }
+    }
+    return { placed, next: i };
+  }
+
+  /** The rest of the items, balanced over the columns: all end at the same height. */
+  function balanceColumns(items, from, cols, tops, kept, lh, gap, limit) {
+    let need = 0;
+    for (let i = from; i < items.length; i++) need += items[i].gap ? gap : (items[i].h || lh);
+    for (let c = 0; c < cols; c++) need += kept(c);
+    const even = (need + tops.reduce((a, t) => a + t, 0)) / cols;
+    let bottom = Math.max(Math.max(...tops) + lh, even);
+    for (let guard = 0; guard < 1200; guard++) {
+      const r = fillColumns(items, from, cols, tops, bottom, kept, lh, gap);
+      if (r.next >= items.length) return { placed: r.placed, bottom };
+      if (limit && bottom > limit) return null;
+      bottom += lh / 2;
+    }
+    return null;
+  }
+
+  /**
+   * Pour the body into columns that may start at different heights (the first
+   * ones under the photo, the last one at the top), filling each to the same
+   * baseline — the way a page is actually made up.
+   */
+  function flowUneven(paragraphs, font, colW, cols, measure, lh, tops, indent, reserve, extras) {
+    const ex = extras || {};
+    const items = flowItems(paragraphs, font, colW, measure, lh, indent, ex);
+    const r = balanceColumns(items, 0, cols, tops, (c) => (reserve && reserve[c]) || 0, lh, ex.gap || 0, 0);
+    return r || { placed: [], bottom: Math.max(...tops) };
+  }
+
+  function pressLayout(m, chrome, d, measure, photoWish) {
     const W = 1080;
     const b = builder(W, measure);
     b.subject = autoSubject(m);
     b.images = (m.layout && m.layout.images) || null;
     const meta = m.content.meta || {};
     const P = PAGE_PAD, M = 48;
-    const pageW = W - 2 * P, inner = pageW - 2 * M;
+    const pageW = W - 2 * P, pageH = Math.round(pageW * A4_RATIO);
+    const inner = pageW - 2 * M;
     const gutter = 24;
-    // A column that holds four lines while its neighbour holds forty is not a
-    // page, it is a mistake. So the number of columns follows the amount of
-    // text: a column has to carry at least MIN_COL_LINES lines, otherwise the
-    // page is set in fewer, fuller columns.
+    const paras = m.content.paragraphs || [];
     // the editor's plan for this page, checked against the text (crossheads,
     // a second picture, the pull quote, the number of columns)
-    const comp = composition(chrome, m.content.paragraphs || [], 'print');
-    const cols = columnsForText(m.content.paragraphs || [], { family: SERIF, size: 14.5 }, inner, gutter, measure, comp.columns || d.columns || 3, 2);
+    const comp = composition(chrome, paras, 'print');
+    // Printed at A4 the body is set at about 10 pt — what a paper uses, and
+    // what a class can read. It is never made smaller to make a story fit.
+    const font = { family: SERIF, size: 16.5 };
+    const lh = comp.density === 'dense' ? 21 : comp.density === 'airy' ? 23.5 : 22;
+    const indent = 14;
+    // a brief of a few lines stands in one column; anything longer in two or more
+    const wordsN = paras.join(' ').split(/\s+/).filter(Boolean).length;
+    const cols = columnsForText(paras, font, inner, gutter, measure, comp.columns || d.columns || 3, wordsN < 60 ? 1 : 2);
     const colW = (inner - gutter * (cols - 1)) / cols;
     const accent = d.pressAccent || '#1B4E8F';
     const warm = d.pressWarm || '#C2410C';
+    const look = d.look || paperLook({}, d);
+    const tint = shade(look.fill, 0.06), tint2 = shade(look.fill, 0.15);
+    const adUse = { n: 0 };   // the house ad appears once; after that the puzzles fill
     const L = P + M, R = W - P - M;
-    let y = P + 34;
+    const pageTop = (i) => P + i * (pageH + PAGE_GAP);
+    const bodyLimit = (i) => pageTop(i) + pageH - PRESS_FOOT - 14;
+    const pub = String(chrome.publication || '');
+    let y = pageTop(0) + 34;
 
-    // running head: page number and section left, date and paper right
-    b.text(L, y, String(chrome.pageLabel || '').replace(/^page\s*/i, '') || '2', { family: SERIF, size: 15, weight: 700 }, { color: INK });
-    b.text(L + 26, y, String(chrome.sectionLabel || '').toUpperCase(), { family: SANS, size: 11, weight: 700 }, { color: '#57534E', letterSpacing: 1.4 });
-    b.text(R, y, String(chrome.publicationLine || ''), { family: SERIF, size: 11 }, { color: '#57534E', align: 'right' });
-    y += 10;
-    b.line(L, y, R, y, { color: '#78716C', width: 1 });
-    // the strip a paper prints under its running head: weather and pointers
-    if (chrome.weatherNote || list(chrome.indexItems).length) {
-      const f = { family: SANS, size: 10 };
-      if (chrome.weatherNote) {
-        b.icon('star', L, y + 6, 12, { fill: '#B45309', stroke: false });
-        b.text(L + 18, y + 16, String(chrome.weatherNote), f, { color: '#57534E' });
+    if (d.masthead) {
+      // The nameplate, as a front page carries it: the name of the paper
+      // large and centred between rules, the motto under it, then the
+      // edition line with the date, the weather and the pointers inside.
+      b.line(L, y, R, y, { color: INK, width: 2 });
+      const nf = (s) => ({ family: SERIF, size: s, weight: 900 });
+      let ns = 62;
+      while (ns > 30 && measure(pub, nf(ns)) - pub.length * 1.5 > inner) ns -= 2;
+      b.text(W / 2, y + ns + 6, pub, nf(ns), { color: INK, align: 'center', letterSpacing: -1.5 });
+      y += ns + 18;
+      if (chrome.tagline) {
+        b.text(W / 2, y + 8, upper(chrome.tagline), { family: SANS, size: 10 }, { color: '#3F3F46', align: 'center', letterSpacing: 2.4 });
+        y += 20;
       }
-      let ix = R;
-      list(chrome.indexItems).slice(0, 4).reverse().forEach((it) => {
-        const w = measure(String(it), f) + 8;
-        b.text(ix, y + 16, String(it), f, { color: '#78716C', align: 'right' });
-        ix -= w + 14;
-        b.text(ix + 6, y + 16, '·', f, { color: '#A8A29E', align: 'right' });
-      });
-      y += 24;
-      b.line(L, y, R, y, { color: '#D6D3D1', width: 1 });
-    }
-    y += 30;
-
-    // the editorial line: small caps between rules, as papers set their standing heads
-    const kicker = String(chrome.standingHead || chrome.publication || '').toUpperCase();
-    const headW = cols >= 3 ? colW * 2 + gutter : inner;
-    if (kicker) {
-      const kf = { family: SERIF, size: 12, weight: 700 };
-      const kw = measure(kicker, kf) + kicker.length * 1.6;
-      const kx = L + headW / 2 - kw / 2;
-      b.line(L, y - 4, kx - 14, y - 4, { color: INK, width: 1 });
-      b.text(kx, y, kicker, kf, { color: INK, letterSpacing: 1.6 });
-      b.line(kx + kw + 14, y - 4, L + headW, y - 4, { color: INK, width: 1 });
-      y += 16;
+      y += 6;
+      b.line(L, y, R, y, { color: INK, width: 3 });
+      b.line(L, y + 5, R, y + 5, { color: INK, width: 1 });
+      y += 5;
+      const ef = { family: SANS, size: 10.5 };
+      const left = upper(chrome.publicationLine || '');
+      const right = upper([chrome.editionLine].concat(list(chrome.indexItems).slice(0, 3)).filter(Boolean).map(String).join('  ·  '));
+      if (left) b.text(L, y + 19, left, ef, { color: INK, letterSpacing: 1 });
+      if (right) b.text(R, y + 19, right, ef, { color: INK, letterSpacing: 1, align: 'right' });
+      if (chrome.weatherNote) {
+        const wt = String(chrome.weatherNote);
+        const ww = measure(wt, ef) + 20;
+        const lw = measure(left, ef) + left.length, rw = measure(right, ef) + right.length;
+        if (W / 2 - ww / 2 > L + lw + 24 && W / 2 + ww / 2 < R - rw - 24) {
+          b.icon('star', W / 2 - ww / 2, y + 8, 12, { fill: warm, stroke: false });
+          b.text(W / 2 - ww / 2 + 18, y + 19, wt, ef, { color: INK });
+        }
+      }
+      y += 29;
+      b.line(L, y, R, y, { color: INK, width: 1 });
+      y += 36;
+      if (chrome.sectionLabel) {
+        b.text(L, y, upper(chrome.sectionLabel), { family: SANS, size: 11, weight: 700 }, { color: warm, letterSpacing: 2 });
+        y += 14;
+      }
+    } else {
+      // running head: page number and section left, date and paper right
+      b.text(L, y, String(chrome.pageLabel || '').replace(/^page\s*/i, '') || '2', { family: SERIF, size: 15, weight: 700 }, { color: INK });
+      b.text(L + 26, y, upper(chrome.sectionLabel || ''), { family: SANS, size: 11, weight: 700 }, { color: '#57534E', letterSpacing: 1.4 });
+      b.text(R, y, String(chrome.publicationLine || ''), { family: SERIF, size: 11.5 }, { color: '#57534E', align: 'right' });
+      y += 10;
+      b.line(L, y, R, y, { color: '#78716C', width: 1 });
+      if (chrome.weatherNote || list(chrome.indexItems).length) {
+        const f = { family: SANS, size: 10.5 };
+        if (chrome.weatherNote) {
+          b.icon('star', L, y + 6, 12, { fill: '#B45309', stroke: false });
+          b.text(L + 18, y + 16, String(chrome.weatherNote), f, { color: '#57534E' });
+        }
+        let ix = R;
+        list(chrome.indexItems).slice(0, 4).reverse().forEach((it) => {
+          const w = measure(String(it), f) + 8;
+          b.text(ix, y + 16, String(it), f, { color: '#78716C', align: 'right' });
+          ix -= w + 14;
+          b.text(ix + 6, y + 16, '·', f, { color: '#A8A29E', align: 'right' });
+        });
+        y += 24;
+        b.line(L, y, R, y, { color: '#D6D3D1', width: 1 });
+      }
+      y += 30;
+      // the editorial line: small caps between rules, as papers set their standing heads
+      const kicker = upper(chrome.standingHead || chrome.publication || '');
+      const band = cols >= 3 ? colW * 2 + gutter : inner;
+      if (kicker) {
+        const kf = { family: SERIF, size: 12, weight: 700 };
+        const kw = measure(kicker, kf) + kicker.length * 1.6;
+        const kx = L + band / 2 - kw / 2;
+        b.line(L, y - 4, kx - 14, y - 4, { color: INK, width: 1 });
+        b.text(kx, y, kicker, kf, { color: INK, letterSpacing: 1.6 });
+        b.line(kx + kw + 14, y - 4, L + band, y - 4, { color: INK, width: 1 });
+        y += 16;
+      }
     }
 
     // Headline: black, heavy, set tight — a paper's headline is ink, not a
-    // colour, and its lines sit close. It spans the first columns and gets
-    // bigger when it is short, the way a sub-editor sizes it to the space.
+    // colour. On a front page it runs across the page; inside, over the first
+    // columns. It gets bigger when it is short, the way a sub-editor sizes it.
+    const headW = d.masthead ? inner : cols >= 3 ? colW * 2 + gutter : inner;
     const titleFont = (size) => ({ family: SERIF, size, weight: 700 });
-    let hSize = cols >= 3 ? 44 : 40;
+    let hSize = d.masthead ? 50 : cols >= 3 ? 44 : 40;
     const titleLines = (size) => wrap(m.content.title, titleFont(size), headW, measure).length;
     if (titleLines(hSize) === 1 && titleLines(hSize + 10) === 1) hSize += 10;
     while (hSize > 30 && titleLines(hSize) > 3) hSize -= 2;
     const hLh = Math.round(hSize * 1.02);
     y = b.para(L, y + hSize * 0.8, m.content.title, titleFont(hSize), headW, { lineHeight: hLh, color: INK, letterSpacing: -0.6 }) - hLh + hSize * 0.3;
 
-    // the deck under it: one or two lines of plain serif, no label in front
+    // the deck under it: plain serif, no label in front
     if (meta.standfirst) {
-      const font = { family: SERIF, size: 17 };
-      y = b.para(L, y + 22, meta.standfirst, font, headW, { color: '#3F3A34', lineHeight: 23 }) - 8;
+      const deckW = d.masthead ? Math.min(inner, Math.round(inner * 0.82)) : headW;
+      y = b.para(L, y + 24, meta.standfirst, { family: SERIF, size: 18.5 }, deckW, { color: '#3F3A34', lineHeight: 25 }) - 8;
     }
+    // Drop cap or dateline: a front page opens its story with a large
+    // initial and names the place in the byline; inside, the place opens the
+    // first paragraph in bold capitals.
+    const capInfo = (d.masthead || d.dropCap) && paras.length ? capOf(paras[0]) : null;
+    const location = String(meta.location || '').trim();
     // the byline between hairlines, and the writer's face on a comment page
-    const byline = meta.byline ? 'By ' + meta.byline : '';
+    const byline = [meta.byline ? 'By ' + meta.byline : '', capInfo && location ? location : ''].filter(Boolean).join('  ·  ');
     const who = String(chrome.portraitName || meta.byline || '').trim();
-    const bf = { family: SANS, size: 10, weight: 700 };
+    const bf = { family: SANS, size: 11, weight: 700 };
     if (byline || who) {
       y += 12;
       b.line(L, y, L + headW, y, { color: '#A8A29E', width: 0.8 });
       if (who && d.photo === false) {
-        b.photo(L, y + 8, 40, 40, { subject: 'portrait', seed: photo.hashOf(who), round: true, frame: false, print: true });
-        b.text(L + 50, y + 24, byline.toUpperCase(), bf, { color: INK, letterSpacing: 1 });
-        b.text(L + 50, y + 40, upper(chrome.sectionLabel || chrome.publication || ''), { family: SANS, size: 9 }, { color: '#78716C', letterSpacing: 1 });
-        y += 56;
+        b.photo(L, y + 8, 42, 42, { subject: 'portrait', seed: photo.hashOf(who), round: true, frame: false, print: true });
+        b.text(L + 54, y + 25, upper(byline), bf, { color: INK, letterSpacing: 1 });
+        b.text(L + 54, y + 42, upper(chrome.sectionLabel || pub), { family: SANS, size: 9.5 }, { color: '#78716C', letterSpacing: 1 });
+        y += 58;
       } else {
-        b.text(L, y + 18, byline.toUpperCase(), bf, { color: INK, letterSpacing: 1 });
-        const role = upper(chrome.sectionLabel ? chrome.sectionLabel + ' correspondent' : chrome.publication || '');
-        if (role) b.text(L + headW, y + 18, role, { family: SANS, size: 9 }, { color: '#78716C', letterSpacing: 1, align: 'right' });
-        y += 26;
+        b.text(L, y + 19, upper(byline), bf, { color: INK, letterSpacing: 1 });
+        const role = upper(chrome.sectionLabel ? chrome.sectionLabel + ' correspondent' : pub);
+        if (role && !d.masthead) b.text(L + headW, y + 19, role, { family: SANS, size: 9.5 }, { color: '#78716C', letterSpacing: 1, align: 'right' });
+        y += 28;
       }
       b.line(L, y, L + headW, y, { color: '#A8A29E', width: 0.8 });
     }
-    y += 14;
+    y += 16;
 
-    // press photo with a caption bar, spanning the first columns
-    let photoBottom = y;
-    if (d.photo !== false && comp.lead !== 'none') {
-      const photoW = comp.lead === 'column' ? colW : cols >= 3 ? colW * 2 + gutter : inner;
-      const photoH = Math.round(photoW * 0.44);
-      b.photo(L, y, photoW, photoH, { seed: photo.hashOf(m.content.title || 'lead'), subject: chrome.photoSubject, colour: d.photoColour !== false, print: true, halftone: true });
-      const leadCredit = (b.last && b.last.credit) || chrome.captionCredit;
-      let cy = y + photoH + 12;
-      const capFont = { family: SANS, size: 11.5 };
-      const capLines = wrap(chrome.photoCaption || '', capFont, photoW - 170, measure);
-      capLines.forEach((l, i) => b.text(L, cy + i * 15, l, capFont, { color: '#44403C' }));
-      if (leadCredit) b.text(L + photoW, cy, '| ' + leadCredit, { family: SANS, size: 10, style: 'italic' }, { color: '#78716C', align: 'right' });
-      photoBottom = cy + Math.max(capLines.length * 15, 15) + 14;
-    }
-
-    // body: numbered paragraphs in columns, with hairlines between them
-    const font = { family: SERIF, size: 14.5 };
-    const lh = comp.density === 'dense' ? 18.5 : comp.density === 'airy' ? 21 : 19.5;
-    const indent = 14;
-    // the first columns start under the photo, the last one beside it
-    const tops = [];
-    const leadCols = comp.lead === 'column' ? 1 : cols >= 3 ? cols - 1 : cols;
-    for (let c = 0; c < cols; c++) tops.push(c >= leadCols ? y : photoBottom);
-    // The pull quote is not what is left over at the foot of the page; it is a
-    // part of the page. Its height is kept free in the last column before the
-    // text is poured, so the columns still come out even around it.
-    const paras = m.content.paragraphs || [];
-    const qFont = { family: SERIF, size: 17, style: 'italic' };
-    const quote = comp.pullQuote || String((m.content.meta || {}).pullQuote || '');
-    const qLines = quote ? wrap(quote, qFont, colW - 36, measure) : [];
-    let bodyLines = 0;
-    for (const p of paras) bodyLines += wrap(p, font, colW - indent, measure).length;
-    const quoteH = qLines.length ? 44 + qLines.length * 24 + 46 : 0;
-    const useQuote = quoteH > 0 && bodyLines >= cols * MIN_COL_LINES;
-    // What else stands on this page — the other story, the small ads, the
-    // results, the letters — is kept free at the foot of the last column
-    // before the text is poured, so the page still comes out even.
+    // The feature row: the lead picture over the first columns and, on a
+    // front page, the column beside it for the quote and the facts at a
+    // glance — not a narrow run of text squeezed against the picture.
+    const quote = comp.pullQuote || String(meta.pullQuote || '');
     const S = moduleStyle(Object.assign({}, d, { accent: accent, ui: SANS, title: SERIF, body: SERIF }));
     S.print = true;
-    const colMods = modulesFor(chrome, 'print', 'column');
+    const factMod = ['column', 'below'].map(sl => modulesFor(chrome, 'print', sl)).reduce((a, x) => a.concat(x), []).find(x => x.type === 'fact_box') || null;
+    const wideLead = d.photo !== false && comp.lead !== 'none' && comp.lead !== 'column' && cols >= 3;
+    const useSide = wideLead && d.masthead && !!(quote || factMod);
+    const featureTop = y;
+    let photoBottom = y, photoInfo = null;
+    if (d.photo !== false && comp.lead !== 'none') {
+      const photoW = comp.lead === 'column' ? colW : cols >= 3 ? colW * 2 + gutter : inner;
+      const ratio = comp.lead === 'column' ? 0.75 : 0.5;
+      const minH = Math.round(photoW * (comp.lead === 'column' ? 0.6 : 0.34));
+      const maxH = Math.round(photoW * (comp.lead === 'column' ? 1.25 : 0.72));
+      const photoH = Math.max(minH, Math.min(maxH, photoWish || Math.round(photoW * ratio)));
+      b.photo(L, y, photoW, photoH, { seed: photo.hashOf(m.content.title || 'lead'), subject: chrome.photoSubject, colour: d.photoColour !== false, print: true, halftone: true });
+      const leadCredit = (b.last && b.last.credit) || chrome.captionCredit;
+      const cy = y + photoH + 14;
+      const capFont = { family: SANS, size: 12.5 };
+      const capLines = wrap(chrome.photoCaption || '', capFont, photoW - 180, measure);
+      capLines.forEach((l, i) => b.text(L, cy + i * 16, l, capFont, { color: '#3F3F46' }));
+      if (leadCredit) b.text(L + photoW, cy, leadCredit, { family: SANS, size: 10.5, style: 'italic' }, { color: '#78716C', align: 'right' });
+      photoBottom = cy + Math.max(capLines.length * 16, 16) + 12;
+      photoInfo = { w: photoW, h: photoH, min: minH, max: maxH };
+    }
+    let sideBottom = y;
+    const sideTaken = new Set();
+    const qFont = { family: SERIF, size: 20, style: 'italic' };
+    if (useSide) {
+      const sx = L + (cols - 1) * (colW + gutter);
+      let sy = y;
+      if (quote) {
+        b.line(sx, sy, sx + colW, sy, { color: accent, width: 3 });
+        b.text(sx - 2, sy + 52, '“', { family: SERIF, size: 60, weight: 700 }, { color: accent });
+        const ql = wrap(quote, qFont, colW - 8, measure);
+        ql.forEach((l, i) => b.text(sx, sy + 66 + i * 27, l, qFont, { color: INK, role: 'quote' }));
+        sy += 66 + (ql.length - 1) * 27 + 26;
+        b.text(sx, sy, upper(pub), { family: SANS, size: 9.5, weight: 700 }, { color: warm, letterSpacing: 1.2 });
+        sy += 16;
+      }
+      if (factMod) {
+        sy += quote ? 16 : 0;
+        b.line(sx, sy, sx + colW, sy, { color: '#77776F', width: 1 });
+        b.text(sx, sy + 24, upper(factMod.heading || factMod.label || 'At a glance'), { family: SANS, size: 10.5, weight: 700 }, { color: INK, letterSpacing: 1.4 });
+        let iy = sy + 34;
+        list(factMod.items).slice(0, 5).forEach((it) => {
+          b.rect(sx, iy + 10, 6, 6, { fill: accent });
+          iy = b.para(sx + 16, iy + 16, clipText(String(it), 110), { family: SERIF, size: 14 }, colW - 16, { color: INK, lineHeight: 19 }) + 6;
+        });
+        sy = iy + 4;
+      }
+      // A bigger picture leaves room under the quote: the column beside it
+      // takes a module of the page, the pointers inside the paper, or the
+      // paper's own advertisement — never a white hole.
+      let room = photoBottom - sy - 18;
+      if (room > 110) {
+        const probe = builder(W, measure);
+        probe.subject = b.subject; probe.images = b.images;
+        for (const mod of modulesFor(chrome, 'print', 'column').concat(modulesFor(chrome, 'print', 'below')).filter(x => x !== factMod)) {
+          const r = moduleRenderer(mod);
+          const h = r ? (r(probe, 0, 0, colW, mod, S) || 0) : 0;
+          if (!h || h > room) continue;
+          b.line(sx, sy + 14, sx + colW, sy + 14, { color: '#77776F', width: 1 });
+          r(b, sx, sy + 26, colW, mod, S);
+          sideTaken.add(mod);
+          sy += 26 + h;
+          room = photoBottom - sy - 18;
+          if (room < 110) break;
+        }
+      }
+      const inside = list(chrome.indexItems).map(String).filter(Boolean).slice(0, 5);
+      if (room > 60 + inside.length * 30 && inside.length >= 2) {
+        sy += 14;
+        b.line(sx, sy, sx + colW, sy, { color: INK, width: 2 });
+        b.text(sx, sy + 24, 'INSIDE', { family: SANS, size: 11, weight: 700 }, { color: INK, letterSpacing: 2 });
+        let iy = sy + 34;
+        inside.forEach((it) => {
+          const mt = /^(.*?)[\s,:\u00B7-]+(\d{1,3})$/.exec(it);
+          const name = mt ? mt[1] : it, page = mt ? mt[2] : '';
+          b.text(sx, iy + 20, clipText(name, 28), { family: SERIF, size: 16, weight: 700 }, { color: INK });
+          if (page) b.text(sx + colW, iy + 20, page, { family: SANS, size: 13, weight: 700 }, { color: warm, align: 'right' });
+          b.line(sx, iy + 30, sx + colW, iy + 30, { color: tint2 });
+          iy += 30;
+        });
+        sy = iy + 6;
+        room = photoBottom - sy - 18;
+      }
+      if (room > 80) { houseAd(b, sx, sy + 14, colW, Math.min(room, 200), { accent, tint, tint2, pub, chrome, measure, used: adUse }); sy += 14 + Math.min(room, 200); }
+      sideBottom = sy;
+      b.line(sx - gutter / 2, featureTop, sx - gutter / 2, Math.max(photoBottom, sideBottom) - 12, { color: '#C9C9C3' });
+    }
+
+    // where the columns start on page 1
+    const tops0 = [];
+    let leadCols = cols;
+    if (useSide) {
+      let top = Math.max(photoBottom, sideBottom) + 4;
+      b.line(L, top, R, top, { color: '#77776F', width: 1 });
+      top += 16;
+      for (let c = 0; c < cols; c++) tops0.push(top);
+    } else {
+      leadCols = comp.lead === 'column' ? 1 : cols >= 3 ? cols - 1 : cols;
+      for (let c = 0; c < cols; c++) tops0.push(c >= leadCols ? y : photoBottom);
+    }
+
+    // The pull quote (when it does not stand beside the picture) and the
+    // modules of the column are kept free at the foot of the last column on
+    // the last page before the text is poured, so the columns stay even.
+    const qLines = !useSide && quote ? wrap(quote, qFont, colW - 36, measure) : [];
+    let bodyLines = 0;
+    for (const p of paras) bodyLines += wrap(p, font, colW - indent, measure).length;
+    const quoteH = qLines.length ? 44 + qLines.length * 26 + 46 : 0;
+    let useQuote = quoteH > 0 && bodyLines >= cols * MIN_COL_LINES;
+    const colMods = modulesFor(chrome, 'print', 'column').filter(x => x !== factMod && !sideTaken.has(x));
     const colRoom = Math.max(0, bodyLines - cols * MIN_COL_LINES) * lh;
-    // measured, not guessed: the modules are set once on a scratch page, so
-    // exactly their height is kept free and the column ends where they end
     let colH = 0;
     if (colMods.length) {
       const probe = builder(W, measure);
@@ -1972,143 +2322,330 @@
       colH = Math.min(colRoom, used + 22);
       if (colH < 60) colH = 0;
     }
-    const reserve = [];
-    for (let c = 0; c < cols; c++) reserve.push(c === cols - 1 ? (useQuote ? quoteH : 0) + colH : 0);
+
     // the second picture and the crossheads go into the flow of the columns
-    const capFont2 = { family: SANS, size: 10.5 };
+    const capFont2 = { family: SANS, size: 11.5 };
     let figures = {};
-    if (comp.figure) {
+    // a brief in one column carries one picture, not two
+    if (comp.figure && cols >= 2) {
       const capLines = comp.figure.caption ? wrap(comp.figure.caption, capFont2, colW, measure) : [];
-      figures[comp.figure.after] = { subject: comp.figure.subject, capLines, h: Math.round(colW * 0.62) + capLines.length * 14 + 26 };
+      figures[comp.figure.after] = { subject: comp.figure.subject, capLines, h: Math.round(colW * 0.62) + capLines.length * 15 + 28 };
     }
-    // the dateline a paper prints in bold capitals at the head of the story
-    const dateline = meta.location ? upper(String(meta.location).trim()) : '';
-    const dlFont = { family: SANS, size: 11.5, weight: 700 };
-    const dlW = dateline ? measure(dateline + ' \u2014', dlFont) + dateline.length * 0.6 + 8 : 0;
+    // the drop cap spans three lines; the dateline stands in the first line
+    let cap = null;
+    // (three lines deep; a first paragraph of two lines gets a two-line
+    // initial; a brief of a few lines gets none)
+    for (const capLinesN of capInfo && bodyLines >= cols * 4 ? [3, 2] : []) {
+      const capSize = Math.round(((capLinesN - 1) * lh + font.size * 0.7) / 0.7);
+      const capFont = { family: SERIF, size: capSize, weight: 700 };
+      const w = measure(capInfo.cap, capFont) + 8;
+      const lines = wrapJustified(capInfo.rest, font, (i) => (i < capLinesN ? colW - w : colW), measure);
+      if (lines.length >= capLinesN) { cap = { cap: capInfo.cap, rest: capInfo.rest, glue: capInfo.glue, w, lines: capLinesN, font: capFont }; break; }
+    }
+    const dateline = !cap && location ? upper(location) : '';
+    const dlFont = { family: SANS, size: 12, weight: 700 };
+    const dlW = dateline ? measure(dateline + ' —', dlFont) + dateline.length * 0.6 + 8 : 0;
+
+    // continuation pages: a short head, then the columns from the top
+    const contTop = (i) => pageTop(i) + 34 + 10 + 46 + 18 + 16;
+    const lastCol = cols - 1;
+    const jumpH = lh * 1.3;   // "Continued on page 2" at the foot of the last column
+    const pour = (figs) => {
+      const items = flowItems(paras, font, colW, measure, lh, indent, { heads: comp.heads, figures: figs, firstIndent: dlW, cap });
+      const out = [];
+      let from = 0, pi = 0, tops = tops0, reserveUsed = true;
+      for (; pi < 30; pi++) {
+        const limit = bodyLimit(pi);
+        const reserveOf = (c) => (c === lastCol ? (useQuote ? quoteH : 0) + colH : 0);
+        let bal = balanceColumns(items, from, cols, tops, reserveOf, lh, 0, limit);
+        if (bal && bal.bottom > limit) bal = null;
+        if (!bal && (useQuote || colH)) {
+          // the story fits on this page only without the quote box and the
+          // modules of the column: they give way, the text does not
+          const bare = balanceColumns(items, from, cols, tops, () => 0, lh, 0, limit);
+          if (bare && bare.bottom <= limit) { bal = bare; reserveUsed = false; }
+        }
+        if (bal) { out.push({ page: pi, placed: bal.placed, bottom: bal.bottom, tops, last: true }); break; }
+        const fill = fillColumns(items, from, cols, tops, limit, (c) => (c === lastCol ? jumpH : 0), lh, 0);
+        if (fill.next === from) { out.push({ page: pi, placed: [], bottom: limit, tops, last: true, stuck: true }); break; }
+        out.push({ page: pi, placed: fill.placed, bottom: limit, tops, last: false });
+        from = fill.next;
+        tops = [];
+        for (let c = 0; c < cols; c++) tops.push(contTop(pi + 1));
+      }
+      return { flows: out, reserveUsed };
+    };
     // A second picture set beside the lead picture, at the top of the last
     // column, reads as one wide picture with a hole in it. When the editor's
     // place for it lands there, the figure moves up to the last paragraph
     // that ends in a column under the lead picture — where a make-up editor
     // would put it — until it stands clear.
-    const flowWith = (figs) => flowUneven(paras, font, colW, cols, measure, lh, tops, indent, reserve, { heads: comp.heads, figures: figs, firstIndent: dlW });
-    let flow = flowWith(figures);
-    for (let guard = 0; guard < 6; guard++) {
-      const fig = flow.placed.find(l => l.kind === 'figure');
-      if (!fig || tops[fig.col] >= photoBottom - 1) break;
-      const earlier = flow.placed.filter(l => l.kind === 'line' && l.last && l.col < fig.col && tops[l.col] >= photoBottom - 1 && l.pi < fig.pi);
+    let poured = pour(figures);
+    for (let guard = 0; guard < 6 && !useSide; guard++) {
+      const first = poured.flows[0];
+      const fig = first.placed.find(l => l.kind === 'figure');
+      if (!fig || tops0[fig.col] >= photoBottom - 1 || fig.y >= photoBottom) break;
+      const earlier = first.placed.filter(l => l.kind === 'line' && l.last && l.col < fig.col && tops0[l.col] >= photoBottom - 1 && l.pi < fig.pi);
+      // no paragraph under the lead picture to take it: the picture stays
+      // where the editor put it — a picture is never dropped
+      if (!earlier.length) break;
       const moved = {};
-      if (earlier.length) moved[earlier[earlier.length - 1].pi] = figures[fig.pi];
+      moved[earlier[earlier.length - 1].pi] = figures[fig.pi];
       figures = moved;
-      flow = flowWith(figures);
+      poured = pour(figures);
     }
-    for (const l of flow.placed) {
-      const x = L + l.col * (colW + gutter);
-      const yy = l.y + lh;
-      if (l.kind === 'head') {
-        b.text(x, l.y + lh * 1.5, upper(l.text), { family: SANS, size: 11.5, weight: 700 }, { color: INK, letterSpacing: 1 });
-        continue;
-      }
-      if (l.kind === 'figure') {
-        const ph = Math.round(colW * 0.62);
-        b.photo(x, l.y + 8, colW, ph, { seed: photo.hashOf(String(l.fig.subject) + l.pi), subject: l.fig.subject, colour: d.photoColour !== false, print: true, halftone: true });
-        l.fig.capLines.forEach((cl, i) => b.text(x, l.y + 8 + ph + 16 + i * 14, cl, capFont2, { color: '#44403C' }));
-        continue;
-      }
-      // a paper indents every paragraph but the first — and numbers none of
-      // them; the numbers for the answer key stand in the teacher's copy
-      let dent = l.first && l.pi > 0 ? indent : 0;
-      if (l.first && l.pi === 0 && dateline) {
-        b.text(x, yy, dateline + ' \u2014', dlFont, { color: INK, letterSpacing: 0.6 });
-        dent = dlW;
-      }
-      const lx = x + dent, lw = colW - dent;
-      if (l.last) b.text(lx, yy, l.text, font, { color: INK, role: 'body' });
-      else justifyLine(b, lx, yy, l.text, font, lw, measure, { color: INK, role: 'body' });
-    }
-    const bodyBottom = flow.bottom + 6;
+    if (!poured.reserveUsed) { useQuote = false; colH = 0; }
+    const flows = poured.flows;
+    const N = flows.length;
 
-    // a newspaper never leaves the foot of the last column empty: a boxed
-    // quote if there is one, otherwise the house advertisement
-    const lastCol = cols - 1;
-    const lastLines = flow.placed.filter(l => l.col === lastCol);
-    const lastY = lastLines.length ? Math.max(...lastLines.map(l => l.y + lh)) : tops[lastCol];
+    // draw the pages: continuation heads, the text, the rules between columns
+    const pages = [];
+    for (const f of flows) {
+      const pt = pageTop(f.page);
+      pages.push({ x: P, y: pt, w: pageW, h: pageH });
+      if (f.page > 0) {
+        let cy = pt + 34;
+        b.text(L, cy, pub, { family: SERIF, size: 15, weight: 700 }, { color: INK });
+        b.text(R, cy, upper(chrome.publicationLine || ''), { family: SANS, size: 10 }, { color: '#57534E', align: 'right', letterSpacing: 1 });
+        cy += 10;
+        b.line(L, cy, R, cy, { color: INK, width: 1 });
+        cy += 46;
+        const cf = { family: SERIF, size: 22, style: 'italic' };
+        const title = wrap(m.content.title + ' · Continued', cf, inner, measure)[0];
+        b.text(L, cy, title, cf, { color: INK });
+        cy += 18;
+        b.line(L, cy, R, cy, { color: '#77776F', width: 1 });
+      }
+      for (const l of f.placed) {
+        const x = L + l.col * (colW + gutter);
+        const yy = l.y + lh;
+        if (l.kind === 'head') {
+          b.text(x, l.y + lh * 1.5, upper(l.text), { family: SANS, size: 12, weight: 700 }, { color: INK, letterSpacing: 1 });
+          continue;
+        }
+        if (l.kind === 'figure') {
+          const ph = Math.round(colW * 0.62);
+          b.photo(x, l.y + 8, colW, ph, { seed: photo.hashOf(String(l.fig.subject) + l.pi), subject: l.fig.subject, colour: d.photoColour !== false, print: true, halftone: true });
+          l.fig.capLines.forEach((cl, i) => b.text(x, l.y + 8 + ph + 17 + i * 15, cl, capFont2, { color: '#3F3F46' }));
+          continue;
+        }
+        // a paper indents every paragraph but the first — and numbers none of
+        // them; the numbers for the answer key stand in the teacher's copy
+        let dent = l.first && l.pi > 0 ? indent : 0;
+        if (l.pi === 0 && cap && l.li < cap.lines) {
+          if (l.li === 0) b.text(x, yy + (cap.lines - 1) * lh, cap.cap, cap.font, { color: INK, role: 'body', glue: cap.glue });
+          dent = cap.w;
+        } else if (l.first && l.pi === 0 && dateline) {
+          b.text(x, yy, dateline + ' —', dlFont, { color: INK, letterSpacing: 0.6 });
+          dent = dlW;
+        }
+        const lx = x + dent, lw = colW - dent;
+        if (l.last) b.text(lx, yy, l.text, font, { color: INK, role: 'body' });
+        else justifyLine(b, lx, yy, l.text, font, lw, measure, { color: INK, role: 'body' });
+      }
+      if (!f.last) {
+        const jx = L + lastCol * (colW + gutter) + colW;
+        b.text(jx, f.bottom - 6, 'Continued on page ' + (f.page + 2) + ' ▸', { family: SERIF, size: 13, style: 'italic' }, { color: INK, align: 'right' });
+      }
+      const bottom = f.last ? f.bottom + 6 : f.bottom;
+      for (let c = 1; c < cols; c++) {
+        const x = L + c * (colW + gutter) - gutter / 2;
+        b.line(x, f.tops[c] + 2, x, bottom - 8, { color: '#D4D4CF' });
+      }
+    }
+
+    // the foot of the last column: the boxed quote, the modules of the column
+    const lastFlow = flows[N - 1];
+    const lastPage = lastFlow.page;
+    const bodyBottom = lastFlow.bottom + 6;
+    const lastLines = lastFlow.placed.filter(l => l.col === lastCol);
+    const lastY = lastLines.length ? Math.max(...lastLines.map(l => l.y + l.h)) : lastFlow.tops[lastCol];
     const colLeft = [];
     const gx = L + lastCol * (colW + gutter);
-    // The foot of the last column holds what was kept free for it: the boxed
-    // quote, then the other story or the results. When the text stops well
-    // above that, the stack moves up under the text — a paper does not leave
-    // a white hole between the story and its quote — and what is left at the
-    // very foot is filled the way a paper fills it: with the house ad.
     const stackH = (useQuote ? quoteH : 0) + colH;
     const footY = bodyBottom - stackH;
     let gy = footY - lastY > lh * 1.5 ? lastY + 14 : footY;
     const drawQuote = (qy, lines) => {
       b.line(gx, qy, gx + colW, qy, { color: accent, width: 3 });
-      lines.forEach((l, i) => b.text(gx + 18, qy + 44 + i * 24, l, qFont, { color: accent, role: 'quote' }));
-      b.text(gx + 18, qy + 44 + lines.length * 24 + 18, upper(chrome.publication || ''), { family: SANS, size: 9, weight: 700 }, { color: warm, letterSpacing: 1.2 });
-      b.line(gx, qy + 44 + lines.length * 24 + 30, gx + colW, qy + 44 + lines.length * 24 + 30, { color: '#C7C2B5' });
-      return qy + 44 + lines.length * 24 + 46;
+      lines.forEach((l, i) => b.text(gx + 18, qy + 44 + i * 26, l, qFont, { color: accent, role: 'quote' }));
+      b.text(gx + 18, qy + 44 + lines.length * 26 + 16, upper(pub), { family: SANS, size: 9.5, weight: 700 }, { color: warm, letterSpacing: 1.2 });
+      b.line(gx, qy + 44 + lines.length * 26 + 30, gx + colW, qy + 44 + lines.length * 26 + 30, { color: tint2 });
+      return qy + 44 + lines.length * 26 + 46;
     };
     if (useQuote) gy = drawQuote(gy + 16, qLines);
     if (colH > 0) {
       b.line(gx, gy + 4, gx + colW, gy + 4, { color: '#78716C', width: 2 });
       gy = placeModules(b, colMods, gx, gy + 16, colW, S, { max: 2, until: bodyBottom - 10, slack: 20, leftovers: colLeft });
-    }
+    } else colLeft.push(...colMods);
     const rest = bodyBottom - gy;
-    if (rest > 70) {
-      const ay = gy + 22, ah = rest - 34;
-      const spare = !useQuote ? String((m.content.meta || {}).pullQuote || '') : '';
-      const spareLines = spare ? wrap(spare, qFont, colW - 36, measure) : [];
-      if (spareLines.length && spareLines.length * 24 + 74 <= ah) drawQuote(ay, spareLines);
-      else if (ah < 120) {
-        // a small house ad, the size papers keep for exactly this gap
-        b.rect(gx, ay, colW, ah, { fill: '#EDE8DC', radius: 2 });
-        b.rect(gx + 14, ay + ah / 2 - 13, 26, 26, { fill: accent, radius: 3 });
-        b.text(gx + 27, ay + ah / 2 + 5, initial(chrome.publication || ''), { family: SERIF, size: 15, weight: 700 }, { color: '#FFFFFF', align: 'center' });
-        b.rect(gx + 52, ay + ah / 2 - 10, (colW - 70) * 0.8, 6, { fill: '#D9D2C2', radius: 3 });
-        b.rect(gx + 52, ay + ah / 2 + 4, (colW - 70) * 0.5, 6, { fill: '#D9D2C2', radius: 3 });
-      } else {
-        b.rect(gx, ay, colW, ah, { fill: '#EDE8DC', radius: 2 });
-        b.rect(gx + 18, ay + 18, 34, 34, { fill: accent, radius: 3 });
-        b.text(gx + 35, ay + 42, initial(chrome.publication || ''), { family: SERIF, size: 20, weight: 700 }, { color: '#FFFFFF', align: 'center' });
-        for (let i = 0; i < 4; i++) b.rect(gx + 18, ay + 68 + i * 16, (colW - 36) * (i === 3 ? 0.5 : 1), 7, { fill: '#D9D2C2', radius: 3 });
+    if (rest > 70 && lastLines.length) houseAd(b, gx, gy + 22, colW, rest - 34, { accent, tint, tint2, pub, chrome, measure, used: adUse });
+
+    // under the story on the last page: the other story, the listings, the
+    // small ads — as many as the page holds
+    y = Math.max(bodyBottom, gy) + 16;
+    let modsPlaced = colH > 0 ? colMods.length - colLeft.length : 0;
+    const placedMods = new Set([...sideTaken].concat(colH > 0 ? colMods.filter(x => !colLeft.includes(x)) : []));
+    const footTop = pageTop(lastPage) + pageH - PRESS_FOOT;
+    const belowMods = modulesFor(chrome, 'print', 'below').filter(x => x !== factMod && !sideTaken.has(x)).concat(colLeft);
+    if (belowMods.length && footTop - y > 110) {
+      const half = (inner - gutter) / 2;
+      const room = footTop - y - 30;
+      const probe = builder(W, measure);
+      probe.subject = b.subject; probe.images = b.images;
+      const heights = belowMods.slice(0, 4).map(mod => { const r = moduleRenderer(mod); return r ? (r(probe, 0, 0, half, mod, S) || 0) : 0; });
+      const colTops = [0, 0];
+      const take = [];
+      belowMods.slice(0, 4).forEach((mod, i) => {
+        const side = colTops[0] <= colTops[1] ? 0 : 1;
+        if (!heights[i] || colTops[side] + heights[i] > room - 18) return;
+        take.push({ mod, side, at: colTops[side] });
+        colTops[side] += heights[i];
+      });
+      if (take.length) {
+        b.line(L, y, R, y, { color: '#78716C', width: 2 });
+        for (const t of take) { moduleRenderer(t.mod)(b, L + t.side * (half + gutter), y + 18 + t.at, half, t.mod, S); placedMods.add(t.mod); }
+        modsPlaced += take.length;
+        // the shorter half of the strip is squared off with the house ad
+        const hi = Math.max(colTops[0], colTops[1]);
+        [0, 1].forEach((side) => {
+          if (hi - colTops[side] >= 70) houseAd(b, L + side * (half + gutter), y + 18 + colTops[side] + (colTops[side] ? 8 : 0), half, hi - colTops[side] - (colTops[side] ? 20 : 12), { accent, tint, tint2, pub, chrome, measure, used: adUse });
+        });
+        y += 18 + hi + 6;
       }
     }
-    for (let c = 1; c < cols; c++) {
-      const x = L + c * (colW + gutter) - gutter / 2;
-      b.line(x, tops[c] + 2, x, bodyBottom - 8, { color: '#D6D3D1' });
+    // What is left of the page is filled the way a paper fills it: the
+    // puzzle and the paper's own advertisement — never a white hole.
+    const gap = footTop - 14 - y;
+    const lastFill = (lastFlow.bottom - Math.min(...lastFlow.tops)) / Math.max(1, bodyLimit(lastPage) - Math.min(...lastFlow.tops));
+    let endY = y;
+    if (gap >= 250) {
+      const s = Math.min(gap - 40, 300, (inner - gutter) / 2);
+      b.line(L, y + 6, R, y + 6, { color: '#78716C', width: 2 });
+      const seed = photo.hashOf(m.content.title || pub);
+      sudoku(b, L, y + 24, s, { seed, accent, tint });
+      if (adUse.n) crossword(b, L + s + gutter, y + 24, inner - s - gutter, s, { seed, accent });
+      else houseAd(b, L + s + gutter, y + 24, inner - s - gutter, s, { accent, tint, tint2, pub, chrome, measure, used: adUse });
+      endY = y + 24 + s;
+    } else if (gap >= 56) {
+      const h = Math.min(gap - 20, 200);
+      houseAd(b, L, y + 12, inner, h, { accent, tint, tint2, pub, chrome, measure, used: adUse });
+      endY = y + 12 + h;
     }
-    y = bodyBottom + 16;
-    // the foot of the page: another story, the listings, the small ads
-    // what did not fit in the column foot is not lost: it moves to the strip
-    // under the article, where a paper puts it just as readily
-    const belowMods = modulesFor(chrome, 'print', 'below').concat(colH > 0 ? colLeft : colMods);
-    if (belowMods.length) {
-      b.line(L, y, R, y, { color: '#78716C', width: 2 });
-      const half = (inner - gutter) / 2;
-      let cy = y + 18, cx = L, colTops = [y + 18, y + 18];
-      belowMods.slice(0, 4).forEach((mod, i) => {
-        const side = i % 2;
-        cx = L + side * (half + gutter);
-        const render = moduleRenderer(mod);
-        if (!render) return;
-        colTops[side] = colTops[side] + (render(b, cx, colTops[side], half, mod, S) || 0);
-        cy = Math.max(colTops[0], colTops[1]);
-      });
-      y = cy + 10;
+    // What is still empty after that is not printed: the last page ends
+    // under its content, like a page cut from the paper, and the worksheet
+    // goes on below it. A full page stays a full A4 page.
+    const lastH = Math.min(pageH, Math.max(Math.round(pageH * 0.3), Math.round(endY + 26 + PRESS_FOOT - pageTop(lastPage))));
+    pages[pages.length - 1].h = lastH;
+    const heightOf = (pg) => (pg === lastPage ? lastH : pageH);
+    // the footer of every page: the note, the name of the paper, the page
+    for (const f of flows) {
+      const fy = pageTop(f.page) + heightOf(f.page) - PRESS_FOOT + 6;
+      b.line(L, fy, R, fy, { color: '#A8A29E' });
+      b.text(L, fy + 20, String(chrome.footerNote || ''), { family: SERIF, size: 11, style: 'italic' }, { color: '#57534E' });
+      b.text(R, fy + 20, upper(pub) + '  ·  ' + (f.page + 1) + ' / ' + N, { family: SANS, size: 10, weight: 700 }, { color: '#57534E', align: 'right', letterSpacing: 1 });
     }
-    b.line(L, y, R, y, { color: '#A8A29E' });
-    b.text(L, y + 18, String(chrome.footerNote || ''), { family: SERIF, size: 10, style: 'italic' }, { color: '#78716C' });
-    b.text(R, y + 18, String(chrome.publication || ''), { family: SANS, size: 10, weight: 700 }, { color: '#78716C', align: 'right', letterSpacing: 1 });
-    const model = paperFinish(b, W, y + 42 + P, d);
-    // the grid the page was set on, so the proportions can be measured (§29)
+    const model = paperFinish(b, W, pageTop(N - 1) + lastH + P, d, pages);
+    // the grid the pages were set on, so the proportions can be measured (§29)
     model.columns = [];
-    for (let c = 0; c < cols; c++) model.columns.push({ x: L + c * (colW + gutter), w: colW, top: tops[c], bottom: bodyBottom });
-    return model;
+    for (const f of flows) {
+      for (let c = 0; c < cols; c++) model.columns.push({ x: L + c * (colW + gutter), w: colW, top: f.tops[c], bottom: f.last ? bodyBottom : f.bottom, page: f.page });
+    }
+    return { model, pages: N, gap, lastFill, photo: photoInfo, placed: placedMods, mods: modsPlaced + sideTaken.size + (useSide && factMod ? 1 : 0), quote: (useQuote || (useSide && quote)) ? 1 : 0 };
+  }
+
+  /** The paper's own advertisement, sized to the space it fills. */
+  function houseAd(b, x, y, w, h, o) {
+    if (h < 40 || w < 120) return;
+    if (o.used) o.used.n += 1;
+    b.rect(x, y, w, h, { fill: o.tint, radius: 2 });
+    const k = Math.min(1, h / 120);
+    const box = Math.round(34 * Math.max(0.7, k));
+    const cx = x + 18, cy = y + h / 2 - box / 2;
+    b.rect(cx, cy, box, box, { fill: o.accent, radius: 3 });
+    b.text(cx + box / 2, cy + box * 0.72, initial(o.pub), { family: SERIF, size: Math.round(box * 0.6), weight: 700 }, { color: '#FFFFFF', align: 'center' });
+    const tx = cx + box + 16;
+    const room = x + w - tx - 18;
+    const tf = { family: SERIF, size: h >= 90 ? 22 : 17, weight: 700 };
+    const line2 = String((o.chrome && (o.chrome.tagline || o.chrome.publicationLine)) || '');
+    const cta = 'SUBSCRIBE';
+    const ctaW = o.measure(cta, { family: SANS, size: 11, weight: 700 }) + cta.length * 1.2;
+    const showCta = room > 380;
+    const textRoom = room - (showCta ? ctaW + 40 : 0);
+    b.text(tx, y + h / 2 - (line2 && h >= 70 ? 4 : -6), clipText(o.pub, Math.floor(textRoom / (tf.size * 0.5))), tf, { color: INK });
+    if (line2 && h >= 70) b.text(tx, y + h / 2 + 18, clipText(line2, Math.floor(textRoom / 6.5)), { family: SERIF, size: 13, style: 'italic' }, { color: '#57534E' });
+    if (showCta) {
+      const bx = x + w - 18 - ctaW - 28, by = y + h / 2 - 15;
+      b.rect(bx, by, ctaW + 28, 30, { fill: o.accent, radius: 15 });
+      b.text(bx + (ctaW + 28) / 2, by + 20, cta, { family: SANS, size: 11, weight: 700 }, { color: '#FFFFFF', align: 'center', letterSpacing: 1.2 });
+    }
+    if (h > 150) {
+      // a house ad on a large space shows the paper itself
+      for (let i = 0; i < 3; i++) b.rect(tx, y + h / 2 + 40 + i * 14, Math.min(room, 260) * (i === 2 ? 0.55 : 1), 6, { fill: o.tint2, radius: 3 });
+    }
+  }
+
+  /** A sudoku, the filler of every paper: a valid grid, some numbers given. */
+  function sudoku(b, x, y, s, o) {
+    const r = rng(o.seed || 7);
+    const digits = [1, 2, 3, 4, 5, 6, 7, 8, 9].sort(() => r() - 0.5);
+    b.text(x, y + 14, 'SUDOKU', { family: SANS, size: 12, weight: 700 }, { color: INK, letterSpacing: 1.6 });
+    for (let i = 0; i < 3; i++) b.circle(x + 90 + i * 12, y + 10, 4, { fill: i < 2 ? o.accent : 'none', stroke: o.accent, width: 1.2 });
+    const top = y + 28, size = s - 28, cell = size / 9;
+    const gx = x + (s - size) / 2;
+    b.rect(gx, top, size, size, { fill: '#FFFFFF', stroke: INK });
+    for (let i = 1; i < 9; i++) {
+      const thick = i % 3 === 0;
+      b.line(gx + i * cell, top, gx + i * cell, top + size, { color: thick ? INK : '#A8A29E', width: thick ? 2 : 0.8 });
+      b.line(gx, top + i * cell, gx + size, top + i * cell, { color: thick ? INK : '#A8A29E', width: thick ? 2 : 0.8 });
+    }
+    const f = { family: SANS, size: Math.round(cell * 0.55), weight: 600 };
+    for (let row = 0; row < 9; row++) {
+      for (let col = 0; col < 9; col++) {
+        if (r() > 0.36) continue;
+        const v = digits[(row * 3 + Math.floor(row / 3) + col) % 9];
+        b.text(gx + col * cell + cell / 2, top + row * cell + cell * 0.7, String(v), f, { color: INK, align: 'center' });
+      }
+    }
+  }
+
+  /** A crossword grid, the other filler of every paper: black squares in rotation symmetry, numbered starts. */
+  function crossword(b, x, y, w, h, o) {
+    const r = rng((o.seed || 7) + 11);
+    const n = 11;
+    const size0 = Math.min(w, h - 28);
+    b.text(x + w - size0, y + 14, 'CROSSWORD', { family: SANS, size: 12, weight: 700 }, { color: INK, letterSpacing: 1.6 });
+    const size = Math.min(w, h - 28), cell = size / n;
+    const gx = x + w - size, top = y + 28;
+    const black = [];
+    for (let i = 0; i < n; i++) black.push(new Array(n).fill(false));
+    for (let i = 0; i < n; i++) {
+      for (let j = 0; j < n; j++) {
+        if (black[i][j]) continue;
+        const on = (i % 2 === 1 && j % 2 === 1) || r() < 0.08;
+        if (on) { black[i][j] = true; black[n - 1 - i][n - 1 - j] = true; }
+      }
+    }
+    b.rect(gx, top, size, size, { fill: '#FFFFFF', stroke: INK });
+    let num = 1;
+    const nf = { family: SANS, size: Math.max(7, Math.round(cell * 0.26)) };
+    for (let i = 0; i < n; i++) {
+      for (let j = 0; j < n; j++) {
+        const cx = gx + j * cell, cy = top + i * cell;
+        if (black[i][j]) { b.rect(cx, cy, cell, cell, { fill: INK }); continue; }
+        const across = (j === 0 || black[i][j - 1]) && j + 1 < n && !black[i][j + 1];
+        const down = (i === 0 || black[i - 1][j]) && i + 1 < n && !black[i + 1][j];
+        if (across || down) { b.text(cx + 2, cy + nf.size + 1, String(num), nf, { color: INK }); num += 1; }
+      }
+    }
+    for (let k = 1; k < n; k++) {
+      b.line(gx + k * cell, top, gx + k * cell, top + size, { color: '#57534E', width: 0.8 });
+      b.line(gx, top + k * cell, gx + size, top + k * cell, { color: '#57534E', width: 0.8 });
+    }
   }
 
   /** At least this many lines before another column is opened. */
   const MIN_COL_LINES = 10;
+
 
   /**
    * How many columns this much text really carries. Starts at the number the
@@ -2298,11 +2835,31 @@
   }
 
   /** Put the page on a surface: paper colour, shadow, a slight tilt and a vignette. */
-  function paperFinish(b, W, height, d) {
+  /*
+   * The paper the page is printed on. White by default — a worksheet is
+   * white, and a page photographed on a table looks grey and dull on it. The
+   * teacher can choose another paper, or the photographed page as before.
+   */
+  const PAPERS = { white: '#FFFFFF', ivory: '#FBF8F1', newsprint: '#F2EFE7', grey: '#ECECEA' };
+  function paperLook(settings, d) {
+    const s = settings || {};
+    const key = s.paperColor || 'white';
+    const design = (d && d.print && d.print.paper) || '#F7F4EC';
+    if (key === 'photo') return { key, fill: design, surface: '#DED8CC', rotate: -0.5, vignette: true, grain: true, shadow: true };
+    let fill = PAPERS[key];
+    if (key === 'custom') fill = /^#[0-9a-f]{6}$/i.test(String(s.paperColorCustom || '')) ? String(s.paperColorCustom).toUpperCase() : '#FFFFFF';
+    return { key: fill ? key : 'white', fill: fill || '#FFFFFF', surface: '#FFFFFF', rotate: 0, vignette: false, grain: key === 'newsprint', shadow: false, border: '#D6D6D3' };
+  }
+
+  function paperFinish(b, W, height, d, pages) {
     const h = Math.ceil(height);
-    const page = { type: 'rect', x: PAGE_PAD, y: PAGE_PAD, w: W - 2 * PAGE_PAD, h: h - 2 * PAGE_PAD, fill: (d.print && d.print.paper) || '#FFFFFF', shadow: true };
-    const model = { width: W, height: h, blocks: [page].concat(b.blocks.map(x => (x.type === 'rect' && x.h > h ? Object.assign({}, x, { h }) : x))) };
-    model.finish = { surface: '#DED8CC', rotate: -0.5, vignette: true, grain: true, page: { x: page.x, y: page.y, w: page.w, h: page.h } };
+    const look = d.look || paperLook({}, d);
+    const sheets = pages && pages.length ? pages : [{ x: PAGE_PAD, y: PAGE_PAD, w: W - 2 * PAGE_PAD, h: h - 2 * PAGE_PAD }];
+    const rects = sheets.map(p => Object.assign({ type: 'rect', x: p.x, y: p.y, w: p.w, h: p.h, fill: look.fill, shadow: !!look.shadow, page: true }, look.border ? { stroke: look.border } : {}));
+    const model = { width: W, height: h, blocks: rects.concat(b.blocks.map(x => (x.type === 'rect' && x.h > h ? Object.assign({}, x, { h }) : x))) };
+    const last = sheets[sheets.length - 1];
+    model.pages = sheets.map(p => ({ x: p.x, y: p.y, w: p.w, h: p.h }));
+    model.finish = { surface: look.surface, rotate: look.rotate, vignette: look.vignette, grain: look.grain, paper: look.key, fill: look.fill, page: { x: last.x, y: last.y, w: last.w, h: last.h } };
     return model;
   }
 
@@ -2362,8 +2919,34 @@
       + (f.weight && f.weight !== 400 ? ` font-weight="${f.weight}"` : '') + (f.style && f.style !== 'normal' ? ` font-style="${f.style}"` : '');
   }
 
+  /**
+   * The pages of a printed medium as boxes in the picture: exactly the sheet
+   * for a flat page, the sheet with the table around it for a photographed
+   * one. A picture without pages is one box, the whole picture.
+   */
+  function pageBoxes(model) {
+    const pages = (model && Array.isArray(model.pages) && model.pages.length) ? model.pages : null;
+    if (!pages) return [{ x: 0, y: 0, w: model.width, h: model.height }];
+    const photographed = model.finish && model.finish.rotate;
+    const m = photographed ? PAGE_PAD * (model.scaledBy || 1) : 1;
+    return pages.map(p => {
+      const x = Math.max(0, p.x - m), y = Math.max(0, p.y - m);
+      return { x, y, w: Math.min(model.width - x, p.w + 2 * m), h: Math.min(model.height - y, p.h + 2 * m) };
+    });
+  }
+  /** On which page a block stands (by its top). */
+  function blockPage(b, boxes) {
+    const top = b.type === 'line' ? Math.min(b.y1, b.y2) : b.type === 'text' ? b.y - (b.font ? b.font.size * 0.8 : 0) : b.type === 'circle' ? b.y - b.r : b.y;
+    for (let i = boxes.length - 1; i >= 0; i--) if (top >= boxes[i].y - PAGE_GAP / 2) return i;
+    return 0;
+  }
+
   function toSVG(model, opts) {
     const o = opts || {};
+    // one page of a printed medium: the same drawing, cropped to that page
+    const boxes = o.page != null ? pageBoxes(model) : null;
+    const box = boxes ? boxes[Math.max(0, Math.min(boxes.length - 1, o.page))] : null;
+    const onPage = box ? (b) => blockPage(b, boxes) === boxes.indexOf(box) : () => true;
     const W = model.width, H = model.height;
     const uid = 'lr' + (o.uid || photo.hashOf(String(model.blocks.length) + W + H));
     const defs = [];
@@ -2388,6 +2971,7 @@
     }
 
     for (const b of model.blocks) {
+      if (!onPage(b)) continue;
       if (b.type === 'rect') {
         const filter = b.shadow === 'soft' ? ` filter="url(#${uid}-soft)"` : b.shadow ? ` filter="url(#${uid}-page)"` : '';
         const fill = b.fill === 'none' ? 'none' : (b.fill || '#FFFFFF');
@@ -2453,7 +3037,7 @@
       } else if (b.type === 'text') {
         if (!b.text) continue;
         const anchor = b.align === 'center' ? 'middle' : b.align === 'right' ? 'end' : 'start';
-        out.push(`<text x="${fmt(b.x)}" y="${fmt(b.y)}" ${fontAttrs(b.font)} fill="${xmlEsc(b.color || INK)}"${anchor !== 'start' ? ` text-anchor="${anchor}"` : ''}${b.letterSpacing ? ` letter-spacing="${fmt(b.letterSpacing)}"` : ''}${b.role === 'body' ? ' class="body"' : ''} xml:space="preserve">${xmlEsc(b.text)}</text>`);
+        out.push(`<text x="${fmt(b.x)}" y="${fmt(b.y)}" ${fontAttrs(b.font)} fill="${xmlEsc(b.color || INK)}"${anchor !== 'start' ? ` text-anchor="${anchor}"` : ''}${b.letterSpacing ? ` letter-spacing="${fmt(b.letterSpacing)}"` : ''}${b.role === 'body' ? ' class="body"' + (b.glue ? ' data-glue="1"' : '') + (b.hyph ? ' data-hyph="1"' : '') : ''} xml:space="preserve">${xmlEsc(b.text)}</text>`);
       }
     }
     out.push('</g>');
@@ -2462,9 +3046,14 @@
       defs.push(`<linearGradient id="${gid}" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="rgb(60,50,35)" stop-opacity=".3"/><stop offset=".55" stop-color="rgb(60,50,35)" stop-opacity=".08"/><stop offset="1" stop-color="rgb(60,50,35)" stop-opacity="0"/></linearGradient>`);
       out.push(`<rect x="${fmt(fin.gutter.x)}" y="${fmt(fin.page ? fin.page.y : 0)}" width="${fmt(fin.gutter.w)}" height="${fmt(fin.page ? fin.page.h : H)}" fill="url(#${gid})"/>`);
     }
-    if (fin && fin.grain) out.push(`<rect x="0" y="0" width="${W}" height="${H}" filter="url(#${uid}-grain)" fill="#888"/>`);
+    if (fin && fin.grain) {
+      // the grain of the paper lies on the paper, not on the table around a flat page
+      const areas = fin.rotate || !Array.isArray(model.pages) ? [{ x: 0, y: 0, w: W, h: H }] : model.pages;
+      for (const a of areas) out.push(`<rect x="${fmt(a.x)}" y="${fmt(a.y)}" width="${fmt(a.w)}" height="${fmt(a.h)}" filter="url(#${uid}-grain)" fill="#888"/>`);
+    }
     if (fin && fin.vignette) out.push(`<rect x="0" y="0" width="${W}" height="${H}" fill="url(#${uid}-vig)"/>`);
-    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" class="lr-medium" role="img" aria-label="${xmlEsc(o.label || model.label || 'The text as it appears in its medium')}"><defs>${defs.join('')}</defs>${out.join('')}</svg>`;
+    const vb = box || { x: 0, y: 0, w: W, h: H };
+    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${fmt(vb.x)} ${fmt(vb.y)} ${fmt(vb.w)} ${fmt(vb.h)}" width="${fmt(vb.w)}" height="${fmt(vb.h)}" class="lr-medium"${box ? ` data-page="${boxes.indexOf(box) + 1}" data-pages="${boxes.length}"` : ''} role="img" aria-label="${xmlEsc((o.label || model.label || 'The text as it appears in its medium') + (box && boxes.length > 1 ? ` \u2014 page ${boxes.indexOf(box) + 1} of ${boxes.length}` : ''))}"><defs>${defs.join('')}</defs>${out.join('')}</svg>`;
   }
 
   /* ------------------------------------------------------------------ */
@@ -2502,6 +3091,7 @@
       }
       if (model.finish.gutter) model.finish.gutter = { x: model.finish.gutter.x * k, w: model.finish.gutter.w * k };
     }
+    if (Array.isArray(model.pages)) model.pages = model.pages.map(p => ({ x: p.x * k, y: p.y * k, w: p.w * k, h: p.h * k }));
     model.width = Math.round(model.width * k);
     model.height = Math.round(model.height * k);
     model.scaledBy = Math.round(k * 1000) / 1000;
@@ -2547,6 +3137,7 @@
     opts = opts || {};
     const measure = opts.measure || approxMeasure;
     const d = layoutFor(material);
+    if (d.kind === 'print') d.look = paperLook(material.settings, d);
     const c = chrome || {};
     const model = d.kind === 'print' ? (d.print.kind === 'press' ? pressModel(material, c, d, measure)
         : d.print.kind === 'book' ? bookModel(material, c, d, measure)
@@ -2588,10 +3179,30 @@
 
   /** Everything the picture shows of the generated text itself. */
   function bodyText(model) {
-    const parts = (model.blocks || []).filter(x => x.type === 'text' && x.role === 'body');
+    return joinBody((model.blocks || []).filter(x => x.type === 'text' && x.role === 'body'));
+  }
+  /**
+   * The words of the text from the pieces it is set in: a piece glued to the
+   * next one (a drop cap, a compound divided at its hyphen) takes no space,
+   * a piece that ends in a soft hyphen loses the hyphen.
+   */
+  function joinBody(parts) {
     let out = '';
-    parts.forEach((x, i) => { out += (i === 0 ? '' : (parts[i - 1].glue ? '' : ' ')) + x.text; });
+    parts.forEach((x, i) => {
+      const prev = i ? parts[i - 1] : null;
+      if (prev && prev.hyph) out = out.replace(/-$/, '');
+      out += (!prev ? '' : (prev.glue || prev.hyph ? '' : ' ')) + x.text;
+    });
     return out;
+  }
+  /** The same, read back from the SVG the sheet shows. */
+  function svgBodyText(svg) {
+    const parts = [];
+    const unesc = (t) => t.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&amp;/g, '&');
+    for (const mt of String(svg || '').matchAll(/<text ([^>]*class="body"[^>]*)>([^<]*)<\/text>/g)) {
+      parts.push({ text: unesc(mt[2]), glue: /data-glue="1"/.test(mt[1]), hyph: /data-hyph="1"/.test(mt[1]) });
+    }
+    return joinBody(parts);
   }
   /** Everything the interface around it shows. */
   function chromeText(model) {
@@ -2673,7 +3284,7 @@
     const balance = fills.length ? (fullest > 0 ? Math.min.apply(null, fills) / fullest : 1) : 1;
     const lowest = blocks.length ? Math.max.apply(null, blocks.filter(b => b.type !== 'wallpaper' && !(b.type === 'rect' && b.shadow)).map(blockBottom)) : 0;
     const tail = page.h > 0 ? Math.max(0, (page.y + page.h - lowest) / page.h) : 0;
-    return { columns, balance, tail, lowest: Math.round(lowest), page: { width: model ? model.width : 0, height: model ? model.height : 0 } };
+    return { columns, balance, tail, lowest: Math.round(lowest), pages: (model && Array.isArray(model.pages) && model.pages.length) || 1, page: { width: model ? model.width : 0, height: model ? model.height : 0 } };
   }
 
   /* ------------------------------------------------------------------ */
@@ -2863,9 +3474,12 @@
       const r = rng(W + H);
       ctx.save();
       ctx.globalAlpha = 0.05;
-      for (let i = 0; i < Math.round(W * H / 900); i++) {
-        ctx.fillStyle = r() > 0.5 ? '#000000' : '#FFFFFF';
-        ctx.fillRect(r() * W, r() * H, 1.2, 1.2);
+      const areas = fin.rotate || !Array.isArray(model.pages) ? [{ x: 0, y: 0, w: W, h: H }] : model.pages;
+      for (const a of areas) {
+        for (let i = 0; i < Math.round(a.w * a.h / 900); i++) {
+          ctx.fillStyle = r() > 0.5 ? '#000000' : '#FFFFFF';
+          ctx.fillRect(a.x + r() * a.w, a.y + r() * a.h, 1.2, 1.2);
+        }
       }
       ctx.restore();
     }
@@ -2909,7 +3523,7 @@
     };
   }
 
-  return { LAYOUTS, CHROME_SPECS, ICONS, MAX_SIDE,
+  return { LAYOUTS, CHROME_SPECS, ICONS, MAX_SIDE, PAPERS, A4_RATIO, paperLook, shade, hyphenPoints, wrapJustified, joinBody, svgBodyText, pageBoxes,
     credits, ownPicture, composition, verbatim, SUBJECTS: photo.SUBJECTS, isSubject: photo.isSubject, subjectFor: photo.subjectFor, subjectHints: photo.subjectHints, hashOf: photo.hashOf, layoutFor, chromeSpec, fallbackChrome, buildModel, fitModel, canvasScale, drawPhoto, drawIcon, bodyText, chromeText, validate, proportions, draw, toSVG, iconPath,
     MODULES, MODULE_KEYS, SHAPES, SHAPE_KEYS, MEDIUM_SLOTS, shapeOf, moduleRenderer, moduleHints, modulesFor, placeModules, moduleStyle, canvasMeasure, approxMeasure, wrap, fontString };
 });

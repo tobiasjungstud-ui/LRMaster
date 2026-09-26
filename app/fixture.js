@@ -160,7 +160,7 @@
         sidebarTitle: 'Most read', sidebarItems: ['Fixture sidebar one', 'Fixture sidebar two'], footerNote: 'Fixture footer',
         appName: 'Fixture Mail', mailboxItems: ['Inbox', 'Sent'], postMeta: ['12 upvotes', '3 replies', '1 reply'],
         deviceTime: '14:32', contactName: 'Fixture contact', bubbleTimes: ['14:28', '14:29', '14:31'], statusLine: 'online',
-        publication: 'Fixture Post', publicationLine: 'Fixture city · Tuesday · £1.20', sectionLabel: 'Fixture section',
+        publication: 'Fixture Post', publicationLine: 'Fixture city · Tuesday · £1.20', tagline: 'Fixture tagline', editionLine: 'Fixture edition', sectionLabel: 'Fixture section',
         photoCaption: 'Fixture photo caption line.', captionCredit: 'Fixture credit', pageLabel: 'Page 7',
         // the pictures and the things standing around the text (§37)
         photoSubject: 'classroom', sidebarSubjects: ['sport', 'food'], attachmentSubject: 'still',

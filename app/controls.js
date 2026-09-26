@@ -24,7 +24,8 @@
     questionCount: { custom: 'Custom' },
     skillMixMode: { auto: 'Balanced Question Mix (automatic)', custom: 'Custom Question Mix' },
     autoFix: { off: 'Aus – Befunde nur melden', fail: 'Fehler automatisch beheben', all: 'Fehler und Warnungen automatisch beheben' },
-    layoutMedium: { auto: 'Automatisch (passend zur Textsorte)', screen: 'Bildschirm – Screenshot', paper: 'Papier – abfotografiert' },
+    layoutMedium: { auto: 'Automatisch (passend zur Textsorte)', screen: 'Bildschirm – Screenshot', paper: 'Papier – gedruckte Seite' },
+    paperColor: { white: 'Weiss', ivory: 'Elfenbein', newsprint: 'Zeitungspapier', grey: 'Recyclinggrau', photo: 'Abfotografiert (Seite auf dem Tisch)', custom: 'Eigene Farbe …' },
     postTaskFocus: { content: 'Inhalt weiterdenken', vocabulary: 'Wortschatz produktiv anwenden', both: 'Inhalt und Wortschatz' },
     postTaskSocialMode: { auto: 'Automatisch verteilen', custom: 'Selbst festlegen' },
     postTaskLevel: { auto: 'Wie die Fragen', A: 'Niveau A – B1.2', B: 'Niveau B – B1.1' },
@@ -76,7 +77,9 @@
     questionDifficulty: 'Independent of the text level. Affects explicitness, distance, synonyms, combinations, distractors, inference share and question language.',
     questionLevel: 'Meta-Einstellung: Niveau B kann B1.1-Fragen lösen, Niveau A B1.2 bis B2.1. Mit «Beide» entstehen zwei Fragebögen zum selben Text; die Lehrerversion enthält beide Lösungen. Fragen folgen immer der Reihenfolge des Materials (wird geprüft).',
     glossary: 'Der Schwierigkeitsmesser ermittelt die Wörter über dem Niveau (ohne Zielvokabular); Claude erklärt sie in einfachem Englisch mit deutscher Entsprechung auf der ersten Seite des Fragebogens.',
-    layoutMedium: 'Automatisch erscheinen Zeitung, Magazin, Bericht, Buch und Tagebuch als abfotografierte Seite, Blog, Forum, E-Mail und Chat als Screenshot. Hier lässt sich das erzwingen.',
+    layoutMedium: 'Automatisch erscheinen Zeitung, Magazin, Bericht, Buch und Tagebuch als gedruckte Seite, Blog, Forum, E-Mail und Chat als Screenshot. Hier lässt sich das erzwingen.',
+    paperColor: 'Die Farbe des Papiers, auf dem Zeitung, Magazin, Buch und Bericht gedruckt sind. Weiss passt auf jedes Arbeitsblatt; „Abfotografiert“ zeigt die Seite wie früher auf einem Tisch fotografiert. Lässt sich auch im Viewer direkt umschalten.',
+    paperColorCustom: 'Jede Farbe, als Hex-Wert (#RRGGBB) – am besten hell, damit der Text lesbar bleibt.',
     authenticLayout: 'Nur Reading: Claude gestaltet das Medium, aus dem der Text käme (Adressleiste, Seitenname, Navigation, Buttons, Zahlen). Die App zeichnet daraus ein echtes Bild und prüft vor der Ausgabe, dass es genau den generierten Text zeigt – herunterladbar als PNG.',
     appendScript: 'Nur Listening: Das vollständige Skript wird als letzte Seite an die Schülerversion angehängt (Bildschirm, Word, Markdown).',
     levelMeter: 'Der Text wird nach dem Schreiben auf Satzlänge, Wortschatz (Häufigkeitsränge), Nebensätze, anspruchsvolle Grammatik, Idiomatik und Beitragslänge gemessen. Weicht das Ergebnis vom gewählten CEFR-Niveau ab, wird der Text mit konkreten Vorgaben nachgebessert.',
@@ -140,6 +143,7 @@
         return `<fieldset class="field field-multi" data-field="${def.key}" data-setting="${def.key}" id="${id}"><legend>${esc(def.label)}</legend><div class="chips">${def.options.map(o => `<label class="chip"${titles[o] ? ` title="${esc(titles[o])}"` : ''}><input type="checkbox" value="${esc(o)}" data-multi="${def.key}"><span>${esc(labels[o] || o)}</span></label>`).join('')}</div>${help}</fieldset>`;
       }
       case 'text':
+        if (def.key === 'paperColorCustom') return `<div class="field field-text field-color" data-field="${def.key}"><label for="${id}">${esc(def.label)}</label><input type="color" ${attrs}>${help}</div>`;
         return `<div class="field field-text" data-field="${def.key}"><label for="${id}">${esc(def.label)}</label><input type="text" ${attrs}>${help}</div>`;
       case 'list':
       case 'map':
@@ -170,7 +174,7 @@
     4: ['format', 'speakerCount', 'preset', 'speakerBalance', 'customShares', 'turnLength', 'turnVariability', 'audioLength', 'audioLengthCustom', 'speakingSpeed', 'speakerProfiles', 'emotionTags', 'naturalness', 'explicitness',
         'textType', 'customTextType', 'lengthMode', 'wordCount', 'a4Pages'],
     5: ['vocabUsage', 'targetVocabMin', 'targetVocabMax', 'vocabSelectionMode', 'selectedVocab', 'highlightVocab'],
-    6: ['createWorksheet', 'questionCount', 'questionCountCustom', 'questionLevel', 'questionDifficulty', 'glossary', 'appendScript', 'authenticLayout', 'layoutMedium', 'skillMixMode', 'customSkillMix', 'questionFormats', 'autoFormatMix', 'higherOrder', 'higherOrderCount', 'higherOrderTypes'],
+    6: ['createWorksheet', 'questionCount', 'questionCountCustom', 'questionLevel', 'questionDifficulty', 'glossary', 'appendScript', 'authenticLayout', 'layoutMedium', 'paperColor', 'paperColorCustom', 'skillMixMode', 'customSkillMix', 'questionFormats', 'autoFormatMix', 'higherOrder', 'higherOrderCount', 'higherOrderTypes'],
     7: ['preTask', 'preTaskFocus', 'preTaskCount', 'preTaskTypes', 'preTaskSocialMode', 'customPreTaskSocial', 'preTaskOralCount', 'preTaskMinutes', 'preTaskDifficulty', 'preTaskScaffolding', 'preTaskLevel', 'preTaskCriteria'],
     8: ['postTask', 'postTaskFocus', 'postTaskCount', 'postTaskTypes', 'postTaskSocialMode', 'customPostTaskSocial', 'postTaskOralCount', 'postTaskMinutes', 'postTaskDifficulty', 'postTaskScaffolding', 'postTaskLevel', 'postTaskCriteria'],
     9: ['grammarComplexity', 'vocabularyDifficulty', 'idiomaticLanguage', 'paragraphLength', 'dialogueProportion', 'styleBalance', 'distractorDifficulty', 'inferenceLevel', 'autoFix', 'autoFixRounds'],
@@ -180,7 +184,7 @@
     { title: 'Audio', keys: ['speakerCount', 'customShares', 'turnLength', 'turnVariability', 'speakingSpeed', 'naturalness', 'emotionTags', 'explicitness'] },
     { title: 'Text', keys: ['wordCount', 'paragraphLength', 'dialogueProportion', 'styleBalance'] },
     { title: 'Language', keys: ['cefr', 'levelMeter', 'grammarComplexity', 'vocabularyDifficulty', 'vocabUsage', 'idiomaticLanguage'] },
-    { title: 'Questions', keys: ['questionCount', 'questionLevel', 'questionDifficulty', 'skillMixMode', 'questionFormats', 'distractorDifficulty', 'inferenceLevel', 'glossary', 'appendScript', 'authenticLayout', 'layoutMedium'] },
+    { title: 'Questions', keys: ['questionCount', 'questionLevel', 'questionDifficulty', 'skillMixMode', 'questionFormats', 'distractorDifficulty', 'inferenceLevel', 'glossary', 'appendScript', 'authenticLayout', 'layoutMedium', 'paperColor', 'paperColorCustom'] },
     { title: 'Pre-Task', keys: ['preTask', 'preTaskTypes', 'preTaskCount', 'preTaskSocialMode', 'preTaskOralCount', 'preTaskDifficulty', 'preTaskScaffolding', 'preTaskCriteria'] },
     { title: 'Post-Task', keys: ['postTask', 'postTaskTypes', 'postTaskCount', 'postTaskSocialMode', 'postTaskOralCount', 'postTaskDifficulty', 'postTaskScaffolding', 'postTaskCriteria'] },
     { title: 'Qualität', keys: ['autoFix', 'autoFixRounds'] },

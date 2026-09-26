@@ -422,9 +422,8 @@
     const html = env.render.renderStudentHTML(m);
     // the text stands in the composed page (SVG, real text), not as headline + paragraphs
     if (!/<svg[^>]*class="lr-medium"/.test(html) || !/class="medium-sheet"/.test(html)) return 'the student sheet does not show the text as its medium';
-    const body = [...html.matchAll(/<text [^>]*class="body"[^>]*>([^<]*)<\/text>/g)].map(x => x[1]).join(' ');
     const want = env.quality.normalizeForSearch(m.content.paragraphs.join(' '));
-    const got = env.quality.normalizeForSearch(body.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"'));
+    const got = env.quality.normalizeForSearch(env.mock.svgBodyText(html));
     if (got !== want) return 'the page does not carry the whole text word for word';
     // without a medium (layout off) the plain text still stands there
     const plain = env.fixture.material({ authenticLayout: false }, 'reading');
@@ -1563,14 +1562,20 @@
       if (!['phone', 'video', 'dots', 'mic', 'camera', 'clip', 'ticks'].every(n => ci.has(n))) return 'the messenger has no app icons';
       return ok(Object.keys(env.mock.ICONS).length >= 20, 'too few interface icons');
     } });
-  add({ id: 'S37.print_detail', section: 37, title: 'Gedruckte Medien sehen fotografiert aus: Zeitungsseite im Blocksatz mit Spalten, Bild und Legende, Buchseite mit Initial und Bundschatten, Heftseite mit Lineatur, Randlinie und Lochung, Blatt mit Briefkopf', kind: 'function',
+  add({ id: 'S37.print_detail', section: 37, title: 'Gedruckte Medien sehen gedruckt aus: Zeitungsseite im Blocksatz mit Spalten, Bild und Legende auf weissem A4-Papier, Buchseite mit Initial und Bundschatten, Heftseite mit Lineatur, Randlinie und Lochung, Blatt mit Briefkopf – auf Wunsch wie früher abfotografiert', kind: 'function',
     check(env) {
-      const model = (type) => env.quality.layoutModel(env.fixture.material({ textType: type, authenticLayout: true, layoutMedium: 'paper' }, 'reading'));
+      const model = (type, over) => env.quality.layoutModel(env.fixture.material(Object.assign({ textType: type, authenticLayout: true, layoutMedium: 'paper' }, over || {}), 'reading'));
       const words = (m) => (m.blocks || []).filter(b => b.type === 'text' && b.role === 'body' && !/\s/.test(b.text)).length;
       const press = model('News Article');
-      if (!press.finish || !press.finish.grain || !press.finish.page) return 'the newspaper page is not photographed';
+      if (!press.finish || !press.finish.page || !Array.isArray(press.pages) || !press.pages.length) return 'the newspaper is not a page';
+      const sheet0 = press.blocks.find(b => b.type === 'rect' && b.page);
+      if (!sheet0 || sheet0.fill !== '#FFFFFF' || press.finish.rotate || press.finish.vignette || press.finish.surface !== '#FFFFFF') return 'by default the page is not white and flat';
       if (!(press.blocks || []).some(b => b.type === 'photo')) return 'the newspaper has no press photo';
-      if (words(press) < 20) return 'the newspaper columns are not justified';
+      const long = env.fixture.material({ textType: 'News Article', authenticLayout: true, layoutMedium: 'paper' }, 'reading');
+      long.content.paragraphs = long.content.paragraphs.concat(long.content.paragraphs);
+      if (words(env.quality.layoutModel(long)) < 20) return 'the newspaper columns are not justified';
+      const photographed = model('News Article', { paperColor: 'photo' });
+      if (!photographed.finish.grain || !photographed.finish.vignette || !photographed.finish.rotate) return 'the photographed page is gone';
       const book = model('Story');
       if (!book.finish || !book.finish.gutter) return 'the book page has no binding shadow';
       if (words(book) < 20) return 'the book page is not justified';
@@ -1580,6 +1585,46 @@
       const sheet = model('Report');
       if (!(sheet.blocks || []).some(b => b.type === 'line' && b.width === 3)) return 'the printed sheet has no staple';
       return ok(true);
+    } });
+  add({ id: 'S37.paper_color', section: 37, title: 'Papierfarbe gedruckter Medien wählbar – Weiss als Standard, Elfenbein, Zeitungspapier, Grau oder abfotografiert; auch direkt im Viewer und im Layout-Tab umschaltbar', kind: 'setting', key: 'paperColor', alt: 'ivory', mode: 'reading', promptSensitive: false,
+    extra(env) {
+      const problems = [];
+      if (env.core.SCHEMA_BY_KEY.paperColor.default !== 'white') problems.push('white is not the default');
+      const fill = (over) => { const mm = env.quality.layoutModel(env.fixture.material(Object.assign({ textType: 'News Article', authenticLayout: true, layoutMedium: 'paper' }, over), 'reading')); return { page: (mm.blocks.find(b => b.type === 'rect' && b.page) || {}).fill, fin: mm.finish }; };
+      const seen = new Set();
+      for (const key of ['white', 'ivory', 'newsprint', 'grey']) {
+        const f = fill({ paperColor: key });
+        if (f.page !== env.mock.PAPERS[key]) problems.push(key + ': the page is ' + f.page);
+        if (f.fin.rotate || f.fin.vignette) problems.push(key + ': the page is still photographed');
+        seen.add(f.page);
+      }
+      if (seen.size < 4) problems.push('the papers do not differ');
+      const ph = fill({ paperColor: 'photo' });
+      if (!ph.fin.rotate || ph.page === '#FFFFFF') problems.push('the photographed page is not the old look');
+      // every printed medium follows the paper, the screen does not
+      for (const type of ['Story', 'Diary Entry', 'Report', 'Article']) {
+        const mm = env.quality.layoutModel(env.fixture.material({ textType: type, authenticLayout: true, layoutMedium: 'paper', paperColor: 'ivory' }, 'reading'));
+        if ((mm.blocks.find(b => b.type === 'rect' && b.page) || {}).fill !== env.mock.PAPERS.ivory) problems.push(type + ': the paper is not used');
+      }
+      const src = env.uiSource || '';
+      if (src && !(/function paperChips/.test(src) && /data-paper/.test(src) && /type="color"/.test(src) && /bindPaperChips\(media, m\)/.test(src) && /bindPaperChips\(pane, m\)/.test(src))) problems.push('the paper cannot be switched where the picture is shown');
+      return ok(!problems.length, problems.slice(0, 3).join(' | '));
+    } });
+  add({ id: 'S37.paper_color_custom', section: 37, title: 'Eigene Papierfarbe per Farbwähler – nur echte Farbwerte (#RRGGBB) werden übernommen', kind: 'setting', key: 'paperColorCustom', alt: '#FFF4D6', mode: 'reading', promptSensitive: false,
+    extra(env) {
+      const problems = [];
+      const st = env.core.normalizeState({ kind: 'reading', paperColor: 'custom', paperColorCustom: '#fff4d6' });
+      if (st.paperColorCustom !== '#fff4d6') problems.push('a colour is not kept');
+      for (const bad of ['red', 'url(javascript:x)', '#12345', '#GGGGGG', '<b>']) {
+        if (env.core.normalizeState({ kind: 'reading', paperColorCustom: bad }).paperColorCustom !== '#FFFFFF') problems.push('an invalid colour is kept: ' + bad);
+      }
+      const mm = env.quality.layoutModel(env.fixture.material({ textType: 'News Article', authenticLayout: true, layoutMedium: 'paper', paperColor: 'custom', paperColorCustom: '#fff4d6' }, 'reading'));
+      if ((mm.blocks.find(b => b.type === 'rect' && b.page) || {}).fill !== '#FFF4D6') problems.push('the custom colour is not the paper');
+      // a stored material with a broken colour still draws a white page
+      const broken = env.fixture.material({ textType: 'News Article', authenticLayout: true, layoutMedium: 'paper', paperColor: 'custom' }, 'reading');
+      broken.settings.paperColorCustom = 'nonsense';
+      if ((env.quality.layoutModel(broken).blocks.find(b => b.type === 'rect' && b.page) || {}).fill !== '#FFFFFF') problems.push('a broken colour is drawn');
+      return ok(!problems.length, problems.slice(0, 3).join(' | '));
     } });
   add({ id: 'S37.prompt', section: 37, title: 'Claude gestaltet die Oberfläche (Adresse, Seitenname, Navigation, Buttons, Zahlen) – ohne den Text zu verändern', kind: 'function',
     check(env) {
@@ -1829,7 +1874,44 @@
       return ok(!problems.length, problems.slice(0, 3).join(' | '));
     } });
 
-  add({ id: 'S37.press_makeup', section: 37, title: 'Die Zeitungsseite ist umbrochen wie eine echte: schwarze, eng gesetzte Schlagzeile, Vorspann ohne Etikett, Autorenzeile zwischen Linien, Ortsmarke im ersten Absatz, kein Abstand zwischen Absätzen (nur Einzug), Zwischentitel nie allein am Spaltenfuss, zweites Bild nie neben dem Aufmacher, Zitat und Kästen rücken an den Text', kind: 'function',
+  add({ id: 'S37.press_pages', section: 37, title: 'Die Zeitung ist eine echte A4-Seite: ein längerer Artikel läuft auf einer Folgeseite weiter („Continued on page 2“, Fortsetzungskopf, Seitenzahlen) – nie kleinere Schrift, nie gekürzt; jede Seite ist im Blatt und im Word-Export eine eigene Seite; Silbentrennung im Blocksatz', kind: 'function',
+    check(env) {
+      const problems = [];
+      const mk = (times) => { const mm = layoutMaterial(env, { textType: 'News Article', layoutMedium: 'paper' }); let ps = []; for (let i = 0; i < times; i++) ps = ps.concat(mm.content.paragraphs); mm.content.paragraphs = ps; return mm; };
+      const short = mk(1), long = mk(12);
+      const ms = env.quality.layoutModel(short), ml = env.quality.layoutModel(long);
+      if (!(ml.pages && ml.pages.length >= 2)) problems.push('a long article does not run on to a second page');
+      else {
+        const ratio = ml.pages[0].h / ml.pages[0].w;
+        if (Math.abs(ratio - env.mock.A4_RATIO) > 0.01) problems.push('the page is not A4 (' + ratio.toFixed(3) + ')');
+        if (ml.pages.some(p => p.h > p.w * env.mock.A4_RATIO + 1)) problems.push('a page is longer than A4');
+        const texts = ml.blocks.filter(b => b.type === 'text');
+        if (!texts.some(b => /^Continued on page 2/.test(b.text))) problems.push('page 1 does not say where the story goes on');
+        if (!texts.some(b => /\u00B7 Continued$/.test(b.text) && b.y > ml.pages[1].y)) problems.push('the continuation page has no head');
+        if (!texts.some(b => new RegExp('1 / ' + ml.pages.length + '$').test(b.text))) problems.push('the pages are not numbered');
+      }
+      if (env.quality.normalizeForSearch(env.mock.bodyText(ml)) !== env.quality.normalizeForSearch(long.content.paragraphs.join(' '))) problems.push('the long article is not word for word');
+      const size = (mm) => Math.min(...mm.blocks.filter(b => b.type === 'text' && b.role === 'body' && b.font.size < 30).map(b => b.font.size));
+      if (size(ml) !== size(ms) || size(ms) < 16) problems.push('the type is made smaller to fit (' + size(ms) + ' / ' + size(ml) + ')');
+      // on the sheet: one SVG per page, read back word for word (divided words joined)
+      const svgs = env.quality.layoutSVG(long, { pages: true });
+      if (svgs.length !== (ml.pages || []).length) problems.push('the sheet does not show one picture per page');
+      if (env.quality.normalizeForSearch(env.mock.svgBodyText(svgs.join(''))) !== env.quality.normalizeForSearch(long.content.paragraphs.join(' '))) problems.push('the pages on the sheet do not carry the text word for word');
+      // hyphenation where a column would come out loose, never where it would be wrong
+      const hy = (w) => env.mock.hyphenPoints(w).map(p => w.slice(0, p) + '-' + w.slice(p));
+      if (!hy('committee').includes('com-mittee') || !hy('conversation').includes('conversa-tion') || !hy('playground').includes('play-ground')) problems.push('words are not divided where they can be');
+      if (hy('Councillor').length || hy('everything').some(x => x === 'everyth-ing') || hy('mornings').includes('mor-nings') || hy('decided').length) problems.push('words are divided where they must not be');
+      if (env.mock.joinBody([{ text: 'com-', hyph: true }, { text: 'mittee' }, { text: 'two-', glue: true }, { text: 'year' }]) !== 'committee two-year') problems.push('divided words are not joined back');
+      // Word: one picture per page, each on a page of its own
+      const png = env.fixture.png();
+      const medium = { png, type: 'png', width: 990, height: 1399, pages: [{ png, width: 990, height: 1399 }, { png, width: 990, height: 700 }] };
+      const parts = env.word.partsFor(long, 'student', null, { medium });
+      const doc = String(parts.find(p => p.name === 'word/document.xml').data);
+      if ((doc.match(/<w:drawing>/g) || []).length < 2 || !/<w:pageBreakBefore\/>[\s\S]*page 2 of 2/.test(doc)) problems.push('the Word file does not carry the pages one per page');
+      if (env.ooxml.validate(parts).length) problems.push('the Word file with pages is not valid: ' + env.ooxml.validate(parts)[0]);
+      return ok(!problems.length, problems.slice(0, 3).join(' | '));
+    } });
+  add({ id: 'S37.press_makeup', section: 37, title: 'Die Zeitungsseite ist umbrochen wie eine echte: Titelkopf mit Namen, Motto und Ausgabezeile, Rubrik, schwarze, eng gesetzte Schlagzeile, Vorspann ohne Etikett, Autorenzeile zwischen Linien, Initial (Titelseite) oder Ortsmarke (Innenseite), neben dem Aufmacher Zitat und Fakten statt Textstreifen, kein Abstand zwischen Absätzen (nur Einzug), Zwischentitel nie allein am Spaltenfuss, zweites Bild nie neben dem Aufmacher, Zitat und Kästen rücken an den Text', kind: 'function',
     check(env) {
       const problems = [];
       const m = layoutMaterial(env, { textType: 'News Article', layoutMedium: 'paper' });
@@ -1841,14 +1923,24 @@
       const title = texts.find(b => b.text === m.content.title);
       if (!title || title.color !== '#0F172A' && !/^#(0|1)/.test(title.color)) problems.push('the headline is not black');
       if (title && title.font.size < 40) problems.push('the headline is not a headline');
-      const dl = texts.find(b => /^FIXTURETOWN \u2014$/.test(b.text));
-      if (!dl) problems.push('the first paragraph has no dateline');
-      const by = texts.find(b => /^BY FIXTURE REPORTER$/.test(b.text));
+      // a front page opens with a drop cap and names the place in the byline;
+      // an inside page opens its first paragraph with the dateline
+      const body0 = texts.filter(b => b.role === 'body');
+      const cap = body0[0];
+      if (!cap || !(cap.font.size > body0[1].font.size * 2.5) || cap.text !== m.content.paragraphs[0].charAt(0)) problems.push('the front page story has no drop cap');
+      const inside = layoutMaterial(env, { textType: 'Opinion Text', layoutMedium: 'paper' });
+      inside.content.meta = Object.assign({}, inside.content.meta, { location: 'Fixturetown' });
+      if (!env.quality.layoutModel(inside).blocks.some(b => b.type === 'text' && /^FIXTURETOWN \u2014$/.test(b.text))) problems.push('the inside page has no dateline');
+      // the nameplate: the paper's name large and centred, the edition line, the section
+      const plate = texts.find(b => b.text === m.layout.chrome.publication && b.align === 'center');
+      if (!plate || plate.font.size < 40) problems.push('the front page has no nameplate');
+      if (!texts.some(b => b.text === String(m.layout.chrome.sectionLabel).toUpperCase())) problems.push('the section is not named above the headline');
+      const by = texts.find(b => /^BY FIXTURE REPORTER/.test(b.text));
       if (!by) problems.push('no byline');
       else if (!model.blocks.some(b => b.type === 'line' && Math.abs(b.y1 - by.y) < 30 && b.y1 < by.y) || !model.blocks.some(b => b.type === 'line' && Math.abs(b.y1 - by.y) < 30 && b.y1 > by.y)) problems.push('the byline does not stand between rules');
-      if (texts.some(b => b.text === String(m.content.meta.tags && m.content.meta.tags[0] || '').toUpperCase() && b.y < (by ? by.y : 0))) problems.push('the stand-first still carries a coloured label');
+      if (by && !/FIXTURETOWN/.test(by.text)) problems.push('the byline does not name the place');
       // no space between paragraphs: the lines of a column follow at one leading
-      const body = texts.filter(b => b.role === 'body');
+      const body = texts.filter(b => b.role === 'body' && b !== cap);
       const byCol = {};
       body.forEach(b => { (byCol[Math.round(b.x / 40)] = byCol[Math.round(b.x / 40)] || []).push(b.y); });
       const steps = [];
@@ -1864,6 +1956,9 @@
         const under = body.filter(b => Math.abs(b.x - head.x) < 20 && b.y > head.y && b.y < head.y + lh * 3);
         if (under.length < 2) problems.push('the crosshead stands alone at the foot of a column');
         if (fig.y < lead.y + lead.h && fig.x > lead.x + lead.w - 10) problems.push('the second picture sits beside the lead picture');
+        // beside the lead picture of a front page: the quote and the facts, not a sliver of text
+        const beside = body.filter(b => b.x > lead.x + lead.w && b.y < lead.y + lead.h);
+        if (beside.length) problems.push('text is squeezed beside the lead picture');
       }
       if (env.mock.proportions(model).balance < 0.8) problems.push('the page is out of balance (' + env.mock.proportions(model).balance.toFixed(2) + ')');
       return ok(!problems.length, problems.slice(0, 3).join(' | '));

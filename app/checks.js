@@ -37,6 +37,7 @@
         content: (kind) => fixture.content(kind || 'listening'),
         material: (overrides, kind) => fixture.material(Object.assign({ textbookId: tb.id, unitId: unit.id }, overrides || {}), kind || 'listening', ctx),
         levelSample: (name) => fixture.levelSample(name),
+        png: () => fixture.png(),
       },
     };
     return env;

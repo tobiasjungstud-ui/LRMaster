@@ -382,20 +382,31 @@
    * the tests and a copy without a canvas keep the typed design below.
    */
   const MEDIUM_RID = 'rId20';
-  function mediumBlocks(ctx) {
-    const med = ctx.medium;
+  /** The pages of the medium: one picture per printed page, or the one picture. */
+  function mediumPages(med) {
     if (!med || !med.png || !(med.width > 0) || !(med.height > 0)) return [];
+    const pages = Array.isArray(med.pages) && med.pages.length ? med.pages : [{ png: med.png, width: med.width, height: med.height }];
+    return pages.filter(p => p && p.png && p.width > 0 && p.height > 0).slice(0, 40);
+  }
+  const mediumRid = (i) => (i === 0 ? MEDIUM_RID : 'rIdMedium' + (i + 1));
+  function mediumBlocks(ctx) {
+    const pages = mediumPages(ctx.medium);
+    if (!pages.length) return [];
     const maxW = usableWidth(M_DOC);
     const maxH = docx.A4.h - docx.cm(M_DOC.top) - docx.cm(M_DOC.bottom) - 700; // room for the footer
-    let w = maxW, h = Math.round(maxW * med.height / med.width);
-    if (h > maxH) { h = maxH; w = Math.round(maxH * med.width / med.height); }
     const text = (ctx.c.paragraphs || []).join('\n\n').slice(0, 6000);
-    return [P([docx.picture(MEDIUM_RID, w, h, { name: 'The text in its medium', descr: text })], { align: 'center', after: 0 })];
+    // every page of the paper on a page of the document
+    return pages.map((pg, i) => {
+      let w = maxW, h = Math.round(maxW * pg.height / pg.width);
+      if (h > maxH) { h = maxH; w = Math.round(maxH * pg.width / pg.height); }
+      const name = pages.length > 1 ? `The text in its medium, page ${i + 1} of ${pages.length}` : 'The text in its medium';
+      return P([docx.picture(mediumRid(i), w, h, { name, descr: i === 0 ? text : name })], Object.assign({ align: 'center', after: 0 }, i > 0 ? { pageBreakBefore: true } : {}));
+    });
   }
   function mediumImages(ctx) {
     const med = ctx.medium;
-    if (!med || !med.png) return [];
-    return [{ rId: MEDIUM_RID, name: med.type === 'jpeg' ? 'medium.jpg' : 'medium.png', data: med.png }];
+    const ext = med && med.type === 'jpeg' ? 'jpg' : 'png';
+    return mediumPages(med).map((pg, i) => ({ rId: mediumRid(i), name: (i === 0 ? 'medium' : 'medium-' + (i + 1)) + '.' + ext, data: pg.png }));
   }
 
   /** The reading text, laid out in the design of its text type. */

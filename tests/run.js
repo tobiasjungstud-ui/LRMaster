@@ -171,7 +171,9 @@ test('every medium is built like the real thing, on screen and on paper', () => 
   assert.ok(chat.blocks.some(b => b.type === 'poly'), 'the bubbles have no tails');
   for (const n of ['phone', 'video', 'mic', 'camera', 'clip', 'ticks']) assert.ok(icons(chat).has(n), 'chat icon ' + n);
   // printed media: justified columns, a binding shadow, ruling and holes, a staple
-  const press = model('News Article', 'paper'), book = model('Story', 'paper'), note = model('Diary Entry', 'paper');
+  const longNews = fixture.material({ textType: 'News Article', authenticLayout: true, layoutMedium: 'paper' }, 'reading');
+  longNews.content.paragraphs = longNews.content.paragraphs.concat(longNews.content.paragraphs);
+  const press = quality.layoutModel(longNews), book = model('Story', 'paper'), note = model('Diary Entry', 'paper');
   const words = (m) => m.blocks.filter(b => b.type === 'text' && b.role === 'body' && !/\s/.test(b.text)).length;
   assert.ok(words(press) >= 20 && words(book) >= 20, 'the columns are not justified');
   assert.ok(book.finish.gutter, 'the book page has no binding shadow');

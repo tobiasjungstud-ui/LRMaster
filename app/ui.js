@@ -500,6 +500,8 @@
     show('audioLengthCustom', s.audioLength === 'custom');
     show('customTopic', s.topicMode === 'custom' || !s.useUnitTopic);
     show('customTextType', s.textType === 'Custom');
+    show('layoutMedium', s.authenticLayout); show('paperColor', s.authenticLayout);
+    show('paperColorCustom', s.authenticLayout && s.paperColor === 'custom');
     show('wordCount', s.lengthMode === 'words');
     show('a4Pages', s.lengthMode === 'a4');
     show('selectedVocab', s.vocabSelectionMode === 'manual');
@@ -1107,13 +1109,14 @@
       media.innerHTML = '<div class="layout-shot"><canvas id="layout-canvas" data-fit="column"></canvas></div>'
         + '<div class="layout-actions"><button type="button" class="btn tiny primary" data-download="png">Bild (PNG) herunterladen</button>'
         + '<span class="chips layout-media">' + [['auto', 'Automatisch'], ['screen', 'Bildschirm'], ['paper', 'Papier']].map(([k, l]) =>
-          `<button type="button" class="chip-btn${(m.settings.layoutMedium || 'auto') === k ? ' active' : ''}" data-layout-medium="${k}">${l}</button>`).join('') + '</span></div>';
+          `<button type="button" class="chip-btn${(m.settings.layoutMedium || 'auto') === k ? ' active' : ''}" data-layout-medium="${k}">${l}</button>`).join('') + '</span>' + paperChips(m) + '</div>';
       paintLayoutCanvas(m, $('#layout-canvas'));
       $$('#vw-media [data-layout-medium]').forEach(b => b.addEventListener('click', () => {
         m.settings = Object.assign({}, m.settings, { layoutMedium: b.dataset.layoutMedium });
         renderViewer();
       }));
       $$('#vw-media [data-download]').forEach(b => b.addEventListener('click', () => download('png')));
+      bindPaperChips(media, m);
     }
     renderSheetHotspots(m, $('#vw-sheet'));
     buildViewerRail(m, model);
@@ -1230,17 +1233,47 @@
     pane.innerHTML = `<p class="layout-note">So sähe der Text aus, wenn er aus diesem Medium käme (${esc(m.layout.label || '')}). Das Bild enthält den generierten Text unverändert – das wird vor der Ausgabe geprüft.</p>`
       + '<div class="layout-actions"><button type="button" class="btn tiny primary" data-download="png">Bild (PNG) herunterladen</button>'
       + '<span class="chips layout-media">' + [['auto', 'Automatisch'], ['screen', 'Bildschirm'], ['paper', 'Papier']].map(([k, l]) =>
-        `<button type="button" class="chip-btn${medium === k ? ' active' : ''}" data-layout-medium="${k}">${l}</button>`).join('') + '</span></div>'
+        `<button type="button" class="chip-btn${medium === k ? ' active' : ''}" data-layout-medium="${k}">${l}</button>`).join('') + '</span>' + paperChips(m) + '</div>'
       + '<div class="layout-shot"><canvas id="layout-canvas"></canvas></div>'
       + proportionNote(m);
     $$('#out-layout [data-layout-medium]').forEach(b => b.addEventListener('click', () => {
       m.settings = Object.assign({}, m.settings, { layoutMedium: b.dataset.layoutMedium });
-      renderLayout(m);
+      repaintMedium(m);
     }));
+    bindPaperChips(pane, m);
     const canvas = $('#layout-canvas');
     paintLayoutCanvas(m, canvas);
     $$('#out-layout [data-download]').forEach(b => b.addEventListener('click', () => download('png')));
     return canvas;
+  }
+
+  /**
+   * The paper of a printed medium, switchable where the picture is shown:
+   * white by default, a few papers, the photographed page, or any colour.
+   */
+  const PAPER_CHOICES = [['white', 'Weiss'], ['ivory', 'Elfenbein'], ['newsprint', 'Zeitungspapier'], ['grey', 'Grau'], ['photo', 'Abfotografiert']];
+  function paperChips(m) {
+    if (quality.mediumOf(m) !== 'print') return '';
+    const cur = (m.settings && m.settings.paperColor) || 'white';
+    const custom = (m.settings && m.settings.paperColorCustom) || '#FFFFFF';
+    return '<span class="chips layout-paper" role="group" aria-label="Papier"><span class="chips-label">Papier:</span>'
+      + PAPER_CHOICES.map(([k, l]) => `<button type="button" class="chip-btn${cur === k ? ' active' : ''}" data-paper="${k}">${l}</button>`).join('')
+      + `<label class="chip-btn paper-custom${cur === 'custom' ? ' active' : ''}" title="Eigene Papierfarbe">Eigene <input type="color" value="${esc(custom.toLowerCase())}" data-paper-custom aria-label="Eigene Papierfarbe"></label></span>`;
+  }
+  function bindPaperChips(root, m) {
+    if (!root) return;
+    let timer = null;
+    const apply = (patch) => {
+      m.settings = Object.assign({}, m.settings, patch);
+      saveMaterial(m).catch(() => {});
+      repaintMedium(m);
+    };
+    $$('[data-paper]', root).forEach(b => b.addEventListener('click', () => apply({ paperColor: b.dataset.paper })));
+    const pick = root.querySelector('[data-paper-custom]');
+    if (pick) pick.addEventListener('input', () => {
+      clearTimeout(timer);
+      timer = setTimeout(() => apply({ paperColor: 'custom', paperColorCustom: pick.value.toUpperCase() }), 160);
+    });
   }
 
   /**
@@ -1252,8 +1285,10 @@
     let p;
     try { p = mock.proportions(quality.layoutModel(m)); } catch (e) { return ''; }
     const pct = (x) => Math.round(x * 100) + ' %';
+    const pages = p.pages || 1;
+    const perPage = Math.round(p.columns.length / pages);
     const cols = p.columns.length > 1
-      ? `${p.columns.length} Spalten, gefüllt zu ${p.columns.map(c => pct(c.filled)).join(' / ')}`
+      ? `${perPage} Spalten${pages > 1 ? ` auf ${pages} Seiten` : ''}, gefüllt zu ${p.columns.map(c => pct(c.filled)).join(' / ')}`
       : 'eine Spalte';
     const even = p.columns.length > 1 ? (p.balance >= 0.8 ? 'ausgeglichen' : p.balance >= 0.6 ? 'ungleich' : 'eine Spalte bleibt fast leer') : '';
     const state = p.balance >= 0.8 ? 'pass' : p.balance >= 0.6 ? 'warn' : 'fail';
@@ -1301,21 +1336,22 @@
    */
   function renderSheetHotspots(m, root) {
     if (!root || !m || !m.layout) return;
-    $$('figure.medium-sheet', root).forEach((fig) => {
-      const svg = fig.querySelector('svg');
-      if (!svg) return;
+    // every page of the medium is an SVG of its own; its viewBox says which
+    // part of the whole drawing it shows
+    $$('figure.medium-sheet svg.lr-medium', root).forEach((svg) => {
       let frame = svg.parentElement;
       if (!frame.classList.contains('sheet-frame')) {
         frame = document.createElement('div');
         frame.className = 'sheet-frame';
-        fig.insertBefore(frame, svg);
+        svg.parentElement.insertBefore(frame, svg);
         frame.appendChild(svg);
       }
       const vb = (svg.getAttribute('viewBox') || '').split(/[\s,]+/).map(Number);
+      const X = vb[0] || 0, Y = vb[1] || 0;
       const W = vb[2] || svg.width.baseVal.value, H = vb[3] || svg.height.baseVal.value;
       const pics = Array.from(svg.querySelectorAll('rect.photo-slot')).map(r => ({
         slot: r.getAttribute('data-slot'), subject: r.getAttribute('data-subject') || '', own: r.getAttribute('data-own') === '1', round: r.getAttribute('data-round') === '1',
-        x: +r.getAttribute('x'), y: +r.getAttribute('y'), w: +r.getAttribute('width'), h: +r.getAttribute('height'),
+        x: +r.getAttribute('x') - X, y: +r.getAttribute('y') - Y, w: +r.getAttribute('width'), h: +r.getAttribute('height'),
       })).filter(b => b.slot && b.w >= 18 && b.h >= 18);
       hotspotLayer(m, frame, pics, W, H);
     });
@@ -1746,10 +1782,19 @@
       const ctx = canvas.getContext('2d');
       ctx.scale(k, k);
       mock.draw(ctx, model);
-      // JPEG at twice the size: sharp enough to print, a fraction of the PNG
-      const blob = await new Promise(res => canvas.toBlob(res, 'image/jpeg', 0.9));
-      if (!blob) return null;
-      return { png: new Uint8Array(await blob.arrayBuffer()), type: 'jpeg', width: model.width, height: model.height };
+      // JPEG at twice the size: sharp enough to print, a fraction of the PNG.
+      // A printed medium goes in page by page, each page a picture of its own.
+      const jpeg = async (c) => { const blob = await new Promise(res => c.toBlob(res, 'image/jpeg', 0.9)); return blob ? new Uint8Array(await blob.arrayBuffer()) : null; };
+      const pages = [];
+      for (const box of mock.pageBoxes(model)) {
+        const c = document.createElement('canvas');
+        c.width = Math.max(1, Math.round(box.w * k)); c.height = Math.max(1, Math.round(box.h * k));
+        c.getContext('2d').drawImage(canvas, Math.round(box.x * k), Math.round(box.y * k), c.width, c.height, 0, 0, c.width, c.height);
+        const bytes = await jpeg(c);
+        if (!bytes) return null;
+        pages.push({ png: bytes, width: Math.round(box.w), height: Math.round(box.h) });
+      }
+      return { png: pages[0].png, type: 'jpeg', width: pages[0].width, height: pages[0].height, pages };
     } catch (e) { console.warn('LRMaster: no picture of the medium for Word', e); return null; }
   }
 
@@ -2372,5 +2417,5 @@
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init); else init();
 
-  window.LR.ui = { app, generate, produceWorksheet, openViewer, renderViewer, markPageBreaks, syncViewerOffsets, buildViewerRail, buildViewerDownloads, paintLayoutCanvas, proportionNote, mediumPng, renderHotspots, renderSheetHotspots, hotspotLayer, imageURLFrom, fetchWebImage, pictureError, openPictureEditor, replacePicture, resetPicture, prepareImage, viewer, store, caps, showView, openCreator, importState, detectUnits, fetchTopics, confirmImport, newTextbook, askText, askConfirm, clone, parsePasted, initLevelPage, download, renderOutput, renderQualityPanel, renderTaskPreview, refreshDerived, renderLayout, renderSetupBar, openCustomSetup, backToTemplates, redrawTemplate, templateState, buildForm };
+  window.LR.ui = { app, generate, produceWorksheet, openViewer, renderViewer, markPageBreaks, syncViewerOffsets, buildViewerRail, buildViewerDownloads, paintLayoutCanvas, proportionNote, mediumPng, renderHotspots, renderSheetHotspots, hotspotLayer, paperChips, bindPaperChips, imageURLFrom, fetchWebImage, pictureError, openPictureEditor, replacePicture, resetPicture, prepareImage, viewer, store, caps, showView, openCreator, importState, detectUnits, fetchTopics, confirmImport, newTextbook, askText, askConfirm, clone, parsePasted, initLevelPage, download, renderOutput, renderQualityPanel, renderTaskPreview, refreshDerived, renderLayout, renderSetupBar, openCustomSetup, backToTemplates, redrawTemplate, templateState, buildForm };
 })();

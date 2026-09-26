@@ -2,7 +2,7 @@
 
 Erzeugt von `npm run coverage`. Jede Zeile ist eine Anforderung aus `docs/Konzept_Listening_Reading_Creator.md`, gebunden an die Stelle im Code, die sie umsetzt, und das Ergebnis der automatischen Prüfung (`npm test`).
 
-**Ergebnis: 322 von 322 Anforderungen bestanden.**
+**Ergebnis: 325 von 325 Anforderungen bestanden.**
 
 Prüfarten: **setting** – Steuerelement vorhanden und Änderung des Werts verändert nachweislich den Prompt an Claude · **function** – Verhalten wird mit echten Eingaben ausgeführt und verglichen · **rule** – Qualitätsregel existiert als Messung oder Claude-Review-Kriterium · **render** – Ausgabe wird auf einer Fixture gerendert und inhaltlich geprüft · **ui** – Navigations-/Strukturelement existiert.
 
@@ -479,7 +479,7 @@ Prüfarten: **setting** – Steuerelement vorhanden und Änderung des Werts ver�
 | ✅ | `S36.repair` | Beanstandete Post-Task wird gezielt neu erstellt, Fragen und Pre-Task bleiben unverändert | function | Funktion (siehe Check im Manifest) |
 | ✅ | `S36.output` | Post-Task steht nach den Fragen auf dem Arbeitsblatt (Bildschirm, Word, Markdown) mit Sozialform, Arbeitsweise, Zeit, Produkt und Kriterien; Lehrerversion mit Übersicht | render | render.js (renderStudentHTML / renderTeacherHTML) |
 
-## §37 Authentisches Layout (Screenshot des Mediums) (22/22)
+## §37 Authentisches Layout (Screenshot des Mediums) (25/25)
 
 | Status | ID | Anforderung | Art | Umsetzung |
 |---|---|---|---|---|
@@ -488,7 +488,9 @@ Prüfarten: **setting** – Steuerelement vorhanden und Änderung des Werts ver�
 | ✅ | `S37.always` | Es entsteht immer ein Bild: die Angaben des Materials tragen es, Claude reichert nur an | function | Funktion (siehe Check im Manifest) |
 | ✅ | `S37.media` | Jeder Texttyp hat ein echtes Medium (Browserfenster, Mailprogramm, Forum, Messenger) mit eigener Oberfläche | function | Funktion (siehe Check im Manifest) |
 | ✅ | `S37.medium_detail` | Jedes Medium ist im Detail gebaut wie das echte: Browserfenster mit Tableiste und Schloss, Blog/News mit Logo, Bild, Tags und Aktionsleiste, Mail mit Werkzeugleiste und Ordnern, Forum mit Stimmpfeilen und Antwortstufen, Messenger mit Hintergrundmuster, Sprechblasenspitzen und Häkchen | function | Funktion (siehe Check im Manifest) |
-| ✅ | `S37.print_detail` | Gedruckte Medien sehen fotografiert aus: Zeitungsseite im Blocksatz mit Spalten, Bild und Legende, Buchseite mit Initial und Bundschatten, Heftseite mit Lineatur, Randlinie und Lochung, Blatt mit Briefkopf | function | Funktion (siehe Check im Manifest) |
+| ✅ | `S37.print_detail` | Gedruckte Medien sehen gedruckt aus: Zeitungsseite im Blocksatz mit Spalten, Bild und Legende auf weissem A4-Papier, Buchseite mit Initial und Bundschatten, Heftseite mit Lineatur, Randlinie und Lochung, Blatt mit Briefkopf – auf Wunsch wie früher abfotografiert | function | Funktion (siehe Check im Manifest) |
+| ✅ | `S37.paper_color` | Papierfarbe gedruckter Medien wählbar – Weiss als Standard, Elfenbein, Zeitungspapier, Grau oder abfotografiert; auch direkt im Viewer und im Layout-Tab umschaltbar | setting | Setting `paperColor` (core.SCHEMA → Control `[data-setting="paperColor"]` → prompts.js) |
+| ✅ | `S37.paper_color_custom` | Eigene Papierfarbe per Farbwähler – nur echte Farbwerte (#RRGGBB) werden übernommen | setting | Setting `paperColorCustom` (core.SCHEMA → Control `[data-setting="paperColorCustom"]` → prompts.js) |
 | ✅ | `S37.prompt` | Claude gestaltet die Oberfläche (Adresse, Seitenname, Navigation, Buttons, Zahlen) – ohne den Text zu verändern | function | Funktion (siehe Check im Manifest) |
 | ✅ | `S37.image` | Die App zeichnet daraus ein echtes Bild – für jeden Texttyp gültig und mit dem Text Wort für Wort | function | Funktion (siehe Check im Manifest) |
 | ✅ | `S37.download` | Eigener Tab „Layout“ mit Bild und PNG-Download, der vor der Ausgabe geprüft wird | ui | Element `#tab-layout` |
@@ -501,7 +503,8 @@ Prüfarten: **setting** – Steuerelement vorhanden und Änderung des Werts ver�
 | ✅ | `S37.photo_library` | Echte Fotos, wo die App welche mitbringt: frei lizenziert, mit Bildnachweis unter dem Bild und in der Lehrerversion; Porträts erfundener Personen nur aus Stockfotos; sonst gezeichnete Szene | function | Funktion (siehe Check im Manifest) |
 | ✅ | `S37.own_pictures` | Jedes Bild im Medium lässt sich durch ein eigenes ersetzen – in der Vorschau und im Viewer beim Überfahren des Bildes, im Layout-Tab: Datei wählen, Strg+V, hineinziehen, auch direkt aus dem Internet (Bild aus einer Website ziehen oder seine Adresse laden) – mit Bildnachweis, gespeichert mit dem Material, jederzeit zurück zum automatischen Bild | function | Funktion (siehe Check im Manifest) |
 | ✅ | `S37.composition` | Claude komponiert die Seite wie ein Editorial Designer: Aufmacher-Grösse, Spalten, ein zweites Bild im Text, Zitatkasten (nur wörtlich aus dem Text), Zwischentitel, Dichte – der Text selbst bleibt Wort für Wort unverändert | function | Funktion (siehe Check im Manifest) |
-| ✅ | `S37.press_makeup` | Die Zeitungsseite ist umbrochen wie eine echte: schwarze, eng gesetzte Schlagzeile, Vorspann ohne Etikett, Autorenzeile zwischen Linien, Ortsmarke im ersten Absatz, kein Abstand zwischen Absätzen (nur Einzug), Zwischentitel nie allein am Spaltenfuss, zweites Bild nie neben dem Aufmacher, Zitat und Kästen rücken an den Text | function | Funktion (siehe Check im Manifest) |
+| ✅ | `S37.press_pages` | Die Zeitung ist eine echte A4-Seite: ein längerer Artikel läuft auf einer Folgeseite weiter („Continued on page 2“, Fortsetzungskopf, Seitenzahlen) – nie kleinere Schrift, nie gekürzt; jede Seite ist im Blatt und im Word-Export eine eigene Seite; Silbentrennung im Blocksatz | function | Funktion (siehe Check im Manifest) |
+| ✅ | `S37.press_makeup` | Die Zeitungsseite ist umbrochen wie eine echte: Titelkopf mit Namen, Motto und Ausgabezeile, Rubrik, schwarze, eng gesetzte Schlagzeile, Vorspann ohne Etikett, Autorenzeile zwischen Linien, Initial (Titelseite) oder Ortsmarke (Innenseite), neben dem Aufmacher Zitat und Fakten statt Textstreifen, kein Abstand zwischen Absätzen (nur Einzug), Zwischentitel nie allein am Spaltenfuss, zweites Bild nie neben dem Aufmacher, Zitat und Kästen rücken an den Text | function | Funktion (siehe Check im Manifest) |
 | ✅ | `S37.modules` | Um den Text steht, was auf so einer Seite wirklich steht: Werbung, Umfrage, Meistgelesen, Anmeldekasten, Kleinanzeigen – Claude wählt aus dem Katalog und darf Eigenes ergänzen | function | Funktion (siehe Check im Manifest) |
 | ✅ | `S37.rule_proportions` | Kontrolle: das Bild ist proportioniert – die Spalten tragen gleich viel, keine bleibt fast leer, und die Seite endet kurz nach dem Text | rule | Quality rule `layout.proportions` (gemessen in quality.js) |
 | ✅ | `S37.rule_authentic` | Kontrolle (Claude): das Medium wirkt echt und passt zum Text | rule | Quality rule `layout.authentic` (Claude-Review über buildReviewPrompt) |
@@ -575,6 +578,8 @@ Prüfarten: **setting** – Steuerelement vorhanden und Änderung des Werts ver�
 | `appendScript` | toggle | 6 | listening | ja | `false` |
 | `authenticLayout` | toggle | 6 | reading | ja | `true` |
 | `layoutMedium` | select | 6 | reading | nein | `"auto"` |
+| `paperColor` | select | 6 | reading | nein | `"white"` |
+| `paperColorCustom` | text | 6 | reading | nein | `"#FFFFFF"` |
 | `higherOrder` | toggle | 6 | both | nein | `false` |
 | `higherOrderCount` | number | 6 | both | nein | `2` |
 | `higherOrderTypes` | multiselect | 6 | both | nein | `["interpretation","transfer","evaluation"]` |

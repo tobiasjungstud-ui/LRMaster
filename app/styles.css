@@ -427,6 +427,15 @@ mark.vocab { background: var(--mark); color: inherit; border-radius: 3px; paddin
    when printed, gets a page of its own — the photocopy of the real thing */
 .vw-sheet .medium-sheet[data-medium="print"] { margin-left: calc(-1 * var(--paper-pad) * var(--zoom)); margin-right: calc(-1 * var(--paper-pad) * var(--zoom)); }
 @media print { .medium-sheet[data-medium="print"] { break-before: page; break-after: page; margin-left: -1.2cm; margin-right: -1.2cm; } }
+/* a printed medium comes in A4 pages: each one prints as a page of its own */
+.medium-page + .medium-page { margin-top: 1.2rem; }
+.medium-page { break-inside: avoid; }
+@media print {
+  .medium-sheet[data-medium="print"] .medium-page { break-after: page; }
+  .medium-sheet[data-medium="print"] .medium-page:last-of-type { break-after: auto; }
+  .medium-sheet[data-medium="print"] .medium-page svg { width: auto; max-width: 100%; max-height: 26.5cm; margin: 0 auto; }
+  .medium-page + .medium-page { margin-top: 0; }
+}
 .medium-sheet[data-medium="page"] svg, .medium-sheet[data-medium="thread"] svg, .medium-sheet[data-medium="mail"] svg { box-shadow: 0 6px 24px rgba(15, 23, 42, .16); }
 .medium-sheet[data-medium="chat"] svg { max-width: 420px; margin: 0 auto; box-shadow: 0 6px 24px rgba(15, 23, 42, .16); }
 .medium-credits { font-size: .72rem; color: var(--muted); margin-top: .35rem; text-align: right; }
@@ -443,6 +452,11 @@ mark.vocab { background: var(--mark); color: inherit; border-radius: 3px; paddin
 .shot-frame { position: relative; width: fit-content; max-width: 100%; margin: 0 auto; }
 .shot-frame canvas { margin: 0; }
 .sheet-frame { position: relative; }
+.layout-paper { margin-left: .6rem; align-items: center; }
+.layout-paper .chips-label { font-size: .8rem; color: var(--muted); margin-right: .2rem; }
+.paper-custom { display: inline-flex; align-items: center; gap: .35rem; cursor: pointer; }
+.paper-custom input[type=color] { width: 1.4rem; height: 1.2rem; padding: 0; border: 1px solid var(--line); border-radius: 4px; background: none; cursor: pointer; }
+.field-color input[type=color] { width: 3rem; height: 2rem; padding: 0; border: 1px solid var(--line); border-radius: 6px; background: none; }
 .pe-url { display: block; margin: .7rem 0 0; font-size: .85rem; color: var(--muted); }
 .pe-url-row { display: flex; gap: .4rem; margin-top: .25rem; }
 .pe-url-row input { flex: 1; min-width: 0; font-size: .9rem; }

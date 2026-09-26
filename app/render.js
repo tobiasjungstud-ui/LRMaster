@@ -61,10 +61,10 @@
     // under it. The plain rendering below stays for the teacher's numbered
     // copy and for material without a medium.
     if (!opts.plain && m.layout && m.layout.chrome && m.kind !== 'listening') {
-      const svg = quality.layoutSVG(m);
-      if (svg) {
+      const pages = quality.layoutSVG(m, { pages: true });
+      if (pages.length) {
         const credits = quality.photoCredits(m);
-        return `<figure class="medium-sheet" data-medium="${esc(quality.mediumOf(m))}">${svg}`
+        return `<figure class="medium-sheet" data-medium="${esc(quality.mediumOf(m))}" data-pages="${pages.length}">${pages.map(svg => `<div class="medium-page">${svg}</div>`).join('')}`
           + (credits.length ? `<figcaption class="medium-credits">${credits.map(c => esc(c.credit)).join(' · ')}</figcaption>` : '')
           + '</figure>';
       }

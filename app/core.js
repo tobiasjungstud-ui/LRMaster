@@ -357,6 +357,8 @@
     { key: 'appendScript', type: 'toggle', default: false, section: 6, mode: 'listening', simple: true, label: 'Skript auf der letzten Seite abgebildet' },
     { key: 'authenticLayout', type: 'toggle', default: true, section: 6, mode: 'reading', simple: true, label: 'Text im echten Layout zeigen (Bild)' },
     { key: 'layoutMedium', type: 'select', default: 'auto', options: ['auto', 'screen', 'paper'], section: 6, mode: 'reading', simple: false, label: 'Medium des Bildes' },
+    { key: 'paperColor', type: 'select', default: 'white', options: ['white', 'ivory', 'newsprint', 'grey', 'photo', 'custom'], section: 6, mode: 'reading', simple: false, label: 'Papier gedruckter Medien' },
+    { key: 'paperColorCustom', type: 'text', default: '#FFFFFF', pattern: /^#[0-9A-Fa-f]{6}$/, section: 6, mode: 'reading', simple: false, label: 'Eigene Papierfarbe' },
     { key: 'higherOrder', type: 'toggle', default: false, section: 6, mode: 'both', simple: false, label: 'Higher-Order Questions' },
     { key: 'higherOrderCount', type: 'number', default: 2, min: 1, max: 5, section: 6, mode: 'both', simple: false, label: 'Number of higher-order questions' },
     { key: 'higherOrderTypes', type: 'multiselect', default: ['interpretation', 'transfer', 'evaluation'], options: HIGHER_ORDER_TYPES.map(t => t.key), section: 6, mode: 'both', simple: false, label: 'Higher-order types' },
@@ -443,6 +445,8 @@
           // in the prompt to Claude; they are dropped, the default stays
           if (v === null || typeof v === 'object' || typeof v === 'function') break;
           if (typeof v === 'number' && !Number.isFinite(v)) break;
+          // a field with a form (a colour) keeps only what has that form
+          if (def.pattern && !def.pattern.test(String(v))) break;
           s[def.key] = String(v);
       }
     }

@@ -981,7 +981,7 @@
    */
   function layoutSVG(material, opts) {
     const o = opts || {};
-    if (!material || !material.layout || !material.layout.chrome) return '';
+    if (!material || !material.layout || !material.layout.chrome) return o.pages ? [] : '';
     const hasCanvas = typeof document !== 'undefined' && !!document.createElement;
     let canvas = null, measure;
     if (hasCanvas) {
@@ -1000,7 +1000,14 @@
         return c.toDataURL('image/jpeg', 0.84);
       } catch (e) { return null; }
     } : null;
-    return mock.toSVG(model, { photo: photoOf, uid: o.uid || (String(material.id || '') + (material.settings && material.settings.layoutMedium || '')).replace(/[^a-z0-9]/gi, '').slice(0, 24), label: material.layout.label });
+    const uid = o.uid || (String(material.id || '') + (material.settings && material.settings.layoutMedium || '')).replace(/[^a-z0-9]/gi, '').slice(0, 24);
+    // a printed medium comes as its pages, one SVG each, so every page prints as a page
+    if (Array.isArray(model.pages) && model.pages.length) {
+      const svgs = model.pages.map((p, i) => mock.toSVG(model, { photo: photoOf, uid: uid + 'p' + i, label: material.layout.label, page: i }));
+      return o.pages ? svgs : svgs.join('');
+    }
+    const svg = mock.toSVG(model, { photo: photoOf, uid, label: material.layout.label });
+    return o.pages ? [svg] : svg;
   }
 
   /** Which medium a material is shown in (page, print, thread, mail, chat). */
