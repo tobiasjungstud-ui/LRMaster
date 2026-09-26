@@ -188,12 +188,24 @@
     return lines.join('\n');
   }
 
+  /**
+   * How long a paragraph is — in sentences, so the text is not delivered as
+   * a paragraph after every sentence. A paragraph is a unit of thought, and
+   * one that holds a single sentence is not a paragraph.
+   */
+  const PARAGRAPH_SENTENCES = { short: '2–3', medium: '3–5', long: '5–8' };
+  function paragraphLine(length) {
+    const key = String(length || 'medium').toLowerCase();
+    const n = PARAGRAPH_SENTENCES[key] || PARAGRAPH_SENTENCES.medium;
+    return `Paragraph length: ${key} — ${n} sentences per paragraph. Never one sentence per paragraph: a paragraph holds one idea and the sentences that develop it. Break paragraphs where a real writer of this text type would; only a quoted line of speech or a deliberate one-line punch (at most one in the text) may stand alone.`;
+  }
+
   function readingStructureBlock(state, plan) {
     const type = state.textType === 'Custom' ? String(state.customTextType || '').trim() : state.textType;
     return [
       `Text type: ${type}.`,
       `Length: approximately ${plan.targetWords} words (±10 %)` + (state.lengthMode === 'a4' ? ` (about ${state.a4Pages} A4 page(s))` : '') + '.',
-      `Paragraph length: ${state.paragraphLength}.`,
+      paragraphLine(state.paragraphLength),
       `Dialogue proportion: ${scale(state.dialogueProportion, ['none — no direct speech', 'a little direct speech', 'some dialogue passages', 'dialogue-heavy', 'almost entirely dialogue'])}.`,
       `Style: ${scale(state.styleBalance, ['strongly narrative', 'mostly narrative', 'balanced narrative/informational', 'mostly informational', 'strongly informational'])}.`,
     ].join('\n');

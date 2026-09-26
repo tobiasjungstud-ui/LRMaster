@@ -1714,21 +1714,25 @@
   function flowUneven(paragraphs, font, colW, cols, measure, lh, tops, indent, reserve, extras) {
     const kept = (c) => (reserve && reserve[c]) || 0;
     const ex = extras || {};
+    // A paper sets no space between paragraphs: the indent is the only mark.
+    // Web pages ask for a gap of their own (`extras.gap`).
+    const gap = ex.gap || 0;
     const items = [];
     paragraphs.forEach((p, pi) => {
       // a crosshead the editor put before this paragraph, a figure after it
-      if (ex.heads && ex.heads[pi]) items.push({ kind: 'head', text: ex.heads[pi], h: lh * 1.9, pi });
-      const ls = wrap(p, font, colW - indent, measure);
+      if (ex.heads && ex.heads[pi]) items.push({ kind: 'head', text: ex.heads[pi], h: lh * 2.1, pi });
+      // the first paragraph may open with a dateline, so its first line is shorter
+      const ls = pi === 0 && ex.firstIndent ? wrapIndent(p, font, colW, measure, ex.firstIndent) : wrap(p, font, colW - indent, measure);
       ls.forEach((l, i) => items.push({ kind: 'line', text: l, first: i === 0, last: i === ls.length - 1, pi }));
       if (ex.figures && ex.figures[pi]) items.push({ kind: 'figure', fig: ex.figures[pi], h: ex.figures[pi].h, pi });
-      items.push({ gap: true });
+      if (gap) items.push({ gap: true });
     });
     while (items.length && items[items.length - 1].gap) items.pop();
     const lowest = Math.max(...tops);
     // the height at which the columns come out even: everything that has to be
     // set, spread over the columns, measured from where each one starts. The
     // fill starts here, so no column is left nearly empty while another is full.
-    let need = items.reduce((sum, it) => sum + (it.gap ? lh * 0.5 : (it.h || lh)), 0);
+    let need = items.reduce((sum, it) => sum + (it.gap ? gap : (it.h || lh)), 0);
     for (let c = 0; c < cols; c++) need += kept(c);
     const even = (need + tops.reduce((a, t) => a + t, 0)) / cols;
     const tryFill = (bottom) => {
@@ -1736,13 +1740,17 @@
       let col = 0, y = tops[0];
       for (let i = 0; i < items.length; i++) {
         const it = items[i];
-        const h = it.gap ? lh * 0.5 : (it.h || lh);
-        if (!it.gap && y + h > bottom - kept(col)) {
+        if (it.gap) { y += gap; continue; }
+        const h = it.h || lh;
+        // a crosshead keeps two lines of its paragraph with it: it never
+        // stands alone at the foot of a column
+        const keep = it.kind === 'head' ? lh * 2 : 0;
+        if (y + h + keep > bottom - kept(col)) {
           col += 1;
           if (col >= cols) return null;
           y = tops[col];
         }
-        if (!it.gap) placed.push({ kind: it.kind, text: it.text, fig: it.fig, h, col, y, first: it.first, last: it.last, pi: it.pi });
+        placed.push({ kind: it.kind, text: it.text, fig: it.fig, h, col, y, first: it.first, last: it.last, pi: it.pi });
         y += h;
       }
       return placed;
@@ -1864,49 +1872,54 @@
 
     // the editorial line: small caps between rules, as papers set their standing heads
     const kicker = String(chrome.standingHead || chrome.publication || '').toUpperCase();
+    const headW = cols >= 3 ? colW * 2 + gutter : inner;
     if (kicker) {
-      const kf = { family: SERIF, size: 13, weight: 700 };
-      const band = cols >= 3 ? colW * 2 + gutter : inner;
+      const kf = { family: SERIF, size: 12, weight: 700 };
       const kw = measure(kicker, kf) + kicker.length * 1.6;
-      const kx = L + band / 2 - kw / 2;
+      const kx = L + headW / 2 - kw / 2;
       b.line(L, y - 4, kx - 14, y - 4, { color: INK, width: 1 });
       b.text(kx, y, kicker, kf, { color: INK, letterSpacing: 1.6 });
-      b.line(kx + kw + 14, y - 4, L + band, y - 4, { color: INK, width: 1 });
-      y += 26;
+      b.line(kx + kw + 14, y - 4, L + headW, y - 4, { color: INK, width: 1 });
+      y += 16;
     }
 
-    // headline in the paper's colour, across the first columns
-    const headW = cols >= 3 ? colW * 2 + gutter : inner;
-    y = b.para(L, y + 18, m.content.title, { family: SERIF, size: cols >= 3 ? 46 : 42, weight: 700 }, headW, { lineHeight: 50, color: accent });
-    y += 12;
+    // Headline: black, heavy, set tight — a paper's headline is ink, not a
+    // colour, and its lines sit close. It spans the first columns and gets
+    // bigger when it is short, the way a sub-editor sizes it to the space.
+    const titleFont = (size) => ({ family: SERIF, size, weight: 700 });
+    let hSize = cols >= 3 ? 44 : 40;
+    const titleLines = (size) => wrap(m.content.title, titleFont(size), headW, measure).length;
+    if (titleLines(hSize) === 1 && titleLines(hSize + 10) === 1) hSize += 10;
+    while (hSize > 30 && titleLines(hSize) > 3) hSize -= 2;
+    const hLh = Math.round(hSize * 1.02);
+    y = b.para(L, y + hSize * 0.8, m.content.title, titleFont(hSize), headW, { lineHeight: hLh, color: INK, letterSpacing: -0.6 }) - hLh + hSize * 0.3;
 
-    // lead: a coloured keyword, then the stand-first in bold
-    const keyword = String((meta.tags && meta.tags[0]) || chrome.sectionLabel || '').toUpperCase();
+    // the deck under it: one or two lines of plain serif, no label in front
     if (meta.standfirst) {
-      const font = { family: SERIF, size: 17, weight: 700 };
-      const kwFont = { family: SANS, size: 13, weight: 700 };
-      // the keyword is set with letter spacing, so its real width is wider than
-      // the plain measurement — otherwise the stand-first starts inside it
-      const kwWidth = keyword ? measure(keyword, kwFont) + keyword.length * 0.8 + 16 : 0;
-      if (keyword) b.text(L, y + 16, keyword, kwFont, { color: warm, letterSpacing: 0.8 });
-      const lines = wrap(meta.standfirst, font, headW - kwWidth, measure);
-      lines.forEach((l, i) => b.text(i === 0 ? L + kwWidth : L, y + 16 + i * 24, l, font, { color: INK }));
-      y += 16 + lines.length * 24 + 6;
+      const font = { family: SERIF, size: 17 };
+      y = b.para(L, y + 22, meta.standfirst, font, headW, { color: '#3F3A34', lineHeight: 23 }) - 8;
     }
-    const byline = [meta.byline ? 'By ' + meta.byline : '', meta.location].filter(Boolean).join('  ·  ');
-    if (byline) {
-      // a comment page prints the writer's face next to the byline
-      const who = String(chrome.portraitName || meta.byline || '').trim();
+    // the byline between hairlines, and the writer's face on a comment page
+    const byline = meta.byline ? 'By ' + meta.byline : '';
+    const who = String(chrome.portraitName || meta.byline || '').trim();
+    const bf = { family: SANS, size: 10, weight: 700 };
+    if (byline || who) {
+      y += 12;
+      b.line(L, y, L + headW, y, { color: '#A8A29E', width: 0.8 });
       if (who && d.photo === false) {
-        b.photo(L, y - 2, 46, 46, { subject: 'portrait', seed: photo.hashOf(who), round: true, frame: false, print: true });
-        b.text(L + 58, y + 14, byline.toUpperCase(), { family: SANS, size: 10, weight: 700 }, { color: '#57534E', letterSpacing: 1 });
-        y += 50;
+        b.photo(L, y + 8, 40, 40, { subject: 'portrait', seed: photo.hashOf(who), round: true, frame: false, print: true });
+        b.text(L + 50, y + 24, byline.toUpperCase(), bf, { color: INK, letterSpacing: 1 });
+        b.text(L + 50, y + 40, upper(chrome.sectionLabel || chrome.publication || ''), { family: SANS, size: 9 }, { color: '#78716C', letterSpacing: 1 });
+        y += 56;
       } else {
-        b.text(L, y + 14, byline.toUpperCase(), { family: SANS, size: 10, weight: 700 }, { color: '#57534E', letterSpacing: 1 });
-        y += 20;
+        b.text(L, y + 18, byline.toUpperCase(), bf, { color: INK, letterSpacing: 1 });
+        const role = upper(chrome.sectionLabel ? chrome.sectionLabel + ' correspondent' : chrome.publication || '');
+        if (role) b.text(L + headW, y + 18, role, { family: SANS, size: 9 }, { color: '#78716C', letterSpacing: 1, align: 'right' });
+        y += 26;
       }
+      b.line(L, y, L + headW, y, { color: '#A8A29E', width: 0.8 });
     }
-    y += 10;
+    y += 14;
 
     // press photo with a caption bar, spanning the first columns
     let photoBottom = y;
@@ -1925,8 +1938,8 @@
 
     // body: numbered paragraphs in columns, with hairlines between them
     const font = { family: SERIF, size: 14.5 };
-    const lh = comp.density === 'dense' ? 19.5 : comp.density === 'airy' ? 22 : 20.5;
-    const indent = 16;
+    const lh = comp.density === 'dense' ? 18.5 : comp.density === 'airy' ? 21 : 19.5;
+    const indent = 14;
     // the first columns start under the photo, the last one beside it
     const tops = [];
     const leadCols = comp.lead === 'column' ? 1 : cols >= 3 ? cols - 1 : cols;
@@ -1949,23 +1962,50 @@
     S.print = true;
     const colMods = modulesFor(chrome, 'print', 'column');
     const colRoom = Math.max(0, bodyLines - cols * MIN_COL_LINES) * lh;
-    const colH = colMods.length ? Math.min(colRoom, 340) : 0;
+    // measured, not guessed: the modules are set once on a scratch page, so
+    // exactly their height is kept free and the column ends where they end
+    let colH = 0;
+    if (colMods.length) {
+      const probe = builder(W, measure);
+      probe.subject = b.subject; probe.images = b.images;
+      const used = placeModules(probe, colMods, 0, 0, colW, S, { max: 2 });
+      colH = Math.min(colRoom, used + 22);
+      if (colH < 60) colH = 0;
+    }
     const reserve = [];
     for (let c = 0; c < cols; c++) reserve.push(c === cols - 1 ? (useQuote ? quoteH : 0) + colH : 0);
     // the second picture and the crossheads go into the flow of the columns
     const capFont2 = { family: SANS, size: 10.5 };
-    const figures = {};
+    let figures = {};
     if (comp.figure) {
       const capLines = comp.figure.caption ? wrap(comp.figure.caption, capFont2, colW, measure) : [];
       figures[comp.figure.after] = { subject: comp.figure.subject, capLines, h: Math.round(colW * 0.62) + capLines.length * 14 + 26 };
     }
-    const flow = flowUneven(paras, font, colW, cols, measure, lh, tops, indent, reserve, { heads: comp.heads, figures });
+    // the dateline a paper prints in bold capitals at the head of the story
+    const dateline = meta.location ? upper(String(meta.location).trim()) : '';
+    const dlFont = { family: SANS, size: 11.5, weight: 700 };
+    const dlW = dateline ? measure(dateline + ' \u2014', dlFont) + dateline.length * 0.6 + 8 : 0;
+    // A second picture set beside the lead picture, at the top of the last
+    // column, reads as one wide picture with a hole in it. When the editor's
+    // place for it lands there, the figure moves up to the last paragraph
+    // that ends in a column under the lead picture — where a make-up editor
+    // would put it — until it stands clear.
+    const flowWith = (figs) => flowUneven(paras, font, colW, cols, measure, lh, tops, indent, reserve, { heads: comp.heads, figures: figs, firstIndent: dlW });
+    let flow = flowWith(figures);
+    for (let guard = 0; guard < 6; guard++) {
+      const fig = flow.placed.find(l => l.kind === 'figure');
+      if (!fig || tops[fig.col] >= photoBottom - 1) break;
+      const earlier = flow.placed.filter(l => l.kind === 'line' && l.last && l.col < fig.col && tops[l.col] >= photoBottom - 1 && l.pi < fig.pi);
+      const moved = {};
+      if (earlier.length) moved[earlier[earlier.length - 1].pi] = figures[fig.pi];
+      figures = moved;
+      flow = flowWith(figures);
+    }
     for (const l of flow.placed) {
       const x = L + l.col * (colW + gutter);
       const yy = l.y + lh;
       if (l.kind === 'head') {
-        b.line(x, l.y + 6, x + 34, l.y + 6, { color: accent, width: 2 });
-        b.text(x, l.y + lh * 1.35, upper(l.text), { family: SANS, size: 11.5, weight: 700 }, { color: INK, letterSpacing: 1 });
+        b.text(x, l.y + lh * 1.5, upper(l.text), { family: SANS, size: 11.5, weight: 700 }, { color: INK, letterSpacing: 1 });
         continue;
       }
       if (l.kind === 'figure') {
@@ -1976,7 +2016,11 @@
       }
       // a paper indents every paragraph but the first — and numbers none of
       // them; the numbers for the answer key stand in the teacher's copy
-      const dent = l.first && l.pi > 0 ? indent : 0;
+      let dent = l.first && l.pi > 0 ? indent : 0;
+      if (l.first && l.pi === 0 && dateline) {
+        b.text(x, yy, dateline + ' \u2014', dlFont, { color: INK, letterSpacing: 0.6 });
+        dent = dlW;
+      }
       const lx = x + dent, lw = colW - dent;
       if (l.last) b.text(lx, yy, l.text, font, { color: INK, role: 'body' });
       else justifyLine(b, lx, yy, l.text, font, lw, measure, { color: INK, role: 'body' });
@@ -1988,35 +2032,46 @@
     const lastCol = cols - 1;
     const lastLines = flow.placed.filter(l => l.col === lastCol);
     const lastY = lastLines.length ? Math.max(...lastLines.map(l => l.y + lh)) : tops[lastCol];
-    const hole = bodyBottom - lastY;
     const colLeft = [];
+    const gx = L + lastCol * (colW + gutter);
+    // The foot of the last column holds what was kept free for it: the boxed
+    // quote, then the other story or the results. When the text stops well
+    // above that, the stack moves up under the text — a paper does not leave
+    // a white hole between the story and its quote — and what is left at the
+    // very foot is filled the way a paper fills it: with the house ad.
+    const stackH = (useQuote ? quoteH : 0) + colH;
+    const footY = bodyBottom - stackH;
+    let gy = footY - lastY > lh * 1.5 ? lastY + 14 : footY;
+    const drawQuote = (qy, lines) => {
+      b.line(gx, qy, gx + colW, qy, { color: accent, width: 3 });
+      lines.forEach((l, i) => b.text(gx + 18, qy + 44 + i * 24, l, qFont, { color: accent, role: 'quote' }));
+      b.text(gx + 18, qy + 44 + lines.length * 24 + 18, upper(chrome.publication || ''), { family: SANS, size: 9, weight: 700 }, { color: warm, letterSpacing: 1.2 });
+      b.line(gx, qy + 44 + lines.length * 24 + 30, gx + colW, qy + 44 + lines.length * 24 + 30, { color: '#C7C2B5' });
+      return qy + 44 + lines.length * 24 + 46;
+    };
+    if (useQuote) gy = drawQuote(gy + 16, qLines);
     if (colH > 0) {
-      const gx = L + lastCol * (colW + gutter);
-      const gy = bodyBottom - colH + 10;
-      b.line(gx, gy - 6, gx + colW, gy - 6, { color: '#78716C', width: 2 });
-      placeModules(b, colMods, gx, gy + 6, colW, S, { max: 2, until: bodyBottom - 10, slack: 20, leftovers: colLeft });
+      b.line(gx, gy + 4, gx + colW, gy + 4, { color: '#78716C', width: 2 });
+      gy = placeModules(b, colMods, gx, gy + 16, colW, S, { max: 2, until: bodyBottom - 10, slack: 20, leftovers: colLeft });
     }
-    if (useQuote) {
-      const gx = L + lastCol * (colW + gutter), gy = bodyBottom - colH - quoteH + 16;
-      b.line(gx, gy, gx + colW, gy, { color: accent, width: 3 });
-      qLines.forEach((l, i) => b.text(gx + 18, gy + 44 + i * 24, l, qFont, { color: accent, role: 'quote' }));
-      b.text(gx + 18, gy + 44 + qLines.length * 24 + 18, upper(chrome.publication || ''), { family: SANS, size: 9, weight: 700 }, { color: warm, letterSpacing: 1.2 });
-      b.line(gx, gy + 44 + qLines.length * 24 + 30, gx + colW, gy + 44 + qLines.length * 24 + 30, { color: '#C7C2B5' });
-    } else if (hole > 150 && colH === 0) {
-      const gx = L + lastCol * (colW + gutter), gy = lastY + 22, gh = hole - 34;
-      const quote = (m.content.meta || {}).pullQuote || '';
-      const qFont = { family: SERIF, size: 17, style: 'italic' };
-      const qLines = quote ? wrap(quote, qFont, colW - 36, measure) : [];
-      if (qLines.length && qLines.length * 24 + 74 <= gh) {
-        b.line(gx, gy, gx + colW, gy, { color: accent, width: 3 });
-        qLines.forEach((l, i) => b.text(gx + 18, gy + 44 + i * 24, l, qFont, { color: accent, role: 'quote' }));
-        b.text(gx + 18, gy + 44 + qLines.length * 24 + 18, upper(chrome.publication || ''), { family: SANS, size: 9, weight: 700 }, { color: warm, letterSpacing: 1.2 });
-        b.line(gx, gy + 44 + qLines.length * 24 + 30, gx + colW, gy + 44 + qLines.length * 24 + 30, { color: '#C7C2B5' });
+    const rest = bodyBottom - gy;
+    if (rest > 70) {
+      const ay = gy + 22, ah = rest - 34;
+      const spare = !useQuote ? String((m.content.meta || {}).pullQuote || '') : '';
+      const spareLines = spare ? wrap(spare, qFont, colW - 36, measure) : [];
+      if (spareLines.length && spareLines.length * 24 + 74 <= ah) drawQuote(ay, spareLines);
+      else if (ah < 120) {
+        // a small house ad, the size papers keep for exactly this gap
+        b.rect(gx, ay, colW, ah, { fill: '#EDE8DC', radius: 2 });
+        b.rect(gx + 14, ay + ah / 2 - 13, 26, 26, { fill: accent, radius: 3 });
+        b.text(gx + 27, ay + ah / 2 + 5, initial(chrome.publication || ''), { family: SERIF, size: 15, weight: 700 }, { color: '#FFFFFF', align: 'center' });
+        b.rect(gx + 52, ay + ah / 2 - 10, (colW - 70) * 0.8, 6, { fill: '#D9D2C2', radius: 3 });
+        b.rect(gx + 52, ay + ah / 2 + 4, (colW - 70) * 0.5, 6, { fill: '#D9D2C2', radius: 3 });
       } else {
-        b.rect(gx, gy, colW, gh, { fill: '#EDE8DC', radius: 2 });
-        b.rect(gx + 18, gy + 18, 34, 34, { fill: accent, radius: 3 });
-        b.text(gx + 35, gy + 42, initial(chrome.publication || ''), { family: SERIF, size: 20, weight: 700 }, { color: '#FFFFFF', align: 'center' });
-        for (let i = 0; i < 4; i++) b.rect(gx + 18, gy + 68 + i * 16, (colW - 36) * (i === 3 ? 0.5 : 1), 7, { fill: '#D9D2C2', radius: 3 });
+        b.rect(gx, ay, colW, ah, { fill: '#EDE8DC', radius: 2 });
+        b.rect(gx + 18, ay + 18, 34, 34, { fill: accent, radius: 3 });
+        b.text(gx + 35, ay + 42, initial(chrome.publication || ''), { family: SERIF, size: 20, weight: 700 }, { color: '#FFFFFF', align: 'center' });
+        for (let i = 0; i < 4; i++) b.rect(gx + 18, ay + 68 + i * 16, (colW - 36) * (i === 3 ? 0.5 : 1), 7, { fill: '#D9D2C2', radius: 3 });
       }
     }
     for (let c = 1; c < cols; c++) {
@@ -2365,6 +2420,8 @@
           }
         }
         if (!b.round && b.frame !== false) out.push(`<rect x="${fmt(b.x + 0.5)}" y="${fmt(b.y + 0.5)}" width="${fmt(b.w - 1)}" height="${fmt(b.h - 1)}" fill="none" stroke="rgba(0,0,0,.2)" stroke-width="1"/>`);
+        // the place of the picture, for the hand that wants to replace it
+        if (b.slot) out.push(`<rect class="photo-slot" data-slot="${xmlEsc(b.slot)}" data-subject="${xmlEsc(String(b.subject || ''))}"${b.own ? ' data-own="1"' : ''}${b.round ? ' data-round="1"' : ''} x="${fmt(b.x)}" y="${fmt(b.y)}" width="${fmt(b.w)}" height="${fmt(b.h)}" fill="none" pointer-events="none"/>`);
       } else if (b.type === 'icon') {
         const d = iconPath(b.name);
         if (!d) continue;

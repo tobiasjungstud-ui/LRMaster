@@ -442,6 +442,10 @@ mark.vocab { background: var(--mark); color: inherit; border-radius: 3px; paddin
 /* the teacher's own pictures: a button over every picture of the medium */
 .shot-frame { position: relative; width: fit-content; max-width: 100%; margin: 0 auto; }
 .shot-frame canvas { margin: 0; }
+.sheet-frame { position: relative; }
+.pe-url { display: block; margin: .7rem 0 0; font-size: .85rem; color: var(--muted); }
+.pe-url-row { display: flex; gap: .4rem; margin-top: .25rem; }
+.pe-url-row input { flex: 1; min-width: 0; font-size: .9rem; }
 .photo-hotspots { position: absolute; inset: 0; pointer-events: none; }
 .photo-hotspot { position: absolute; pointer-events: auto; margin: 0; padding: 0; border: 2px solid transparent; border-radius: 4px;
   background: transparent; cursor: pointer; display: flex; align-items: flex-end; justify-content: flex-end; transition: border-color .12s, background .12s; }

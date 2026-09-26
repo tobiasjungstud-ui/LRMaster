@@ -645,6 +645,23 @@
     'word count': 'wordCount', 'paragraph length': 'paragraphLength', 'dialogue proportion': 'dialogueProportion', 'narrative vs. informational style': 'styleBalance',
     'CEFR': 'cefr', 'grammar complexity': 'grammarComplexity', 'vocabulary difficulty': 'vocabularyDifficulty', 'target vocabulary density': 'vocabUsage', 'idiomatic language': 'idiomaticLanguage',
     'number (questions)': 'questionCount', 'difficulty (questions)': 'questionDifficulty', 'skill distribution': 'skillMixMode', 'response formats': 'questionFormats', 'distractor difficulty': 'distractorDifficulty', 'inference level': 'inferenceLevel' };
+  add({ id: 'S30.paragraphs', section: 30, title: 'Advanced: paragraph length wird in Sätzen pro Absatz vorgegeben – nie ein Absatz pro Satz', kind: 'function',
+    check(env) {
+      const problems = [];
+      const seen = {};
+      for (const len of ['short', 'medium', 'long']) {
+        const st = env.state({ kind: 'reading', textType: 'News Article', paragraphLength: len });
+        const prompt = env.prompts.buildContentPrompt(st, env.core.buildPlan(st, env.ctx));
+        const line = /Paragraph length:[^\n]*/.exec(prompt);
+        if (!line) { problems.push(len + ': no paragraph rule'); continue; }
+        const n = /(\d+)[\u2013-](\d+) sentences per paragraph/.exec(line[0]);
+        if (!n || +n[1] < 2) problems.push(len + ': the rule does not ask for several sentences per paragraph');
+        if (!/[Nn]ever one sentence per paragraph/.test(line[0])) problems.push(len + ': one-sentence paragraphs are not ruled out');
+        seen[len] = n && +n[2];
+      }
+      if (seen.short && seen.long && !(seen.short < seen.long)) problems.push('long paragraphs are not longer than short ones');
+      return ok(!problems.length, problems.slice(0, 3).join(' | '));
+    } });
   add({ id: 'S30.chronology', section: 30, title: 'Advanced: chronology – immer aktiv, kein Schalter (siehe §26)', kind: 'function', check(env) { return ok(typeof env.prompts.chronologyRule === 'function' && typeof env.quality.enforceChronology === 'function'); } });
   const ADV_ALT = { grammarComplexity: 95, vocabularyDifficulty: 95, idiomaticLanguage: 95, paragraphLength: 'long', dialogueProportion: 90, styleBalance: 95, distractorDifficulty: 95, inferenceLevel: 95 };
   for (const [label, key] of Object.entries(ADV)) {
@@ -1717,7 +1734,7 @@
       return ok(!problems.length, problems.slice(0, 3).join(' | '));
     } });
 
-  add({ id: 'S37.own_pictures', section: 37, title: 'Jedes Bild im Medium lässt sich durch ein eigenes ersetzen (Datei wählen, Strg+V, hineinziehen) – mit Bildnachweis, gespeichert mit dem Material, jederzeit zurück zum automatischen Bild', kind: 'function',
+  add({ id: 'S37.own_pictures', section: 37, title: 'Jedes Bild im Medium lässt sich durch ein eigenes ersetzen – in der Vorschau und im Viewer beim Überfahren des Bildes, im Layout-Tab: Datei wählen, Strg+V, hineinziehen, auch direkt aus dem Internet (Bild aus einer Website ziehen oder seine Adresse laden) – mit Bildnachweis, gespeichert mit dem Material, jederzeit zurück zum automatischen Bild', kind: 'function',
     check(env) {
       const problems = [];
       const m = layoutMaterial(env, { textType: 'Blog Post', layoutMedium: 'screen' });
@@ -1748,6 +1765,17 @@
       const src = env.uiSource || '';
       if (src && !(/function renderHotspots/.test(src) && /photo-hotspot/.test(src) && /onpaste/.test(src) && /'drop'/.test(src) && /assets\.upload/.test(src) && /function resetPicture/.test(src))) {
         problems.push('the page has no way to choose, paste or drop an own picture, or to put the automatic one back');
+      }
+      // the sheet of the preview and of the viewer offers the same over every picture
+      const svg = env.quality.layoutSVG(m);
+      const marks = [...svg.matchAll(/<rect class="photo-slot" data-slot="([^"]+)"/g)].map(x => x[1]);
+      if (marks.length < 2 || !marks.every(id => pics.some(p => p.slot === id))) problems.push('the sheet does not mark the places of its pictures');
+      if (src && !(/function renderSheetHotspots/.test(src) && /rect\.photo-slot/.test(src) && /renderSheetHotspots\(m, \$\('#vw-sheet'\)\)/.test(src) && /renderSheetHotspots\(m, \$\('#out-student'\)\)/.test(src))) {
+        problems.push('the pictures on the sheet (preview, viewer) cannot be replaced there');
+      }
+      // and a picture from the web: dragged from a site, pasted as its address, or loaded by address
+      if (src && !(/function fetchWebImage/.test(src) && /text\/uri-list/.test(src) && /<img/.test(src) && /name=url/.test(src) && /web_blocked/.test(src) && /Bild kopieren/.test(src))) {
+        problems.push('a picture from the web cannot be dropped, pasted or loaded by its address, or the teacher is not told what to do when a site refuses');
       }
       return ok(!problems.length, problems.slice(0, 3).join(' | '));
     } });
@@ -1801,6 +1829,45 @@
       return ok(!problems.length, problems.slice(0, 3).join(' | '));
     } });
 
+  add({ id: 'S37.press_makeup', section: 37, title: 'Die Zeitungsseite ist umbrochen wie eine echte: schwarze, eng gesetzte Schlagzeile, Vorspann ohne Etikett, Autorenzeile zwischen Linien, Ortsmarke im ersten Absatz, kein Abstand zwischen Absätzen (nur Einzug), Zwischentitel nie allein am Spaltenfuss, zweites Bild nie neben dem Aufmacher, Zitat und Kästen rücken an den Text', kind: 'function',
+    check(env) {
+      const problems = [];
+      const m = layoutMaterial(env, { textType: 'News Article', layoutMedium: 'paper' });
+      m.content.paragraphs = m.content.paragraphs.concat(m.content.paragraphs, m.content.paragraphs);
+      m.content.meta = Object.assign({}, m.content.meta, { location: 'Fixturetown', byline: 'Fixture Reporter' });
+      m.layout.chrome = Object.assign({}, m.layout.chrome, { composition: { lead: 'wide', columns: 3, crossheads: [{ before: 5, text: 'A crosshead' }], figure: { after: 7, subject: 'transport', caption: 'The figure.', size: 'column' }, density: 'normal' } });
+      const model = env.quality.layoutModel(m);
+      const texts = model.blocks.filter(b => b.type === 'text');
+      const title = texts.find(b => b.text === m.content.title);
+      if (!title || title.color !== '#0F172A' && !/^#(0|1)/.test(title.color)) problems.push('the headline is not black');
+      if (title && title.font.size < 40) problems.push('the headline is not a headline');
+      const dl = texts.find(b => /^FIXTURETOWN \u2014$/.test(b.text));
+      if (!dl) problems.push('the first paragraph has no dateline');
+      const by = texts.find(b => /^BY FIXTURE REPORTER$/.test(b.text));
+      if (!by) problems.push('no byline');
+      else if (!model.blocks.some(b => b.type === 'line' && Math.abs(b.y1 - by.y) < 30 && b.y1 < by.y) || !model.blocks.some(b => b.type === 'line' && Math.abs(b.y1 - by.y) < 30 && b.y1 > by.y)) problems.push('the byline does not stand between rules');
+      if (texts.some(b => b.text === String(m.content.meta.tags && m.content.meta.tags[0] || '').toUpperCase() && b.y < (by ? by.y : 0))) problems.push('the stand-first still carries a coloured label');
+      // no space between paragraphs: the lines of a column follow at one leading
+      const body = texts.filter(b => b.role === 'body');
+      const byCol = {};
+      body.forEach(b => { (byCol[Math.round(b.x / 40)] = byCol[Math.round(b.x / 40)] || []).push(b.y); });
+      const steps = [];
+      Object.values(byCol).forEach(ys => { ys.sort((a, b) => a - b); for (let i = 1; i < ys.length; i++) steps.push(Math.round((ys[i] - ys[i - 1]) * 10) / 10); });
+      const lh = steps.slice().sort((a, b) => a - b)[Math.floor(steps.length / 2)];
+      if (steps.some(st => st > lh * 1.2 && st < lh * 1.8)) problems.push('there is a gap between paragraphs');
+      // a crosshead keeps its paragraph, a figure never sits beside the lead picture
+      const head = texts.find(b => /^A CROSSHEAD$/i.test(b.text));
+      const lead = model.blocks.find(b => b.type === 'photo' && b.w > 400);
+      const fig = model.blocks.find(b => b.type === 'photo' && b.subject === 'transport');
+      if (!head || !lead || !fig) problems.push('crosshead, lead picture or figure missing');
+      else {
+        const under = body.filter(b => Math.abs(b.x - head.x) < 20 && b.y > head.y && b.y < head.y + lh * 3);
+        if (under.length < 2) problems.push('the crosshead stands alone at the foot of a column');
+        if (fig.y < lead.y + lead.h && fig.x > lead.x + lead.w - 10) problems.push('the second picture sits beside the lead picture');
+      }
+      if (env.mock.proportions(model).balance < 0.8) problems.push('the page is out of balance (' + env.mock.proportions(model).balance.toFixed(2) + ')');
+      return ok(!problems.length, problems.slice(0, 3).join(' | '));
+    } });
   add({ id: 'S37.modules', section: 37, title: 'Um den Text steht, was auf so einer Seite wirklich steht: Werbung, Umfrage, Meistgelesen, Anmeldekasten, Kleinanzeigen – Claude wählt aus dem Katalog und darf Eigenes ergänzen', kind: 'function',
     check(env) {
       const problems = [];

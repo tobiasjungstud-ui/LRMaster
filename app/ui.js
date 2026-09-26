@@ -1020,6 +1020,7 @@
     $('#out-student').innerHTML = (multi ? '<div class="variant-switch" role="tablist">' + variants.map((v, i) => `<button type="button" class="chip-btn${i ? '' : ' active'}" data-variant="${esc(v.key)}">${esc(v.label)} · ${esc((v.plan || m.plan).questionBands ? (v.plan || m.plan).questionBands.join('–') : (v.plan || m.plan).questionBand)}</button>`).join('') + '</div>' : '')
       + variants.map((v, i) => `<div class="variant-sheet" data-variant="${esc(v.key || '')}"${i ? ' hidden' : ''}>${render.renderStudentHTML(m, v.key)}</div>`).join('')
       + (!variants.length ? render.renderStudentHTML(m) : '');
+    renderSheetHotspots(m, $('#out-student'));
     $$('#out-student [data-variant].chip-btn').forEach(b => b.addEventListener('click', () => {
       $$('#out-student .chip-btn').forEach(x => x.classList.toggle('active', x === b));
       $$('#out-student .variant-sheet').forEach(x => { x.hidden = x.dataset.variant !== b.dataset.variant; });
@@ -1114,6 +1115,7 @@
       }));
       $$('#vw-media [data-download]').forEach(b => b.addEventListener('click', () => download('png')));
     }
+    renderSheetHotspots(m, $('#vw-sheet'));
     buildViewerRail(m, model);
     buildViewerDownloads(model);
     markPageBreaks();
@@ -1288,24 +1290,56 @@
       wrap.appendChild(canvas);
       frame = wrap;
     }
+    const pics = model.blocks.filter(b => b.type === 'photo' && b.w >= 18 && b.h >= 18);
+    hotspotLayer(m, frame, pics, model.width, model.height);
+  }
+
+  /**
+   * The same buttons over the pictures of the sheet — the composed page in
+   * the preview and in the viewer. The picture there is an SVG, so the places
+   * of its pictures are read from the marks the renderer leaves in it.
+   */
+  function renderSheetHotspots(m, root) {
+    if (!root || !m || !m.layout) return;
+    $$('figure.medium-sheet', root).forEach((fig) => {
+      const svg = fig.querySelector('svg');
+      if (!svg) return;
+      let frame = svg.parentElement;
+      if (!frame.classList.contains('sheet-frame')) {
+        frame = document.createElement('div');
+        frame.className = 'sheet-frame';
+        fig.insertBefore(frame, svg);
+        frame.appendChild(svg);
+      }
+      const vb = (svg.getAttribute('viewBox') || '').split(/[\s,]+/).map(Number);
+      const W = vb[2] || svg.width.baseVal.value, H = vb[3] || svg.height.baseVal.value;
+      const pics = Array.from(svg.querySelectorAll('rect.photo-slot')).map(r => ({
+        slot: r.getAttribute('data-slot'), subject: r.getAttribute('data-subject') || '', own: r.getAttribute('data-own') === '1', round: r.getAttribute('data-round') === '1',
+        x: +r.getAttribute('x'), y: +r.getAttribute('y'), w: +r.getAttribute('width'), h: +r.getAttribute('height'),
+      })).filter(b => b.slot && b.w >= 18 && b.h >= 18);
+      hotspotLayer(m, frame, pics, W, H);
+    });
+  }
+
+  /** The buttons themselves: one per picture, placed in per cent of the picture of the medium. */
+  function hotspotLayer(m, frame, pics, width, height) {
     let layer = frame.querySelector('.photo-hotspots');
     if (!layer) { layer = document.createElement('div'); layer.className = 'photo-hotspots'; frame.appendChild(layer); }
     layer.innerHTML = '';
-    const pics = model.blocks.filter(b => b.type === 'photo' && b.w >= 18 && b.h >= 18);
     const count = {};
     for (const b of pics) count[b.slot] = (count[b.slot] || 0) + 1;
     for (const b of pics) {
       const btn = document.createElement('button');
       btn.type = 'button';
       btn.className = 'photo-hotspot' + (b.own ? ' is-own' : '') + (b.round ? ' is-round' : '') + (b.w < 90 || b.h < 60 ? ' is-small' : '');
-      btn.style.left = (b.x / model.width * 100) + '%';
-      btn.style.top = (b.y / model.height * 100) + '%';
-      btn.style.width = (b.w / model.width * 100) + '%';
-      btn.style.height = (b.h / model.height * 100) + '%';
+      btn.style.left = (b.x / width * 100) + '%';
+      btn.style.top = (b.y / height * 100) + '%';
+      btn.style.width = (b.w / width * 100) + '%';
+      btn.style.height = (b.h / height * 100) + '%';
       btn.dataset.slot = b.slot;
       const what = SUBJECT_LABEL[b.subject] || b.subject;
       btn.setAttribute('aria-label', `Bild ersetzen: ${what}${b.own ? ' (eigenes Bild)' : ''}`);
-      btn.title = `Bild ersetzen (${what}) – klicken, einfügen oder Bild hierher ziehen`;
+      btn.title = `Bild ersetzen (${what}) – klicken, ein Bild aus dem Internet oder eine Datei hierher ziehen, oder Strg+V`;
       btn.innerHTML = `<span>${b.own ? 'Eigenes Bild ändern' : 'Bild ersetzen'}</span>`;
       btn.addEventListener('click', () => openPictureEditor(m, b, count[b.slot]));
       btn.addEventListener('dragover', (e) => { e.preventDefault(); btn.classList.add('is-drop'); });
@@ -1313,13 +1347,56 @@
       btn.addEventListener('drop', async (e) => {
         e.preventDefault();
         btn.classList.remove('is-drop');
-        const file = firstImage(e.dataTransfer && e.dataTransfer.files);
-        if (!file) { toast('Das war kein Bild (PNG, JPEG, WebP oder GIF).'); return; }
-        try { await replacePicture(m, b.slot, await prepareImage(file), { name: file.name }); }
-        catch (err) { toast(pictureError(err)); }
+        try {
+          const file = await imageFromTransfer(e.dataTransfer);
+          await replacePicture(m, b.slot, await prepareImage(file), { name: file.name, credit: file.lrCredit || '' });
+        } catch (err) { toast(pictureError(err)); }
       });
       layer.appendChild(btn);
     }
+  }
+
+  /**
+   * What was dragged or pasted: a file, or a picture from a web page — the
+   * browser then hands over its address, and the picture is fetched from
+   * there. When the site does not allow that, the teacher copies the picture
+   * itself (right click, "copy image") and pastes it.
+   */
+  async function imageFromTransfer(dt) {
+    const file = firstImage(dt && dt.files);
+    if (file) return file;
+    const url = imageURLFrom(dt);
+    if (!url) throw { code: 'not_image' };
+    return fetchWebImage(url);
+  }
+
+  function imageURLFrom(dt) {
+    if (!dt || !dt.getData) return '';
+    const html = dt.getData('text/html') || '';
+    const src = /<img[^>]+src\s*=\s*["']([^"']+)["']/i.exec(html);
+    if (src && /^https?:/i.test(src[1])) return src[1];
+    const uri = (dt.getData('text/uri-list') || '').split(/\r?\n/).find(l => l && !l.startsWith('#')) || '';
+    if (/^https?:/i.test(uri)) return uri.trim();
+    const text = (dt.getData('text/plain') || '').trim();
+    if (/^https?:\/\/\S+$/i.test(text)) return text;
+    return '';
+  }
+
+  /** Fetch a picture from the web and hand it over as a file. */
+  async function fetchWebImage(url) {
+    let res;
+    try { res = await fetch(url, { mode: 'cors', credentials: 'omit' }); }
+    catch (e) { throw { code: 'web_blocked', url }; }
+    if (!res.ok) throw { code: 'web_blocked', url };
+    const blob = await res.blob();
+    const type = /^image\/(png|jpeg|webp|gif)$/.test(blob.type) ? blob.type : '';
+    if (!type) throw { code: 'not_image' };
+    const name = (url.split('?')[0].split('/').pop() || 'bild').slice(0, 80);
+    const file = new File([blob], name, { type });
+    let host = '';
+    try { host = new URL(url).hostname.replace(/^www\./, ''); } catch (e) { /* no credit */ }
+    file.lrCredit = host ? 'Bild: ' + host : '';
+    return file;
   }
 
   function firstImage(list) {
@@ -1361,6 +1438,7 @@
   function pictureError(e) {
     const code = e && e.code;
     if (code === 'not_image') return 'Das Bild konnte nicht gelesen werden. Erlaubt sind PNG, JPEG, WebP und GIF.';
+    if (code === 'web_blocked') return 'Die Website gibt das Bild nicht direkt heraus. Kopiere es dort (Rechtsklick → Bild kopieren) und füge es hier mit Strg+V ein – oder speichere es und wähle die Datei.';
     if (code === 'too_large') return 'Das Bild ist zu gross (höchstens 30 MB).';
     if (code === 'no_store') return 'Eigene Bilder brauchen den Bildspeicher dieser Seite – er ist in dieser Ansicht nicht verfügbar (nur mit Bearbeitungsrecht).';
     if (code === 'quota_or_state') return 'Der Bildspeicher dieser Seite ist voll. Entferne eigene Bilder aus alten Materialien.';
@@ -1454,6 +1532,18 @@
   function repaintMedium(m) {
     if ($('#view-viewer') && !$('#view-viewer').hidden && viewer && viewer.material === m) { renderViewer(); return; }
     if ($('#out-layout')) renderLayout(m);
+    // the sheet of the preview shows the same picture: draw it again in place
+    if ($('#out-student') && app.material === m) {
+      const variants = render.variantsOf(m).filter(v => v.worksheet);
+      const sheets = $$('#out-student .variant-sheet');
+      if (sheets.length) sheets.forEach(el => { el.innerHTML = render.renderStudentHTML(m, el.dataset.variant); });
+      else if (!variants.length) {
+        const keep = $('#out-student .variant-switch');
+        $('#out-student').innerHTML = (keep ? keep.outerHTML : '') + render.renderStudentHTML(m);
+      }
+      renderSheetHotspots(m, $('#out-student'));
+      if ($('#out-teacher')) $('#out-teacher').innerHTML = render.renderTeacherHTML(m);
+    }
   }
 
   /** The dialog to replace one picture: choose, paste or drop; credit; reset. */
@@ -1467,10 +1557,13 @@
         <p class="muted pe-where">${esc(what)}${uses > 1 ? ` · kommt ${uses}× im Bild vor und wird überall ersetzt` : ''}${current ? ' · zurzeit ein eigenes Bild' : ''}</p>
         <div class="pe-drop" tabindex="0" role="button" aria-label="Bild hierher ziehen, einfügen oder Datei wählen">
           <div class="pe-preview" hidden><img alt="Vorschau des neuen Bildes"></div>
-          <p class="pe-hint">Bild <strong>hierher ziehen</strong>, mit <strong>Strg+V</strong> einfügen oder
+          <p class="pe-hint">Bild <strong>hierher ziehen</strong> (auch direkt aus einer Website), mit <strong>Strg+V</strong> einfügen oder
             <button type="button" class="btn tiny" data-pe="pick">Datei wählen …</button></p>
           <input type="file" accept="image/png,image/jpeg,image/webp,image/gif" hidden>
         </div>
+        <label class="pe-url">Bild aus dem Internet – Adresse des Bildes
+          <span class="pe-url-row"><input type="url" name="url" placeholder="https://…/bild.jpg" inputmode="url" spellcheck="false"><button type="button" class="btn tiny" data-pe="fetch">Laden</button></span>
+        </label>
         <label class="pe-credit">Bildnachweis <input type="text" name="credit" maxlength="120" placeholder="z. B. Foto: eigene Aufnahme · oder Quelle des Bildes" value="${esc((current && current.credit) || '')}"></label>
         <p class="pe-note muted">Das Bild wird verkleinert und mit dem Material gespeichert. Der Nachweis steht in der Lehrerversion. Im eigenen Unterricht ist vieles erlaubt – veröffentlichst du das Material, brauchst du die Rechte am Bild.</p>
         <p class="pe-error" role="alert" hidden></p>
@@ -1494,6 +1587,7 @@
       try {
         pending = await prepareImage(file, { inline: !caps.assets });
         pendingName = file.name || '';
+        if (file.lrCredit && !credit.value.trim()) credit.value = file.lrCredit;
         if (previewUrl) URL.revokeObjectURL(previewUrl);
         previewUrl = URL.createObjectURL(pending.blob);
         preview.querySelector('img').src = previewUrl;
@@ -1501,18 +1595,34 @@
         dlg.querySelector('[data-pe="apply"]').focus();
       } catch (e) { pending = null; showError(pictureError(e)); }
     };
+    const urlInput = dlg.querySelector('input[name=url]');
+    const takeWeb = async (url) => {
+      showError('');
+      if (!/^https?:\/\//i.test(url)) { showError('Das ist keine Bildadresse (sie beginnt mit https://).'); return; }
+      urlInput.value = url;
+      try { await take(await fetchWebImage(url)); }
+      catch (e) { showError(pictureError(e)); }
+    };
+    const takeTransfer = async (dt) => {
+      showError('');
+      try { await take(await imageFromTransfer(dt)); }
+      catch (e) { showError(pictureError(e)); }
+    };
     dlg.querySelector('[data-pe="pick"]').addEventListener('click', () => input.click());
+    dlg.querySelector('[data-pe="fetch"]').addEventListener('click', () => takeWeb(urlInput.value.trim()));
+    urlInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); takeWeb(urlInput.value.trim()); } });
     drop.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); input.click(); } });
     input.addEventListener('change', () => take(firstImage(input.files)));
     drop.addEventListener('dragover', (e) => { e.preventDefault(); drop.classList.add('is-drop'); });
     drop.addEventListener('dragleave', () => drop.classList.remove('is-drop'));
-    drop.addEventListener('drop', (e) => { e.preventDefault(); drop.classList.remove('is-drop'); take(firstImage(e.dataTransfer && e.dataTransfer.files)); });
+    drop.addEventListener('drop', (e) => { e.preventDefault(); drop.classList.remove('is-drop'); takeTransfer(e.dataTransfer); });
     dlg.onpaste = (e) => {
+      if (e.target === urlInput) return;
       const items = Array.from((e.clipboardData && e.clipboardData.items) || []);
       const item = items.find(i => i.kind === 'file' && /^image\//.test(i.type));
-      if (!item) return;
-      e.preventDefault();
-      take(item.getAsFile());
+      if (item) { e.preventDefault(); take(item.getAsFile()); return; }
+      const url = imageURLFrom(e.clipboardData);
+      if (url) { e.preventDefault(); takeWeb(url); }
     };
     const close = () => { if (previewUrl) URL.revokeObjectURL(previewUrl); dlg.close(); };
     dlg.querySelector('[data-pe="cancel"]').addEventListener('click', close);
@@ -2262,5 +2372,5 @@
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init); else init();
 
-  window.LR.ui = { app, generate, produceWorksheet, openViewer, renderViewer, markPageBreaks, syncViewerOffsets, buildViewerRail, buildViewerDownloads, paintLayoutCanvas, proportionNote, mediumPng, renderHotspots, openPictureEditor, replacePicture, resetPicture, prepareImage, viewer, store, caps, showView, openCreator, importState, detectUnits, fetchTopics, confirmImport, newTextbook, askText, askConfirm, clone, parsePasted, initLevelPage, download, renderOutput, renderQualityPanel, renderTaskPreview, refreshDerived, renderLayout, renderSetupBar, openCustomSetup, backToTemplates, redrawTemplate, templateState, buildForm };
+  window.LR.ui = { app, generate, produceWorksheet, openViewer, renderViewer, markPageBreaks, syncViewerOffsets, buildViewerRail, buildViewerDownloads, paintLayoutCanvas, proportionNote, mediumPng, renderHotspots, renderSheetHotspots, hotspotLayer, imageURLFrom, fetchWebImage, pictureError, openPictureEditor, replacePicture, resetPicture, prepareImage, viewer, store, caps, showView, openCreator, importState, detectUnits, fetchTopics, confirmImport, newTextbook, askText, askConfirm, clone, parsePasted, initLevelPage, download, renderOutput, renderQualityPanel, renderTaskPreview, refreshDerived, renderLayout, renderSetupBar, openCustomSetup, backToTemplates, redrawTemplate, templateState, buildForm };
 })();

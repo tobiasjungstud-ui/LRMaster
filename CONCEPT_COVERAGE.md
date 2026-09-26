@@ -2,7 +2,7 @@
 
 Erzeugt von `npm run coverage`. Jede Zeile ist eine Anforderung aus `docs/Konzept_Listening_Reading_Creator.md`, gebunden an die Stelle im Code, die sie umsetzt, und das Ergebnis der automatischen Prüfung (`npm test`).
 
-**Ergebnis: 320 von 320 Anforderungen bestanden.**
+**Ergebnis: 322 von 322 Anforderungen bestanden.**
 
 Prüfarten: **setting** – Steuerelement vorhanden und Änderung des Werts verändert nachweislich den Prompt an Claude · **function** – Verhalten wird mit echten Eingaben ausgeführt und verglichen · **rule** – Qualitätsregel existiert als Messung oder Claude-Review-Kriterium · **render** – Ausgabe wird auf einer Fixture gerendert und inhaltlich geprüft · **ui** – Navigations-/Strukturelement existiert.
 
@@ -313,10 +313,11 @@ Prüfarten: **setting** – Steuerelement vorhanden und Änderung des Werts ver�
 | ✅ | `X.rule_questions.evidence` | Quality rule „questions.evidence“ (Every question has verifiable evidence) – zusätzliche Regel über das Konzept hinaus | meta | `questions.evidence` — extra rule |
 | ✅ | `X.rule_layout.furniture` | Quality rule „layout.furniture“ (The medium shows more than the text alone) – zusätzliche Regel über das Konzept hinaus | meta | `layout.furniture` — extra rule |
 
-## §30 Advanced Settings (24/24)
+## §30 Advanced Settings (25/25)
 
 | Status | ID | Anforderung | Art | Umsetzung |
 |---|---|---|---|---|
+| ✅ | `S30.paragraphs` | Advanced: paragraph length wird in Sätzen pro Absatz vorgegeben – nie ein Absatz pro Satz | function | Funktion (siehe Check im Manifest) |
 | ✅ | `S30.chronology` | Advanced: chronology – immer aktiv, kein Schalter (siehe §26) | function | Funktion (siehe Check im Manifest) |
 | ✅ | `S30.speakerCount` | Advanced: number of speakers (= Einstellung „speakerCount“) | function | Funktion (siehe Check im Manifest) |
 | ✅ | `S30.customShares` | Advanced: individual speaker share (= Einstellung „customShares“) | function | Funktion (siehe Check im Manifest) |
@@ -478,7 +479,7 @@ Prüfarten: **setting** – Steuerelement vorhanden und Änderung des Werts ver�
 | ✅ | `S36.repair` | Beanstandete Post-Task wird gezielt neu erstellt, Fragen und Pre-Task bleiben unverändert | function | Funktion (siehe Check im Manifest) |
 | ✅ | `S36.output` | Post-Task steht nach den Fragen auf dem Arbeitsblatt (Bildschirm, Word, Markdown) mit Sozialform, Arbeitsweise, Zeit, Produkt und Kriterien; Lehrerversion mit Übersicht | render | render.js (renderStudentHTML / renderTeacherHTML) |
 
-## §37 Authentisches Layout (Screenshot des Mediums) (21/21)
+## §37 Authentisches Layout (Screenshot des Mediums) (22/22)
 
 | Status | ID | Anforderung | Art | Umsetzung |
 |---|---|---|---|---|
@@ -498,8 +499,9 @@ Prüfarten: **setting** – Steuerelement vorhanden und Änderung des Werts ver�
 | ✅ | `S37.rule_image` | Kontrolle: das Bild ist zeichenbar und wird nur dann ausgeliefert | rule | Quality rule `layout.image_valid` (gemessen in quality.js) |
 | ✅ | `S37.pictures` | Das Medium zeigt echte Bilder: Aufmacher, Porträts statt Initialen, Vorschaubilder – gezeichnet aus einem Motiv, das Claude wählt und die App prüft | function | Funktion (siehe Check im Manifest) |
 | ✅ | `S37.photo_library` | Echte Fotos, wo die App welche mitbringt: frei lizenziert, mit Bildnachweis unter dem Bild und in der Lehrerversion; Porträts erfundener Personen nur aus Stockfotos; sonst gezeichnete Szene | function | Funktion (siehe Check im Manifest) |
-| ✅ | `S37.own_pictures` | Jedes Bild im Medium lässt sich durch ein eigenes ersetzen (Datei wählen, Strg+V, hineinziehen) – mit Bildnachweis, gespeichert mit dem Material, jederzeit zurück zum automatischen Bild | function | Funktion (siehe Check im Manifest) |
+| ✅ | `S37.own_pictures` | Jedes Bild im Medium lässt sich durch ein eigenes ersetzen – in der Vorschau und im Viewer beim Überfahren des Bildes, im Layout-Tab: Datei wählen, Strg+V, hineinziehen, auch direkt aus dem Internet (Bild aus einer Website ziehen oder seine Adresse laden) – mit Bildnachweis, gespeichert mit dem Material, jederzeit zurück zum automatischen Bild | function | Funktion (siehe Check im Manifest) |
 | ✅ | `S37.composition` | Claude komponiert die Seite wie ein Editorial Designer: Aufmacher-Grösse, Spalten, ein zweites Bild im Text, Zitatkasten (nur wörtlich aus dem Text), Zwischentitel, Dichte – der Text selbst bleibt Wort für Wort unverändert | function | Funktion (siehe Check im Manifest) |
+| ✅ | `S37.press_makeup` | Die Zeitungsseite ist umbrochen wie eine echte: schwarze, eng gesetzte Schlagzeile, Vorspann ohne Etikett, Autorenzeile zwischen Linien, Ortsmarke im ersten Absatz, kein Abstand zwischen Absätzen (nur Einzug), Zwischentitel nie allein am Spaltenfuss, zweites Bild nie neben dem Aufmacher, Zitat und Kästen rücken an den Text | function | Funktion (siehe Check im Manifest) |
 | ✅ | `S37.modules` | Um den Text steht, was auf so einer Seite wirklich steht: Werbung, Umfrage, Meistgelesen, Anmeldekasten, Kleinanzeigen – Claude wählt aus dem Katalog und darf Eigenes ergänzen | function | Funktion (siehe Check im Manifest) |
 | ✅ | `S37.rule_proportions` | Kontrolle: das Bild ist proportioniert – die Spalten tragen gleich viel, keine bleibt fast leer, und die Seite endet kurz nach dem Text | rule | Quality rule `layout.proportions` (gemessen in quality.js) |
 | ✅ | `S37.rule_authentic` | Kontrolle (Claude): das Medium wirkt echt und passt zum Text | rule | Quality rule `layout.authentic` (Claude-Review über buildReviewPrompt) |

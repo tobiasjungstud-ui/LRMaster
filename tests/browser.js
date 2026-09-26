@@ -498,6 +498,74 @@ const SETTINGS = (extra) => `(() => {
     await page.close();
   }
 
+  console.log('\nBrowser audit: a picture from the internet goes onto the sheet (2.4, 2.11)');
+  {
+    const { page, errors } = await open({});
+    // the mouse over a picture of the sheet: the button shows itself
+    await page.evaluate(async () => {
+      const { fixture, ui } = window.LR;
+      const m = fixture.material({ textType: 'News Article', authenticLayout: true, createWorksheet: true }, 'reading');
+      m.id = 'web-picture-test';
+      ui.app.material = m; ui.openViewer(m, 'creator');
+      await new Promise(r => setTimeout(r, 400));
+    });
+    await page.hover('#vw-sheet .medium-sheet .photo-hotspot');
+    await page.waitForTimeout(400);   // the label fades in
+    const hovered = await page.evaluate(() => { const el = document.querySelector('#vw-sheet .medium-sheet .photo-hotspot:hover span'); return el ? getComputedStyle(el).opacity : 'not hovered'; });
+    const r = await page.evaluate(async () => {
+      const { ui } = window.LR;
+      const wait = (f, n) => new Promise(async (res) => { for (let i = 0; i < (n || 50); i++) { if (f()) return res(true); await new Promise(r => setTimeout(r, 100)); } res(false); });
+      const m = ui.app.material;
+      const svg = document.querySelector('#vw-sheet .medium-sheet svg');
+      const spots = Array.from(document.querySelectorAll('#vw-sheet .medium-sheet .photo-hotspot'));
+      const box = svg.getBoundingClientRect();
+      const inside = spots.every(b => { const r = b.getBoundingClientRect(); return r.left >= box.left - 2 && r.right <= box.right + 2 && r.top >= box.top - 2 && r.bottom <= box.bottom + 2 && r.width > 10; });
+      const marks = svg.querySelectorAll('rect.photo-slot').length;
+      // hover the lead picture, click, load a picture by its address
+      const lead = spots.slice().sort((a, b) => b.offsetWidth * b.offsetHeight - a.offsetWidth * a.offsetHeight)[0];
+      const slot = lead.dataset.slot;
+      lead.click();
+      const dlg = document.querySelector('#picture-editor');
+      const urlInput = dlg.querySelector('input[name=url]');
+      // a site that refuses: the teacher is told what to do instead
+      urlInput.value = 'https://refuses.invalid/picture.jpg';
+      dlg.querySelector('[data-pe="fetch"]').click();
+      await wait(() => !dlg.querySelector('.pe-error').hidden, 80);
+      const refused = dlg.querySelector('.pe-error').textContent;
+      // a picture that can be fetched
+      urlInput.value = location.origin + '/photos/__probe__.png';
+      dlg.querySelector('[data-pe="fetch"]').click();
+      await wait(() => !dlg.querySelector('.pe-preview').hidden, 80);
+      const previewed = !dlg.querySelector('.pe-preview').hidden;
+      const credit = dlg.querySelector('input[name=credit]').value;
+      dlg.querySelector('[data-pe="apply"]').click();
+      await wait(() => !dlg.open, 80);
+      await wait(() => document.querySelector(`#vw-sheet .photo-hotspot[data-slot="${slot}"].is-own`), 80);
+      const entry = m.layout.images && m.layout.images[slot];
+      const own = !!document.querySelector(`#vw-sheet .photo-hotspot[data-slot="${slot}"].is-own`);
+      const svgHasOwn = /data-own="1"/.test(document.querySelector('#vw-sheet .medium-sheet svg').outerHTML);
+      // and in the creator's preview: a picture dragged from a web page (its address arrives, not a file)
+      ui.showView('creator'); ui.renderOutput(m);
+      await new Promise(r => setTimeout(r, 300));
+      const preview = document.querySelectorAll('#out-student .medium-sheet .photo-hotspot').length;
+      const other = Array.from(document.querySelectorAll('#out-student .medium-sheet .photo-hotspot')).find(b => b.dataset.slot !== slot);
+      const dt = new DataTransfer();
+      dt.setData('text/uri-list', location.origin + '/photos/__probe__.png');
+      dt.setData('text/html', '<img src="' + location.origin + '/photos/__probe__.png">');
+      other.dispatchEvent(new DragEvent('drop', { dataTransfer: dt, bubbles: true, cancelable: true }));
+      const dropped = await wait(() => m.layout.images && m.layout.images[other.dataset.slot], 80);
+      await new Promise(r => setTimeout(r, 400));
+      const previewOwn = document.querySelectorAll('#out-student .medium-sheet .photo-hotspot.is-own').length;
+      return { spots: spots.length, marks, inside, refused, previewed, credit, kind: entry ? (entry.src ? 'inline' : entry.asset ? 'asset' : 'none') : 'none', own, svgHasOwn, preview, dropped, previewOwn };
+    });
+    check('the sheet in the viewer has a button over every picture, and it lights up on hover', r.spots >= 2 && r.spots === r.marks && r.inside && hovered === '1', JSON.stringify(r) + ' hover ' + hovered);
+    check('a picture loaded by its address replaces the picture on the sheet, with the site as credit', r.previewed && /127\.0\.0\.1|localhost/.test(r.credit) && r.kind !== 'none' && r.own && r.svgHasOwn, JSON.stringify(r));
+    check('when a site refuses, the teacher is told to copy the picture and paste it', /Bild kopieren/.test(r.refused) && /Strg\+V/.test(r.refused), JSON.stringify(r));
+    check('the preview in the creator offers the same, and a picture dragged from a web page lands there', r.preview >= 2 && r.dropped && r.previewOwn >= 2, JSON.stringify(r));
+    check('pictures from the web raise no page error', errors.length === 0, errors[0]);
+    await page.close();
+  }
+
   console.log('\nBrowser audit: hostile text in the interface (2.10)');
   {
     const { page, errors } = await open({ scenario: 'xss' });
