@@ -766,7 +766,13 @@
     return [
       `You write image prompts for a teacher who needs the photos for an English reading worksheet. The text below is a ${type}, shown as ${mediumLabel || 'its medium'}. The page has ${places.length} photo place${places.length === 1 ? '' : 's'}; the teacher finds each photo on Google or has ChatGPT generate it.`,
       '## Text\nTitle: ' + content.title + '\n' + contentAsText(content, state),
-      '## The photo places, in this order\n' + places.map((p, i) => `${i + 1}. ${roleText[p.role] || 'a picture'} — it should show: ${[p.caption || (p.role === 'lead' ? c.photoCaption : ''), p.heading ? 'for "' + p.heading + '"' : '', p.subject ? '(subject: ' + p.subject + ')' : ''].filter(Boolean).join(' ') || 'what fits the text'}`).join('\n'),
+      '## The photo places, in this order\n' + places.map((p, i) => {
+        const caption = p.caption || (p.role === 'lead' ? c.photoCaption : '');
+        return `${i + 1}. ${roleText[p.role] || 'a picture'} — ` + (caption
+          ? `the caption printed under it: "${caption}" — the photo must show exactly this${p.subject ? ' (subject: ' + p.subject + ')' : ''}`
+          : `it should show: ${[p.heading ? 'a picture for "' + p.heading + '"' : '', p.subject ? '(subject: ' + p.subject + ')' : ''].filter(Boolean).join(' ') || 'what fits the text'}`);
+      }).join('\n'),
+      '## Each prompt belongs to its place\nThe teacher puts photo 1 over place 1, photo 2 over place 2. A photo that shows something else than the caption under it is wrong, even when it fits the text: describe the same people, place, objects and action the caption names, and use the caption\'s own key words in the ChatGPT prompt and in the searches (names of people excepted — never a name in a prompt). Never describe another scene of the text.',
       '## For each photo place write\n'
         + '- "google": three short Google image searches in English, 2–5 words each, generic enough to have many real results — the kind of place, the scene, the everyday subject. Never an invented name, business, person or event: the text may be invented, the searches must find real photos of the general setting.\n'
         + '- "chatgpt": one prompt for ChatGPT to generate a photorealistic photo as if taken with a real camera: what the photo shows as this text describes it (place, people and what they do, objects), the setting, season, time of day and light, camera and lens (e.g. 35 mm at eye level), depth of field and the photo style of this medium — ' + (medium === 'print' ? 'documentary news photography for a newspaper' : 'editorial photography for a magazine, blog or news site') + '. Landscape 3:2. No text, no captions, no logos, no watermarks, no recognisable real or famous people. 40–90 words, in English.',

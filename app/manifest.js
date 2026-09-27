@@ -2020,6 +2020,33 @@
       if (src && !(/function photoToolbar/.test(src) && /batchPrompt/.test(src) && /function openAssignDialog/.test(src) && /multiple/.test(src) && /function orderImages/.test(src) && /PROJECT_INSTRUCTIONS/.test(src))) problems.push('the page does not offer the copy of all prompts, the pictures at once or the project text');
       return ok(!problems.length, problems.slice(0, 3).join(' | '));
     } });
+  add({ id: 'S37.photo_caption', section: 37, title: 'Jeder Bild-Prompt gehört zu genau einem Fotoplatz: er zeigt, was die Bildunterschrift unter diesem Platz sagt – ein Prompt, den Claude für eine andere Szene des Textes oder in verschobener Reihenfolge geschrieben hat, wird nie angezeigt oder kopiert; die Pipeline fragt dann neu, und bis dahin baut die App den Prompt aus der Bildunterschrift selbst', kind: 'function',
+    check(env) {
+      const problems = [];
+      const P = env.photo;
+      const cap = 'Director Elena Wood at the festival, where she accepted the Best Animation award.';
+      const manga = { google: ['manga book open desk', 'black and white comic pages', 'reading manga at home'], chatgpt: 'A photorealistic close-up photo of an open black-and-white manga book on a wooden desk, soft daylight from a side window, shallow depth of field, 50 mm lens, landscape 3:2, no text.' };
+      const fest = { google: ['film festival award ceremony', 'director on stage award', 'animation festival audience'], chatgpt: 'A photorealistic photo of a woman film director on the stage of a film festival, holding an award trophy while the audience applauds, 35 mm at eye level, landscape 3:2, no text.' };
+      if (!P.promptFits || P.promptFits(manga, cap)) problems.push('a prompt for another scene passes as the prompt for this caption');
+      if (P.promptFits && !P.promptFits(fest, cap)) problems.push('a prompt that shows its caption is refused');
+      const shown = P.promptsFor({ role: 'second', chrome: { photoPrompts: [{}, manga, {}] }, caption: cap, subject: 'people', medium: 'page' });
+      if (shown.from !== 'app' || /manga/i.test(shown.chatgpt) || !shown.chatgpt.includes('at the festival')) problems.push('the page shows a prompt that does not fit its caption: ' + shown.chatgpt.slice(0, 80));
+      const lead = P.promptsFor({ role: 'lead', chrome: { photoCaption: cap, photoPrompts: [manga, {}, {}] }, subject: 'people', medium: 'page' });
+      if (lead.from !== 'app' || /manga/i.test(lead.chatgpt)) problems.push('the lead picture shows a prompt that does not fit its caption');
+      if (P.captionKey && P.promptFits(Object.assign({}, fest, { for: P.captionKey(cap) }), 'Pupils cycle to school along the river path.')) problems.push('a prompt bound to one caption passes for another');
+      const batch = P.batchPrompt([{ role: 'second', caption: cap, set: fest }], 'page');
+      if (!batch.includes('It must show what its caption on the page says: "' + cap + '"')) problems.push('ChatGPT is not given the caption with its photo');
+      // Claude is told so, in the layout and in the prompt request
+      const m = layoutMaterial(env, { textType: 'News Article', layoutMedium: 'paper' });
+      const field = (env.mock.chromeSpec(m).fields.find(f => f[0] === 'photoPrompts') || [])[1] || '';
+      if (!/shows exactly what the caption printed under ITS picture says/.test(field) || !/so the order never shifts/.test(field)) problems.push('the layout does not bind each prompt to its caption');
+      const req = env.prompts.buildPhotoPromptsPrompt(m.settings, m.content, m.layout.chrome, [{ role: 'second', subject: 'people', caption: cap }], 'Zeitungsseite', 'print');
+      if (!req.includes('the caption printed under it: "' + cap + '"') || !/Never describe another scene/.test(req)) problems.push('the prompt request does not bind each prompt to its caption');
+      // the page and the pipeline go by the caption of each place
+      const src = env.uiSource || '';
+      if (src && !(/promptFits\(have\[P\.ROLE_INDEX\[p\.role\]\], p\.caption, p\.heading\)/.test(src) && /for: P\.captionKey\(p\.caption\)/.test(src) && /promptsFor\(\{ role: b\.picRole, chrome: m\.layout\.chrome, content: m\.content, subject: b\.subject, medium, caption, heading \}\)/.test(src))) problems.push('the page does not check each prompt against the caption of its place');
+      return ok(!problems.length, problems.slice(0, 3).join(' | '));
+    } });
   add({ id: 'S37.press_pages', section: 37, title: 'Die Zeitung ist eine echte A4-Seite: ein längerer Artikel läuft auf einer Folgeseite weiter („Continued on page 2“, Fortsetzungskopf, Seitenzahlen) – nie kleinere Schrift, nie gekürzt; jede Seite ist im Blatt und im Word-Export eine eigene Seite; Silbentrennung im Blocksatz', kind: 'function',
     check(env) {
       const problems = [];

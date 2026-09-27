@@ -73,7 +73,7 @@
         ['captionCredit', 'the small credit beside the caption, e.g. a photographer or agency name'],
         ['footerLinks', 'an array of 3–5 very short link labels in the footer'],
         ['photoSubject', 'what the picture at the top shows — one key from the list of picture subjects'],
-        ['photoPrompts', 'how the teacher gets each photo of the page — an array with one object per photo, at most 3, in this order: the lead picture, the second picture in the text, the picture of the other story or module. Each object: {"google": three short Google image searches in English, 2–5 words each, generic enough to have many real results (the kind of place, the scene, the everyday subject — never an invented name, business or event), "chatgpt": one prompt for an image generator for a photorealistic photo as if taken with a real camera: what it shows as this text describes it, the setting, time of day and light, camera and lens (e.g. 35 mm, eye level), depth of field, the photo style of this medium; landscape 3:2; no text, no logos, no watermarks, no recognisable real people}'],
+        ['photoPrompts', 'how the teacher gets each photo of the page — an array with one object per photo, at most 3, in this order: the lead picture, the second picture in the text, the picture of the other story or module — a place the page does not have stays an empty object {}, so the order never shifts. Each prompt shows exactly what the caption printed under ITS picture says (the lead picture: photoCaption; the second picture: the caption of composition.figure) — the same people, place, objects and action, in the caption\'s own key words, never another scene of the text. Each object: {"google": three short Google image searches in English, 2–5 words each, generic enough to have many real results (the kind of place, the scene, the everyday subject — never an invented name, business or event), "chatgpt": one prompt for an image generator for a photorealistic photo as if taken with a real camera: what it shows as this text describes it, the setting, time of day and light, camera and lens (e.g. 35 mm, eye level), depth of field, the photo style of this medium; landscape 3:2; no text, no logos, no watermarks, no recognisable real people}'],
         ['photoReality', 'may a REAL photograph stand beside this text? "real-subject" when the text is about a real, general subject a photo can truly show (a city, a landscape, an animal, a sport, a technology, everyday life); "fictional-event" when the text reports an invented specific event, person, business or incident (a fire at a named hotel, a local council vote, a named pupil) — then only a general scene that cannot be mistaken for evidence of it; "none" when no real photo fits without seeming to document the story; if unsure, "none"'],
         ['photoQuery', 'a search for a REAL photograph that would accompany this text in this medium, in English, 4–8 words, built from what THIS text is about: the real place, the scene, the people and the action it describes (e.g. "Zurich school street pedestrians bicycles"); name the kind of photo the medium prints — documentary news photo for a paper, location photo for travel, editorial photo for a magazine feature, portrait in its setting for a profile, the lab or landscape for science. For "fictional-event": only the general setting, never the invented event itself (for an invented hotel fire: "Bristol historic street facade", not "hotel fire"); no invented names; empty if the page has no lead picture or photoReality is "none"'],
         ['sidebarSubjects', 'an array with one picture subject per headline in the box beside the text'],
@@ -128,7 +128,7 @@
         ['pageLabel', 'what stands in the page footer, e.g. "Page 7" or the date'],
         ['footerNote', 'one short line at the very bottom, e.g. a website or a continuation note'],
         ['photoSubject', 'what the picture on the page shows — one key from the list of picture subjects'],
-        ['photoPrompts', 'how the teacher gets each photo of the page — an array with one object per photo, at most 3, in this order: the lead picture, the second picture in the text, the picture of the other story or module. Each object: {"google": three short Google image searches in English, 2–5 words each, generic enough to have many real results (the kind of place, the scene, the everyday subject — never an invented name, business or event), "chatgpt": one prompt for an image generator for a photorealistic photo as if taken with a real camera: what it shows as this text describes it, the setting, time of day and light, camera and lens (e.g. 35 mm, eye level), depth of field, the photo style of this medium; landscape 3:2; no text, no logos, no watermarks, no recognisable real people}'],
+        ['photoPrompts', 'how the teacher gets each photo of the page — an array with one object per photo, at most 3, in this order: the lead picture, the second picture in the text, the picture of the other story or module — a place the page does not have stays an empty object {}, so the order never shifts. Each prompt shows exactly what the caption printed under ITS picture says (the lead picture: photoCaption; the second picture: the caption of composition.figure) — the same people, place, objects and action, in the caption\'s own key words, never another scene of the text. Each object: {"google": three short Google image searches in English, 2–5 words each, generic enough to have many real results (the kind of place, the scene, the everyday subject — never an invented name, business or event), "chatgpt": one prompt for an image generator for a photorealistic photo as if taken with a real camera: what it shows as this text describes it, the setting, time of day and light, camera and lens (e.g. 35 mm, eye level), depth of field, the photo style of this medium; landscape 3:2; no text, no logos, no watermarks, no recognisable real people}'],
         ['photoReality', 'may a REAL photograph stand beside this text? "real-subject" when the text is about a real, general subject a photo can truly show (a city, a landscape, an animal, a sport, a technology, everyday life); "fictional-event" when the text reports an invented specific event, person, business or incident (a fire at a named hotel, a local council vote, a named pupil) — then only a general scene that cannot be mistaken for evidence of it; "none" when no real photo fits without seeming to document the story; if unsure, "none"'],
         ['photoQuery', 'a search for a REAL photograph that would accompany this text in this medium, in English, 4–8 words, built from what THIS text is about: the real place, the scene, the people and the action it describes (e.g. "Zurich school street pedestrians bicycles"); name the kind of photo the medium prints — documentary news photo for a paper, location photo for travel, editorial photo for a magazine feature, portrait in its setting for a profile, the lab or landscape for science. For "fictional-event": only the general setting, never the invented event itself (for an invented hotel fire: "Bristol historic street facade", not "hotel fire"); no invented names; empty if the page has no lead picture or photoReality is "none"'],
         ['weatherNote', 'the weather line the paper prints in its running head, e.g. "Cloudy, 14°C"'],
@@ -263,7 +263,7 @@
         const h = picH + 96;
         b.rect(x, y, w, h, { fill: '#F8FAFC', radius: 8, stroke: LINE });
         b.text(x + 12, y + 18, 'ADVERTISEMENT', S.ui(8.5, 700), { color: '#94A3B8', letterSpacing: 1.2 });
-        b.photo(x + 10, y + 26, w - 20, picH, { seed: photo.hashOf(mod.heading || 'ad'), subject: mod.subject, colour: true, frame: false });
+        b.photo(x + 10, y + 26, w - 20, picH, { about: mod.heading || '', seed: photo.hashOf(mod.heading || 'ad'), subject: mod.subject, colour: true, frame: false });
         b.text(x + 12, y + picH + 50, clipText(mod.heading || '', 34), S.title(14, 700), { color: INK });
         b.text(x + 12, y + picH + 68, clipText(mod.lines[0] || mod.label || '', 40), S.ui(11.5), { color: MUTED });
         if (mod.cta) {
@@ -281,7 +281,7 @@
       draw(b, x, y, w, mod, S) {
         const h = Math.max(420, Math.min(620, w * 2.2));
         b.rect(x, y, w, h, { fill: '#F8FAFC', radius: 8, stroke: LINE });
-        b.photo(x + 10, y + 24, w - 20, h * 0.5, { seed: photo.hashOf(mod.heading || 'sky'), subject: mod.subject, colour: true, frame: false });
+        b.photo(x + 10, y + 24, w - 20, h * 0.5, { about: mod.heading || '', seed: photo.hashOf(mod.heading || 'sky'), subject: mod.subject, colour: true, frame: false });
         b.text(x + 12, y + 16, 'ADVERTISEMENT', S.ui(8.5, 700), { color: '#94A3B8', letterSpacing: 1.2 });
         const end = b.para(x + 12, y + h * 0.5 + 48, clipText(mod.heading || '', 52), S.title(15, 700), w - 24, { color: INK, lineHeight: 20 });
         b.para(x + 12, end + 8, clipText(mod.lines[0] || '', 70), S.ui(11.5), w - 24, { color: MUTED, lineHeight: 16 });
@@ -301,7 +301,7 @@
       draw(b, x, y, w, mod, S) {
         const picW = Math.min(180, w * 0.34), h = Math.max(120, picW * 0.72);
         b.rect(x, y, w, h, { fill: '#FFFDF5', radius: 8, stroke: '#EADFC0' });
-        b.photo(x + 1, y + 1, picW, h - 2, { seed: photo.hashOf(mod.heading || 'sp'), subject: mod.subject, colour: true, frame: false });
+        b.photo(x + 1, y + 1, picW, h - 2, { about: mod.heading || '', seed: photo.hashOf(mod.heading || 'sp'), subject: mod.subject, colour: true, frame: false });
         const tx = x + picW + 18, tw = w - picW - 36;
         b.text(tx, y + 24, upper('Sponsored' + (mod.label ? ' · ' + mod.label : '')), S.ui(9.5, 800), { color: '#A16207', letterSpacing: 1 });
         const end = b.para(tx, y + 48, clipText(mod.heading || '', 90), S.title(16, 700), tw, { color: INK, lineHeight: 21 });
@@ -321,7 +321,7 @@
           iy = b.para(x, iy + 22, clipText(mod.heading || '', 90), { family: SERIF, size: 21, weight: 700 }, w, { color: INK, lineHeight: 25 }) + 4;
           if (mod.subject) {
             const ph = Math.round(w * 0.42);
-            b.photo(x, iy + 8, w, ph, { seed: photo.hashOf(mod.heading || 't'), subject: mod.subject, colour: true, print: true });
+            b.photo(x, iy + 8, w, ph, { about: mod.heading || '', seed: photo.hashOf(mod.heading || 't'), subject: mod.subject, colour: true, print: true });
             iy += ph + 16;
           }
           if (mod.lines[0]) iy = b.para(x, iy + 16, clipText(mod.lines[0], 160), { family: SERIF, size: 12.5 }, w, { color: '#44403C', lineHeight: 17 });
@@ -330,7 +330,7 @@
         }
         const picW = Math.min(180, w * 0.36), h = Math.max(128, picW * 0.78);
         b.rect(x, y, w, h, { fill: '#FFFFFF', radius: 10, stroke: LINE });
-        b.photo(x + 1, y + 1, picW, h - 2, { seed: photo.hashOf(mod.heading || 't'), subject: mod.subject, colour: true, frame: false });
+        b.photo(x + 1, y + 1, picW, h - 2, { about: mod.heading || '', seed: photo.hashOf(mod.heading || 't'), subject: mod.subject, colour: true, frame: false });
         const tx = x + picW + 18, tw = w - picW - 36;
         if (mod.label) b.text(tx, y + 24, upper(mod.label), S.ui(10, 800), { color: S.accent, letterSpacing: 1 });
         const end = b.para(tx, y + 48, clipText(mod.heading || '', 90), S.title(18, 700), tw, { color: INK, lineHeight: 23 });
@@ -602,7 +602,7 @@
         const picH = Math.round(w * 0.42);
         const h = picH + 74;
         b.rect(x, y, w, h, { fill: '#FFFFFF', radius: 8, stroke: LINE });
-        b.photo(x + 1, y + 1, w - 2, picH, { seed: photo.hashOf(mod.heading || 'link'), subject: mod.subject, colour: true, frame: false });
+        b.photo(x + 1, y + 1, w - 2, picH, { about: mod.heading || '', seed: photo.hashOf(mod.heading || 'link'), subject: mod.subject, colour: true, frame: false });
         b.text(x + 12, y + picH + 24, clipText(mod.heading || '', 40), S.ui(12.5, 700), { color: INK });
         b.text(x + 12, y + picH + 42, clipText(mod.lines[0] || '', 46), S.ui(11), { color: MUTED });
         b.text(x + 12, y + picH + 60, clipText(upper(mod.meta || ''), 34), S.ui(9.5, 700), { color: '#94A3B8', letterSpacing: 0.8 });
@@ -685,7 +685,7 @@
     card(b, x, y, w, mod, S) {
       const picW = Math.min(180, w * 0.36), h = Math.max(120, picW * 0.78);
       b.rect(x, y, w, h, { fill: '#FFFFFF', radius: 10, stroke: LINE });
-      if (mod.subject) b.photo(x + 1, y + 1, picW, h - 2, { seed: photo.hashOf(mod.heading || 'c'), subject: mod.subject, colour: true, frame: false });
+      if (mod.subject) b.photo(x + 1, y + 1, picW, h - 2, { about: mod.heading || '', seed: photo.hashOf(mod.heading || 'c'), subject: mod.subject, colour: true, frame: false });
       const tx = x + (mod.subject ? picW + 18 : 18), tw = w - (mod.subject ? picW : 0) - 36;
       if (mod.label) b.text(tx, y + 24, upper(mod.label), S.ui(10, 800), { color: S.accent, letterSpacing: 1 });
       const end = b.para(tx, y + 48, clipText(mod.heading || '', 90), S.title(17, 700), tw, { color: INK, lineHeight: 22 });
@@ -713,7 +713,7 @@
     },
     picture(b, x, y, w, mod, S) {
       const ph = Math.round(w * 0.6);
-      b.photo(x, y, w, ph, { seed: photo.hashOf(mod.heading || 'pic'), subject: mod.subject, colour: true, frame: false });
+      b.photo(x, y, w, ph, { about: mod.heading || '', seed: photo.hashOf(mod.heading || 'pic'), subject: mod.subject, colour: true, frame: false });
       let iy = ph + y + 8;
       if (mod.heading) iy = b.para(x, iy + 12, clipText(mod.heading, 90), S.ui(12), w, { color: MUTED, lineHeight: 16 });
       if (mod.meta) { b.text(x + w, iy + 14, mod.meta, S.ui(10.5), { color: '#94A3B8', align: 'right' }); iy += 14; }
@@ -1463,7 +1463,7 @@
       list(chrome.sidebarItems).slice(0, 6).forEach((it, i) => {
         if (i >= 4 && sy + 80 > target) return;
         sy = clearOfBreaks(avoid, sy, 70);
-        b.photo(sx, sy, 74, 56, { seed: photo.hashOf(String(it)), subject: list(chrome.sidebarSubjects)[i] || photo.subjectFor(String(it), 'city'), colour: true });
+        b.photo(sx, sy, 74, 56, { about: String(it), seed: photo.hashOf(String(it)), subject: list(chrome.sidebarSubjects)[i] || photo.subjectFor(String(it), 'city'), colour: true });
         b.text(sx + 86, sy + 2, String(i + 1), { family: d.title, size: 15, weight: 800 }, { color: d.accent });
         const end = b.para(sx + 86, sy + 20, it, ui(13, 600), sw - 86, { color: INK, lineHeight: 18 });
         sy = Math.max(sy + 70, end + 18);

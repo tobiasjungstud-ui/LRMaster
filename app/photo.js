@@ -1343,6 +1343,52 @@
   function promptSetOk(p) {
     return !!p && Array.isArray(p.google) && p.google.filter(q => clean(q, 80).split(' ').length >= 2).length >= 2 && clean(p.chatgpt, 1200).length >= 40;
   }
+  /*
+   * A picture prompt belongs to ONE photo place: it must show what the caption
+   * printed under that place says (for a picture without a caption: what its
+   * headline is about). Claude writes the prompts and the captions in one
+   * answer but as separate fields, so a prompt may describe another scene of
+   * the text, or come in the wrong order — the teacher would get a manga book
+   * for a caption about a director at a festival. The app checks each prompt
+   * against its own caption; one that does not fit is never shown or copied.
+   */
+  const CAPTION_STOP = new Set(('a an the of in on at to for and or with by from as is are was were be been this that these those its it their his her our your into over under about after before during near '
+    + 'she he they we you i who whom whose which where when while what there here than then some many much more most very also just only still one two three four five first last next other others '
+    + 'has have had do does did can could will would may might must shall should not no yes all any each every both such own same so too up out off down again once here photo picture image shows showing seen').split(' '));
+  const stem = (w) => {
+    let x = String(w).toLowerCase().replace(/['\u2019]s$/, '');
+    if (x.length > 4) x = x.replace(/ies$/, 'y').replace(/(?:es|s)$/, '');
+    return x.slice(0, 5);
+  };
+  /** The content words of a caption: no small words, no names inside the sentence. */
+  function captionTerms(caption) {
+    const words = String(caption || '').replace(/[^\p{L}\p{N}\s'\u2019-]/gu, ' ').split(/\s+/).filter(Boolean);
+    const out = new Set();
+    words.forEach((w, i) => {
+      if (w.length < 3 || CAPTION_STOP.has(w.toLowerCase()) || /^\d+$/.test(w)) return;
+      if (i > 0 && /^\p{Lu}/u.test(w)) return;   // a name (Elena Wood, Best Animation) is not what a photo shows
+      out.add(stem(w));
+    });
+    return [...out];
+  }
+  const captionKey = (caption) => clean(caption, 300);
+  const stemsOf = (text) => new Set(String(text || '').replace(/[^\p{L}\p{N}\s'\u2019-]/gu, ' ').split(/[\s-]+/).filter(Boolean).map(stem));
+  /**
+   * Does a prompt set show what its photo place says? `caption`: the caption
+   * printed under the place; `heading`: for a picture without a caption, the
+   * headline it stands beside. A set the app itself bound to a caption
+   * (`for`) fits exactly that caption and no other.
+   */
+  function promptFits(set, caption, heading) {
+    if (!promptSetOk(set)) return false;
+    const cap = captionKey(caption);
+    if (typeof set.for === 'string') return set.for === cap;
+    const terms = captionTerms(cap || heading);
+    if (terms.length < 2) return true;   // nothing the prompt could be checked against
+    const need = cap ? Math.max(1, Math.ceil(terms.length / 3)) : 1;
+    const gpt = stemsOf(set.chatgpt), searches = stemsOf(set.google.join(' '));
+    return terms.filter(t => gpt.has(t)).length >= need && terms.some(t => searches.has(t));
+  }
   /**
    * The prompts for one photo place. `ctx`: role (lead, second, extra), the
    * page's chrome, the material's content, the picture subject, the medium.
@@ -1351,7 +1397,9 @@
     const c = (ctx && ctx.chrome) || {};
     const role = ctx.role || 'extra';
     const given = Array.isArray(c.photoPrompts) ? c.photoPrompts[ROLE_INDEX[role]] : null;
-    if (promptSetOk(given)) {
+    // the caption under this place: what its photo must show
+    const caption = ctx.caption != null ? ctx.caption : role === 'lead' ? (c.photoCaption || '') : '';
+    if (promptFits(given, caption, ctx.heading)) {
       return { google: given.google.map(q => clean(q, 80)).filter(q => q.split(' ').length >= 2).slice(0, 3), chatgpt: clean(given.chatgpt, 1200), from: 'claude' };
     }
     const subject = isSubject(ctx.subject) ? ctx.subject : 'city';
@@ -1359,7 +1407,7 @@
     const sceneWords = keywords(scene, 4);
     const fromText = role === 'lead'
       ? keywords(c.photoQuery || '', 5).length >= 2 ? keywords(c.photoQuery, 5) : keywords([ctx.content && ctx.content.title, c.photoCaption].filter(Boolean).join(' '), 5)
-      : role === 'second' ? keywords(ctx.caption || '', 5) : [];
+      : role === 'second' ? keywords(caption, 5) : keywords(ctx.heading || '', 5);
     const print = ctx.medium === 'print';
     const style = print ? 'documentary news' : 'editorial';
     const google = [];
@@ -1368,7 +1416,7 @@
     add(sceneWords.slice(0, 3).concat(['photo']));
     add([sceneWords[0] || subject, print ? 'documentary photo' : 'everyday life', 'people']);
     add([subject, 'photography']);
-    const what = clean(role === 'lead' ? (c.photoCaption || scene) : role === 'second' ? (ctx.caption || scene) : scene, 220).replace(/\.$/, '');
+    const what = clean(caption || (ctx.heading ? scene + ', for the item "' + ctx.heading + '"' : scene), 220).replace(/\.$/, '');
     const chatgpt = `Photorealistic ${style} photograph, as if taken with a real 35 mm camera at eye level: ${what}. `
       + 'Natural available light, realistic colours and textures, shallow depth of field, slight film grain, candid and unposed. '
       + `Composition for a ${print ? 'newspaper' : 'magazine or news website'} ${role === 'lead' ? 'lead picture' : 'picture'}, landscape format 3:2. `
@@ -1392,7 +1440,7 @@
       `Please create ${n === 1 ? 'one photorealistic photo' : n + ' separate photorealistic photos'} for a ${print ? 'newspaper page' : 'magazine or news website'}${n > 1 ? ', one image after another, in exactly this order' : ''}.`,
       `Same style for ${n > 1 ? 'all of them' : 'it'}: ${print ? 'documentary news photography' : 'editorial photography'}, as if taken with a real 35 mm camera at eye level; natural light, realistic colours and textures, slight film grain, candid; landscape format 3:2. No text, no captions, no logos, no watermarks, no recognisable real people or brands.`,
       '',
-      list.map((p, i) => `Photo ${i + 1} (${ROLE_NAME[p.role] || 'a picture on the page'}): ${p.set.chatgpt}`).join('\n\n'),
+      list.map((p, i) => `Photo ${i + 1} (${ROLE_NAME[p.role] || 'a picture on the page'}): ${p.set.chatgpt}${p.caption ? ` It must show what its caption on the page says: "${captionKey(p.caption)}"` : ''}`).join('\n\n'),
       '',
       n > 1 ? `Generate Photo 1 first, then Photo 2${n > 2 ? ', then Photo 3' : ''} — each as its own image, not as a collage.` : 'Generate it as a single image, not as a collage.',
     ].join('\n');
@@ -1414,7 +1462,7 @@
     SUBJECTS, SCENES, subjectFor, subjectHints, isSubject, draw, hashOf, LIGHTS, SKIN, HAIR, CLOTHES,
     useLibrary, photosFor, pick, byId, preload, imageFor, library: () => LIBRARY.slice(),
     isOwnSource, loadSrc, imageForSrc, cropWindow,
-    promptsFor, promptSetOk, batchPrompt, PROJECT_INSTRUCTIONS, ROLE_INDEX,
+    promptsFor, promptSetOk, promptFits, captionTerms, captionKey, batchPrompt, PROJECT_INSTRUCTIONS, ROLE_INDEX,
     webQueryFor, webPlan, webLicenseOk, commonsCandidates, openverseCandidates, findWebPicture, decodeImage, isPending, sourceCaption,
     PENDING_TONE, webBlockedNow: () => webBlocked, resetWebBlocked: () => { webBlocked = false; },
   };

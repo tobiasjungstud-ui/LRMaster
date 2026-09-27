@@ -137,9 +137,17 @@ function claudeStub({ scenario, text, xss, worksheet }) {
       return text;
     }
     if (kind === 'photoPrompts') {
-      const n = (s.match(/^\d\. /gm) || []).length || 1;
-      return { photoPrompts: Array.from({ length: n }, (_, i) => ({ google: ['claude search ' + (i + 1) + ' a', 'claude search ' + (i + 1) + ' b', 'claude search ' + (i + 1) + ' c'],
-        chatgpt: 'Claude prompt ' + (i + 1) + ': a photorealistic photo of an English market town square on a grey Saturday morning, traders at their stalls, 35 mm, eye level, landscape 3:2, no text.' })) };
+      const lines = s.match(/^\d\. .*$/gm) || ['1. '];
+      // as Claude does: each prompt shows the caption of its place, in its words;
+      // __photoPromptsWrong: a model that keeps describing another scene
+      return { photoPrompts: lines.map((line, i) => {
+        const cap = window.__photoPromptsWrong ? '' : ((line.match(/the caption printed under it: "(.*)" — the photo must show exactly this/) || [])[1] || '');
+        const words = cap.toLowerCase().replace(/[^a-z ]/g, ' ').replace(/\s+/g, ' ').trim();
+        const scene = window.__photoPromptsWrong ? 'an open black-and-white manga book on a wooden desk' : words ? words : 'an English market town square on a grey Saturday morning, traders at their stalls';
+        const tail = window.__photoPromptsWrong ? ' manga book' : words ? ' ' + words.split(' ').slice(0, 4).join(' ') : '';
+        return { google: ['claude search ' + (i + 1) + ' a' + tail, 'claude search ' + (i + 1) + ' b' + tail, 'claude search ' + (i + 1) + ' c' + tail],
+          chatgpt: 'Claude prompt ' + (i + 1) + ': a photorealistic photo of ' + scene + ', 35 mm, eye level, landscape 3:2, no text.' };
+      }) };
     }
     if (kind === 'layout') {
       if (scenario === 'xss') return { url: xss, siteName: xss, navItems: [xss], actions: [{ label: xss, count: xss }] };
@@ -923,6 +931,58 @@ const SETTINGS = (extra) => `(() => {
     await page.close();
   }
 
+  console.log('\nBrowser audit: every picture prompt shows the caption under its own place (2.4, 2.8, 2.11)');
+  {
+    // the case a teacher met: the layout brings a prompt for the second picture
+    // that describes another scene of the text (a manga book) while the caption
+    // under it is about the director at the festival
+    const CAP = 'Director Elena Wood at the festival, where she accepted the Best Animation award.';
+    const MANGA = { google: ['manga book open desk', 'black and white comic pages', 'reading manga at home'], chatgpt: 'A photorealistic close-up photo of an open black-and-white manga book on a wooden desk, soft daylight from a side window, shallow depth of field on the printed panels, shot on a 50mm lens, editorial magazine still-life style, landscape 3:2, no text, no logos, no watermarks, no recognisable real people' };
+    const LEAD = { google: ['city market square stalls', 'market square people', 'saturday market town'], chatgpt: 'A photorealistic photo of a market square with stalls and people, as the caption says, 35 mm, eye level, landscape 3:2, no text.' };
+    const layoutExtra = { photoCaption: 'People at the stalls on the market square.', composition: { lead: 'wide', columns: 3, figure: { after: 1, subject: 'people', caption: CAP, size: 'column' } }, photoPrompts: [LEAD, MANGA, {}] };
+    const grab = async (page) => page.evaluate(async () => {
+      const { ui, photo } = window.LR;
+      const m = ui.app.material;
+      const places = ui.photoPlaces(m);
+      window.__copied = null;
+      const bar = document.querySelector('#out-student .photo-tools');
+      if (bar) bar.querySelector('[data-pt="batch"]').click();
+      await new Promise(r => setTimeout(r, 150));
+      const cards = Array.from(document.querySelectorAll('#out-student .photo-prompts .pp-gpt')).map(p => p.textContent);
+      return { calls: window.__calls.filter(c => c === 'photoPrompts').length, places: places.map(p => ({ role: p.role, caption: p.caption, from: p.set.from, chatgpt: p.set.chatgpt, fits: photo.promptFits(p.set, p.caption, p.heading), bound: (m.layout.chrome.photoPrompts[photo.ROLE_INDEX[p.role]] || {}).for })),
+        copied: window.__copied || '', cards };
+    });
+    const clip = (page) => page.evaluate(() => { try { Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: async (t) => { window.__copied = t; } } }); } catch (e) { /* keep */ } });
+    {
+      const { page, errors } = await open({ scenario: 'ok', layoutExtra });
+      await clip(page);
+      await run(page, { textType: 'News Article', layoutMedium: 'paper', wordCount: 450 });
+      await page.waitForTimeout(300);
+      const a = await grab(page);
+      const second = a.places.find(p => p.role === 'second') || {};
+      check('the second picture has its place and its caption from the layout', second.caption === CAP, JSON.stringify(a.places));
+      check('a prompt for another scene of the text is never shown or copied: Claude is asked again and writes it for the caption', a.calls >= 1 && second.from === 'claude' && /festival/.test(second.chatgpt) && !/manga/i.test(second.chatgpt) && !/manga/i.test(a.copied) && !a.cards.some(c => /manga/i.test(c)), JSON.stringify({ calls: a.calls, second, copied: a.copied.slice(0, 400) }));
+      check('every picture prompt on the page fits the caption under its own place, and is bound to it', a.places.every(p => p.fits) && second.bound === CAP, JSON.stringify(a.places));
+      check('ChatGPT gets each photo together with its caption', a.copied.includes('Photo 2 (the second picture inside the text): ') && a.copied.includes('It must show what its caption on the page says: "' + CAP + '"'), a.copied.slice(0, 600));
+      check('the picture prompt check raises no page error', errors.length === 0, errors[0]);
+      await page.close();
+    }
+    {
+      // Claude keeps describing another scene: the app builds the prompt from the caption itself
+      const { page, errors } = await open({ scenario: 'ok', layoutExtra });
+      await page.addInitScript(() => { window.__photoPromptsWrong = true; });
+      await page.evaluate(() => { window.__photoPromptsWrong = true; });
+      await clip(page);
+      await run(page, { textType: 'News Article', layoutMedium: 'paper', wordCount: 450 });
+      await page.waitForTimeout(300);
+      const b = await grab(page);
+      const second = b.places.find(p => p.role === 'second') || {};
+      check('when the model keeps writing a prompt for another scene, the prompt is built from the caption — never the wrong picture', second.from === 'app' && second.chatgpt.includes('at the festival, where she accepted the Best Animation award') && !/manga/i.test(b.copied) && !b.cards.some(c => /manga/i.test(c)), JSON.stringify({ second, copied: b.copied.slice(0, 400) }));
+      check('a wrong prompt from the model raises no page error', errors.length === 0, errors[0]);
+      await page.close();
+    }
+  }
+
   console.log('\nBrowser audit: all pictures with ChatGPT in one go (2.4, 2.11)');
   {
     const { page, errors } = await open({ scenario: 'ok' });
@@ -940,7 +1000,7 @@ const SETTINGS = (extra) => `(() => {
       return { calls: window.__calls.filter(c => c === 'photoPrompts').length, stored: (m.layout.chrome.photoPrompts || []).filter(p => p && p.chatgpt).length, places: places.map(p => ({ n: p.n, role: p.role, from: p.set.from })),
         copied: window.__copied, bar: !!bar, cardLinks, toolsInExport: /photo-tools|pp-google/.test(window.LR.render.renderStudentHTML(m)) };
     });
-    check('the picture prompts come from the language model: asked for when the layout did not bring them', a.calls >= 1 && a.places.length >= 1 && a.places.every(p => p.from === 'claude') && a.stored >= a.places.length && a.cardLinks.every(q => /^claude search \d [abc]$/.test(q)), JSON.stringify(a));
+    check('the picture prompts come from the language model: asked for when the layout did not bring them', a.calls >= 1 && a.places.length >= 1 && a.places.every(p => p.from === 'claude') && a.stored >= a.places.length && a.cardLinks.every(q => /^claude search \d [abc]( |$)/.test(q)), JSON.stringify(a));
     check('one click copies all pictures for ChatGPT, numbered like the photo places, in one style', a.bar && /^Please create/.test(a.copied || '') && a.places.every(p => (a.copied || '').includes('Photo ' + p.n + ' (') && (a.copied || '').includes('Claude prompt ' + p.n)) && /35 mm camera/.test(a.copied) && /3:2/.test(a.copied) && /No text/.test(a.copied), JSON.stringify(a.copied));
     check('the photo bar and the prompts are on the screen only, not in the worksheet', !a.toolsInExport, JSON.stringify(a));
     // three saved pictures dropped together on the page: in order, checked, taken over

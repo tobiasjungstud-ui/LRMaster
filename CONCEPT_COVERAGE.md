@@ -2,7 +2,7 @@
 
 Erzeugt von `npm run coverage`. Jede Zeile ist eine Anforderung aus `docs/Konzept_Listening_Reading_Creator.md`, gebunden an die Stelle im Code, die sie umsetzt, und das Ergebnis der automatischen Prüfung (`npm test`).
 
-**Ergebnis: 340 von 340 Anforderungen bestanden.**
+**Ergebnis: 341 von 341 Anforderungen bestanden.**
 
 Prüfarten: **setting** – Steuerelement vorhanden und Änderung des Werts verändert nachweislich den Prompt an Claude · **function** – Verhalten wird mit echten Eingaben ausgeführt und verglichen · **rule** – Qualitätsregel existiert als Messung oder Claude-Review-Kriterium · **render** – Ausgabe wird auf einer Fixture gerendert und inhaltlich geprüft · **ui** – Navigations-/Strukturelement existiert.
 
@@ -480,7 +480,7 @@ Prüfarten: **setting** – Steuerelement vorhanden und Änderung des Werts ver�
 | ✅ | `S36.repair` | Beanstandete Post-Task wird gezielt neu erstellt, Fragen und Pre-Task bleiben unverändert | function | Funktion (siehe Check im Manifest) |
 | ✅ | `S36.output` | Post-Task steht nach den Fragen auf dem Arbeitsblatt (Bildschirm, Word, Markdown) mit Sozialform, Arbeitsweise, Zeit, Produkt und Kriterien; Lehrerversion mit Übersicht | render | render.js (renderStudentHTML / renderTeacherHTML) |
 
-## §37 Authentisches Layout (Screenshot des Mediums) (32/32)
+## §37 Authentisches Layout (Screenshot des Mediums) (33/33)
 
 | Status | ID | Anforderung | Art | Umsetzung |
 |---|---|---|---|---|
@@ -508,6 +508,7 @@ Prüfarten: **setting** – Steuerelement vorhanden und Änderung des Werts ver�
 | ✅ | `S37.no_overlap` | Kein Element läuft in ein anderes: jede Oberflächen-Zeile (Datumszeile, Bildnachweis, Navigation, Modultexte …) passt in ihren Platz – zu lange Angaben werden mit „…“ gekürzt, nie der Text des Materials oder ein wörtliches Zitat; nichts ragt über Seite oder Kasten | function | Funktion (siehe Check im Manifest) |
 | ✅ | `S37.photo_prompts` | Höchstens drei Fotos pro Artikel (Aufmacher, zweites Bild, ein weiteres); in jedem Fotoplatz ohne echtes Foto stehen drei allgemeine Google-Bildsuchen und ein ChatGPT-Prompt für ein fotorealistisches Kamerafoto – nur am Bildschirm, nie im Druck oder Export | function | Funktion (siehe Check im Manifest) |
 | ✅ | `S37.photo_batch` | Alle Bilder eines Artikels auf einmal mit ChatGPT: die Bild-Prompts schreibt das Sprachmodell (Claude) – fehlen sie nach dem Layout, fragt die Pipeline eigens danach; ein Klick kopiert alle Fotos nummeriert in eine Nachricht für ChatGPT; die gespeicherten Bilder werden zusammen hineingezogen oder ausgewählt und kommen der Reihe nach in Foto 1, 2, 3 (mit Kontrolle); dazu der Anweisungstext für ein ChatGPT-Projekt | function | Funktion (siehe Check im Manifest) |
+| ✅ | `S37.photo_caption` | Jeder Bild-Prompt gehört zu genau einem Fotoplatz: er zeigt, was die Bildunterschrift unter diesem Platz sagt – ein Prompt, den Claude für eine andere Szene des Textes oder in verschobener Reihenfolge geschrieben hat, wird nie angezeigt oder kopiert; die Pipeline fragt dann neu, und bis dahin baut die App den Prompt aus der Bildunterschrift selbst | function | Funktion (siehe Check im Manifest) |
 | ✅ | `S37.press_pages` | Die Zeitung ist eine echte A4-Seite: ein längerer Artikel läuft auf einer Folgeseite weiter („Continued on page 2“, Fortsetzungskopf, Seitenzahlen) – nie kleinere Schrift, nie gekürzt; jede Seite ist im Blatt und im Word-Export eine eigene Seite; Silbentrennung im Blocksatz | function | Funktion (siehe Check im Manifest) |
 | ✅ | `S37.page_capacity` | Seitenlimit: wie viele Wörter auf 1–4 A4-Seiten passen, hängt vom Medium ab (Zeitung, Buch, Tagebuch in Handschrift, Screenshot, Handy-Chat) – gemessen mit dem Layout selbst; eine Wortzahl wird nie über das hinaus geplant, was auf die erlaubten Seiten passt, und der Plan sagt es | function | Funktion (siehe Check im Manifest) |
 | ✅ | `S37.page_breaks` | Jedes Medium kommt auf A4-Seiten: Papier (Buch, Tagebuch, Bericht) als einzelne Blätter mit Kopf, Seitenzahl und Linierung auf jedem Blatt, Bildschirm (Webseite, Mail, Forum) als Screenshot-Folge, der Chat als Handy-Bildschirme; kein Seitenrand schneidet je eine Zeile, ein Bild oder einen Kasten, keine Zwischenüberschrift steht am Seitenfuss, kein Absatz lässt eine einzelne Zeile allein | function | Funktion (siehe Check im Manifest) |

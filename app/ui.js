@@ -851,7 +851,8 @@
         try {
           const places = photoPlaces(material);
           const have = material.layout.chrome.photoPrompts || [];
-          if (places.some(p => !window.LR.photo.promptSetOk(have[window.LR.photo.ROLE_INDEX[p.role]]))) {
+          // missing, or written for another picture than the caption under its place says
+          if (places.some(p => !window.LR.photo.promptFits(have[window.LR.photo.ROLE_INDEX[p.role]], p.caption, p.heading))) {
             progress('done', 'running', 'Claude schreibt die Bild-Prompts …');
             await ensurePhotoPrompts(material, ctl.signal);
           }
@@ -1799,9 +1800,11 @@
     for (const b of model.blocks) if (b.type === 'photo' && !b.round && b.picRole && !byslot.has(b.slot)) byslot.set(b.slot, b);
     const places = [...byslot.values()].sort((x, y) => (PHOTO_ROLE_ORDER[x.picRole] - PHOTO_ROLE_ORDER[y.picRole]) || (y.w * y.h - x.w * x.h)).slice(0, 3);
     return places.map((b, i) => {
+      // the caption printed under the place is what its photo must show
       const caption = b.picRole === 'lead' ? (m.layout.chrome.photoCaption || '') : b.picRole === 'second' ? ((comp.figure && comp.figure.caption) || '') : '';
-      const set = P.promptsFor({ role: b.picRole, chrome: m.layout.chrome, content: m.content, subject: b.subject, medium, caption });
-      return { n: i + 1, slot: b.slot, role: b.picRole, subject: b.subject, caption, own: !!b.own, set };
+      const heading = caption ? '' : String(b.about || '');
+      const set = P.promptsFor({ role: b.picRole, chrome: m.layout.chrome, content: m.content, subject: b.subject, medium, caption, heading });
+      return { n: i + 1, slot: b.slot, role: b.picRole, subject: b.subject, caption, heading, own: !!b.own, set };
     });
   }
 
@@ -1816,7 +1819,7 @@
     const places = photoPlaces(m);
     if (!places.length) return false;
     const have = Array.isArray(m.layout.chrome.photoPrompts) ? m.layout.chrome.photoPrompts : [];
-    const missing = places.filter(p => !P.promptSetOk(have[P.ROLE_INDEX[p.role]]));
+    const missing = places.filter(p => !P.promptFits(have[P.ROLE_INDEX[p.role]], p.caption, p.heading));
     if (!missing.length) return false;
     const medium = quality.mediumOf(m);
     const prompt = prompts.buildPhotoPromptsPrompt(m.settings || {}, m.content, m.layout.chrome, places, m.layout.label, medium);
@@ -1826,10 +1829,15 @@
     const out = have.slice(0, 3);
     while (out.length < 3) out.push({ google: [], chatgpt: '' });
     places.forEach((p, i) => {
+      const k = P.ROLE_INDEX[p.role];
       const g = got[i];
-      if (!g || typeof g !== 'object') return;
-      const set = { google: (Array.isArray(g.google) ? g.google : []).map(q => str(q, 80)).filter(q => q.split(' ').length >= 2).slice(0, 3), chatgpt: str(g.chatgpt, 1200) };
-      if (P.promptSetOk(set)) out[P.ROLE_INDEX[p.role]] = set;
+      const set = g && typeof g === 'object'
+        ? { google: (Array.isArray(g.google) ? g.google : []).map(q => str(q, 80)).filter(q => q.split(' ').length >= 2).slice(0, 3), chatgpt: str(g.chatgpt, 1200) } : null;
+      // kept only when it shows what the caption under its place says, and
+      // then bound to that caption; otherwise the app builds the prompt from
+      // the caption itself — never a prompt for another picture
+      if (set && P.promptFits(set, p.caption, p.heading)) out[k] = Object.assign(set, { for: P.captionKey(p.caption) });
+      else if (!P.promptFits(out[k], p.caption, p.heading)) out[k] = { google: [], chatgpt: '' };
     });
     m.layout.chrome = Object.assign({}, m.layout.chrome, { photoPrompts: out });
     if (m.prompts) m.prompts.photoPrompts = prompt;

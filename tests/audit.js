@@ -1775,6 +1775,65 @@ test('2.4', 'the crop of a picture: size (zoom), orientation (a quarter turn) an
   }
 });
 
+test('2.4 2.8', 'a picture prompt always shows what the caption under its own place says — a prompt written for another scene of the text is never used (the manga book under a caption about a director at a festival)', () => {
+  const P = photo;
+  const G = (a, b, c) => [a, b, c];
+  const pairs=[
+   ['Director Elena Wood at the festival, where she accepted the Best Animation award.',
+    {google:G('film festival award ceremony','director on stage award','animation festival audience'),chatgpt:'A photorealistic photo of a woman film director on the stage of a film festival, holding an award trophy while the audience applauds, warm stage lights, 35 mm at eye level, shallow depth of field, editorial style, landscape 3:2, no text, no logos.'},
+    {google:G('manga book open desk','black and white comic pages','reading manga at home'),chatgpt:'A photorealistic close-up photo of an open black-and-white manga book on a wooden desk, soft daylight from a side window, shallow depth of field on the printed panels, shot on a 50mm lens, editorial magazine still-life style, landscape 3:2, no text, no logos, no watermarks, no recognisable real people'}],
+   ['Pupils cycle to school along the river path in Zurich.',
+    {google:G('children cycling to school','river path bicycles','school bike commute'),chatgpt:'A photorealistic photo of teenage pupils riding bicycles along a riverside path on their way to school, early morning light, backpacks, 35 mm at eye level, documentary style, landscape 3:2, no text, no logos.'},
+    {google:G('school classroom desks','teacher at whiteboard','pupils in lesson'),chatgpt:'A photorealistic photo of a bright classroom with pupils at their desks listening to a teacher at the whiteboard, morning light through the windows, 35 mm, eye level, landscape 3:2, no text.'}],
+   ['Volunteers clear plastic rubbish from the beach after the storm.',
+    {google:G('beach clean up volunteers','plastic waste on beach','people collecting litter shore'),chatgpt:'A photorealistic photo of volunteers in gloves collecting plastic rubbish on a sandy beach after a storm, grey sky, bin bags, 35 mm at eye level, documentary news photography, landscape 3:2, no text, no logos.'},
+    {google:G('storm waves coast','dark clouds over sea','rough sea harbour'),chatgpt:'A photorealistic photo of huge storm waves crashing against a harbour wall under dark clouds, spray in the air, 35 mm, eye level, documentary style, landscape 3:2, no text.'}],
+   ['Stalls on the market square on a Saturday morning.',
+    {google:G('market square stalls','farmers market england','saturday market town'),chatgpt:'A photorealistic photo of a busy market square on a Saturday morning, traders at their stalls with fruit and vegetables, 35 mm at eye level, natural light, landscape 3:2, no text.'},
+    {google:G('town hall meeting','council chamber','local politicians debate'),chatgpt:'A photorealistic photo of a council meeting in a wood-panelled town hall chamber, councillors at a long table, 35 mm at eye level, landscape 3:2, no text.'}],
+   ['A nurse checks an elderly patient\'s blood pressure at home.',
+    {google:G('nurse home visit elderly','blood pressure check','care worker patient home'),chatgpt:'A photorealistic photo of a nurse measuring the blood pressure of an elderly man in his living room, soft window light, 35 mm at eye level, documentary style, landscape 3:2, no text, no recognisable real people.'},
+    {google:G('hospital corridor','empty hospital beds','ward at night'),chatgpt:'A photorealistic photo of a quiet hospital corridor at night with empty beds along the wall, cool light, 35 mm at eye level, landscape 3:2, no text.'}],
+   ['Fans wait outside the stadium before the final.',
+    {google:G('football fans outside stadium','crowd before match','supporters waiting stadium'),chatgpt:'A photorealistic photo of football fans in scarves waiting outside a stadium before a final, evening light, crowd, 35 mm at eye level, documentary style, landscape 3:2, no text, no logos.'},
+    {google:G('football player scoring','goalkeeper diving','match action shot'),chatgpt:'A photorealistic photo of a football player scoring a goal while the goalkeeper dives, floodlights, telephoto, landscape 3:2, no text, no logos.'}],
+   ['Young people queue for the new phone outside a shop in London.',
+    {google:G('queue outside phone shop','people waiting new smartphone','london shop queue'),chatgpt:'A photorealistic photo of young people standing in a long queue outside a phone shop on a London street, early morning, 35 mm at eye level, editorial style, landscape 3:2, no text, no logos.'},
+    {google:G('teenager using smartphone bed','phone screen at night','scrolling social media'),chatgpt:'A photorealistic photo of a teenager lying on a bed scrolling on a smartphone at night, the screen lighting the face, 35 mm, landscape 3:2, no text.'}],
+   ['The old library reopened after two years of work.',
+    {google:G('old library reading room','historic library interior','people in library'),chatgpt:'A photorealistic photo of visitors in the reading room of an old library that has just reopened after renovation work, tall shelves, daylight from high windows, 35 mm at eye level, landscape 3:2, no text.'},
+    {google:G('construction workers site','scaffolding building','builders at work'),chatgpt:'A photorealistic photo of construction workers on scaffolding at a building site, midday sun, 35 mm, landscape 3:2, no text.'}],
+  ];
+  for (const [cap, good, bad] of pairs) {
+    assert.ok(P.promptFits(good, cap), 'a prompt that shows its caption is refused: ' + cap);
+    assert.ok(!P.promptFits(bad, cap), 'a prompt for another scene passes for: ' + cap);
+    // what the page shows and copies: Claude's prompt when it fits, else one built from the caption itself
+    for (const role of ['lead', 'second']) {
+      const chrome = { photoCaption: role === 'lead' ? cap : 'x', photoPrompts: role === 'lead' ? [bad, {}, {}] : [{}, bad, {}] };
+      const r = P.promptsFor({ role, chrome, caption: role === 'lead' ? undefined : cap, subject: 'people', medium: 'print' });
+      assert.equal(r.from, 'app', role + ': the prompt for another scene reaches the page');
+      assert.ok(r.chatgpt.includes(cap.replace(/\.$/, '')), role + ': the prompt built by the app does not show the caption');
+      assert.ok(P.promptFits(r, cap), role + ": the app's own prompt does not fit its caption");
+      const ok = P.promptsFor({ role, chrome: Object.assign({}, chrome, { photoPrompts: role === 'lead' ? [good, {}, {}] : [{}, good, {}] }), caption: role === 'lead' ? undefined : cap, subject: 'people', medium: 'print' });
+      assert.equal(ok.from, 'claude', role + ': a fitting prompt from Claude is not used');
+    }
+  }
+  // bound by the app to one caption: fits that caption and no other (a changed caption asks again)
+  const bound = Object.assign({}, pairs[0][1], { for: P.captionKey(pairs[0][0]) });
+  assert.ok(P.promptFits(bound, pairs[0][0]) && !P.promptFits(bound, 'Director Elena Wood talks to pupils in a classroom.'));
+  // a place without a caption: the headline it stands beside, and one shared word is enough
+  assert.ok(P.promptFits(pairs[3][1], '', 'Saturday market returns to the square') && !P.promptFits(pairs[3][2], '', 'Saturday market returns to the square'));
+  // ChatGPT gets the caption with each photo, so the picture and the caption on the page are one
+  const batch = P.batchPrompt([{ role: 'lead', caption: '', set: pairs[3][1] }, { role: 'second', caption: pairs[0][0], set: pairs[0][1] }], 'print');
+  assert.ok(batch.includes('Photo 2 (the second picture inside the text): ' + pairs[0][1].chatgpt + ' It must show what its caption on the page says: "' + pairs[0][0] + '"'));
+  // Claude is told: each prompt shows its own caption, a missing place stays empty so the order never shifts
+  const req = prompts.buildPhotoPromptsPrompt({ textType: 'News Article' }, { title: 'T', paragraphs: ['One.', 'Two.'] }, { photoCaption: 'Stalls on the market square.' }, [{ role: 'lead' }, { role: 'second', caption: pairs[0][0] }], 'Zeitung', 'print');
+  assert.ok(req.includes('the caption printed under it: "' + pairs[0][0] + '" — the photo must show exactly this') && /Each prompt belongs to its place/.test(req) && /Never describe another scene/.test(req));
+  const spec = mock.chromeSpec(fixture.material({ textType: 'News Article', authenticLayout: true, layoutMedium: 'paper' }, 'reading'));
+  const field = (spec.fields.find(f => f[0] === 'photoPrompts') || [])[1] || '';
+  assert.ok(/shows exactly what the caption printed under ITS picture says/.test(field) && /stays an empty object \{\}, so the order never shifts/.test(field), field);
+});
+
 test('2.4', "a teacher's own crop is stored sanely: the zoom never shows less than the box needs, the turn is always a quarter, an untouched picture keeps the plain default crop", () => {
   const own = (extra) => mock.ownPicture({ x: Object.assign({ src: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=' }, extra) }, 'x');
   assert.equal(own({}).zoom, 1); assert.equal(own({}).rotate, 0);
