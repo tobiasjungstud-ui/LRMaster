@@ -2431,5 +2431,64 @@
         'changing a setting does not mark the template as adjusted');
     } });
 
+  /*
+   * §39 Bildausschnitt: the box a picture prints at is often not the shape of
+   * the photograph itself — a wide lead picture out of a portrait phone
+   * photo, a square thumbnail out of a landscape shot. The app already
+   * cropped it automatically; now the teacher can choose which part is used:
+   * how far zoomed in, turned by a quarter, and which point it is centred on
+   * (Auftragserweiterung, "Symbol oben rechts, Grösse/Orientierung/Position").
+   */
+  add({ id: 'S39.geometry', section: 39, title: 'Der Ausschnitt (`photo.cropWindow`) ist reine Geometrie: nie verzerrt, immer innerhalb des Fotos, die Box (der Platz, an dem das Bild gedruckt wird) behält ihre eigene Form und Grösse', kind: 'function',
+    check(env) {
+      const cw = env.photo.cropWindow;
+      const problems = [];
+      for (const [iw, ih] of [[400, 200], [77, 233]]) for (const [bw, bh] of [[100, 100], [90, 60]]) for (const rot of [0, 90, 180, 270]) for (const zoom of [1, 3]) {
+        const c = cw(iw, ih, bw, bh, [0.3, 0.7], zoom, rot);
+        if (Math.abs(c.sw / c.sh - c.dw / c.dh) > 0.01) problems.push(`${iw}x${ih} box ${bw}x${bh} rot${rot} zoom${zoom}: verzerrt`);
+        if (!((c.dw === bw && c.dh === bh) || (c.dw === bh && c.dh === bw))) problems.push('die Box ändert ihre Grösse');
+        if (c.sx < -0.01 || c.sy < -0.01 || c.sx + c.sw > iw + 0.01 || c.sy + c.sh > ih + 0.01) problems.push('der Ausschnitt läuft über das Foto hinaus');
+      }
+      if (![0, 90, 180, 270].includes(cw(300, 300, 80, 80, [0.5, 0.5], 1, 45).rotate)) problems.push('eine schräge Drehung wird nicht auf ein Viertel gerundet');
+      return ok(!problems.length, problems.slice(0, 3).join(' | '));
+    } });
+  add({ id: 'S39.storage', section: 39, title: 'Grösse (Zoom, mindestens 1, höchstens 4), Drehung (ein Vielfaches von 90°) und Position (Fokuspunkt) werden geklemmt gespeichert; ein unangetastetes Bild bleibt beim einfachen, mittigen Ausschnitt', kind: 'function',
+    check(env) {
+      const own = (extra) => env.mock.ownPicture({ x: Object.assign({ src: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=' }, extra) }, 'x');
+      const problems = [];
+      if (own({}).zoom !== 1 || own({}).rotate !== 0) problems.push('kein Ausschnitt gewählt, aber ein Standardwert wird gespeichert');
+      if (own({ zoom: 0.1 }).zoom !== 1) problems.push('ein Zoom unter 1 liesse die Box halb leer');
+      if (own({ zoom: 50 }).zoom !== 4) problems.push('der Zoom ist nicht gedeckelt');
+      if (own({ rotate: 91 }).rotate !== 90 || own({ rotate: -90 }).rotate !== 270) problems.push('die Drehung wird nicht auf ein Vielfaches von 90° gerundet');
+      const m = env.fixture.material({ textType: 'Blog Post', authenticLayout: true }, 'reading');
+      const slot = m.layout.chrome.photoSubject + ':' + env.mock.hashOf(m.content.title || 'lead');
+      m.layout.images = { [slot]: { src: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=', focus: [0.2, 0.8], zoom: 2.4, rotate: 180 } };
+      const block = env.mock.buildModel(m, m.layout.chrome).blocks.find(b => b.type === 'photo' && b.own);
+      if (!block || block.zoom !== 2.4 || block.rotate !== 180 || !block.focus || block.focus[0] !== 0.2) problems.push('das gezeichnete Bild trägt den gewählten Ausschnitt nicht');
+      if (env.mock.validate(env.mock.buildModel(m, m.layout.chrome)).length) problems.push('das Bild mit Ausschnitt besteht die Strukturprüfung nicht');
+      return ok(!problems.length, problems.slice(0, 3).join(' | '));
+    } });
+  add({ id: 'S39.ui', section: 39, title: 'Ein Symbol oben rechts an jedem eigenen Bild öffnet den Ausschnitt-Dialog: im Bild ziehen verschiebt die Position, ein Regler ändert die Grösse, zwei Knöpfe drehen um 90° – nur am Bildschirm, nie im Druck oder Export; kein Symbol ohne eigenes Bild oder auf einem runden Porträt', kind: 'function',
+    check(env) {
+      const src = env.uiSource || '';
+      const problems = [];
+      // the block the icon's own gate reads (b.own, b.round) is the very
+      // block the layout draws — checked against the real thing, not a guess
+      const m = env.fixture.material({ textType: 'Blog Post', authenticLayout: true }, 'reading');
+      const slot = m.layout.chrome.photoSubject + ':' + env.mock.hashOf(m.content.title || 'lead');
+      m.layout.images = { [slot]: { src: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=', credit: 'x' } };
+      const block = env.mock.buildModel(m, m.layout.chrome).blocks.find(b => b.type === 'photo' && b.own);
+      if (!block || block.own !== 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=' || block.round) problems.push('das Bild, an dem das Symbol erscheinen soll, ist nicht das eigene, nicht-runde Bild des Materials');
+      if (!src) return ok(!problems.length, problems.join(' | ') || 'ui.js nicht geladen – Browser-Audit deckt das interaktive Verhalten ab');
+      if (!/photo-crop/.test(src) || !/openCropEditor/.test(src)) problems.push('kein Symbol öffnet den Ausschnitt-Dialog');
+      if (!/b\.own && !b\.round && !\(b\.w/.test(src)) problems.push('das Symbol erscheint auch ohne eigenes Bild oder auf einem runden Porträt');
+      if (!/pointerdown/.test(src) || !/pointermove/.test(src)) problems.push('die Position lässt sich nicht ziehen');
+      if (!/type="range"/.test(src) || !/state\.zoom/.test(src)) problems.push('kein Regler für die Grösse');
+      if (!(/rotate-left/.test(src) && /rotate-right/.test(src))) problems.push('keine Knöpfe zum Drehen');
+      if (!/setPictureCrop/.test(src)) problems.push('der gewählte Ausschnitt wird nicht gespeichert');
+      if (!/ArrowLeft.*ArrowRight.*ArrowUp.*ArrowDown/.test(src.replace(/\s+/g, ' '))) problems.push('der Ausschnitt lässt sich nicht mit der Tastatur verschieben');
+      return ok(!problems.length, problems.slice(0, 3).join(' | '));
+    } });
+
   return { REQUIREMENTS: M };
 });

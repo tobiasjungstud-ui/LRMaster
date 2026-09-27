@@ -1490,6 +1490,21 @@
       btn.addEventListener('dragleave', () => btn.classList.remove('is-drop'));
       btn.addEventListener('drop', onDrop);
       layer.appendChild(btn);
+      // the teacher's own picture, big enough to matter: a small icon at its
+      // top-right corner opens the crop editor — screen only, never printed
+      // or exported, and never over a round avatar
+      if (b.own && !b.round && !(b.w < 90 || b.h < 60)) {
+        const crop = document.createElement('button');
+        crop.type = 'button';
+        crop.className = 'photo-crop';
+        crop.style.left = ((b.x + b.w) / width * 100) + '%';
+        crop.style.top = (b.y / height * 100) + '%';
+        crop.setAttribute('aria-label', `Bildausschnitt anpassen: ${what}`);
+        crop.title = 'Bildausschnitt anpassen – Grösse, Drehung und Position wählen';
+        crop.innerHTML = CROP_ICON_SVG;
+        crop.addEventListener('click', (e) => { e.stopPropagation(); openCropEditor(m, b); });
+        layer.appendChild(crop);
+      }
       // no real photo yet: how to find one, right in the picture
       if (!b.own && !b.round && b.picRole) {
         const card = photoPromptCard(m, b, pics, frame, width);
@@ -2124,6 +2139,167 @@
     });
     if (typeof dlg.showModal === 'function') dlg.showModal(); else dlg.setAttribute('open', '');
     drop.focus();
+  }
+
+  /* ------------------------------------------------------------------ */
+  /* The crop of the teacher's own picture: size, orientation, position    */
+  /* ------------------------------------------------------------------ */
+
+  const CROP_ICON_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 2v14a2 2 0 0 0 2 2h14"/><path d="M2 6h14a2 2 0 0 1 2 2v14"/></svg>';
+
+  /**
+   * Save the crop of one own picture (its size i.e. zoom, its orientation, its
+   * position) without touching the picture itself or its credit. `crop.focus`
+   * null, `crop.zoom` 1 and `crop.rotate` 0 are the plain default and are not
+   * stored, so an untouched picture keeps behaving exactly as before.
+   */
+  async function setPictureCrop(m, slot, crop) {
+    const images = Object.assign({}, (m.layout && m.layout.images) || {});
+    if (!images[slot]) return;
+    const entry = Object.assign({}, images[slot]);
+    if (crop.focus) entry.focus = crop.focus; else delete entry.focus;
+    if (crop.zoom && crop.zoom !== 1) entry.zoom = crop.zoom; else delete entry.zoom;
+    if (crop.rotate) entry.rotate = crop.rotate; else delete entry.rotate;
+    images[slot] = entry;
+    m.layout.images = images;
+    await saveMaterial(m);
+    repaintMedium(m);
+  }
+
+  /**
+   * A screen-space drag turns into a shift along the SOURCE image's own axes
+   * (§ crop): dragging right after the picture has been turned 90° moves
+   * along what is now the image's own vertical axis, not its horizontal one.
+   * The three turned cases are the inverse of the canvas rotation the
+   * drawing itself applies (`photo.cropWindow`); 0° needs no correction.
+   */
+  function unrotateDrag(dx, dy, rotate) {
+    switch (rotate) {
+      case 90: return [dy, -dx];
+      case 180: return [-dx, -dy];
+      case 270: return [-dy, dx];
+      default: return [dx, dy];
+    }
+  }
+
+  /**
+   * The dialog to adjust the crop of one own picture: how much of it is used
+   * (zoom), which way up (a quarter turn) and which part (dragged into
+   * place). The box the picture prints at never changes size — only what of
+   * the photograph fills it. Every redraw uses the very same geometry
+   * (`photo.cropWindow`) the material itself is drawn with, so the preview
+   * is exactly what gets printed, not an approximation of it.
+   */
+  async function openCropEditor(m, block) {
+    const P = window.LR.photo;
+    const own = mock.ownPicture(m.layout.images, block.slot);
+    if (!own) return;
+    await P.loadSrc(own.src);
+    const img = P.imageForSrc(own.src);
+    if (!img) { toast('Das Bild ist noch nicht geladen – bitte kurz warten und nochmals versuchen.'); return; }
+    if (!$('#crop-editor')) document.body.insertAdjacentHTML('beforeend', '<dialog id="crop-editor" class="picture-editor crop-editor" aria-label="Bildausschnitt anpassen"></dialog>');
+    const dlg = $('#crop-editor');
+    const what = SUBJECT_LABEL[block.subject] || block.subject;
+    const ratio = Math.max(0.2, Math.min(5, block.w / block.h));
+    dlg.innerHTML = `<form method="dialog" class="pe-form ce-form">
+        <h3>Bildausschnitt anpassen</h3>
+        <p class="muted pe-where">${esc(what)}</p>
+        <div class="ce-stage" style="aspect-ratio:${ratio}"><canvas class="ce-canvas" tabindex="0" aria-label="Bildausschnitt – ziehen zum Verschieben"></canvas></div>
+        <div class="ce-row">
+          <button type="button" class="btn tiny" data-ce="rotate-left" aria-label="90° nach links drehen" title="90° nach links drehen">⟲</button>
+          <label class="ce-zoom">Grösse des Ausschnitts
+            <input type="range" min="100" max="300" step="2" value="100">
+          </label>
+          <button type="button" class="btn tiny" data-ce="rotate-right" aria-label="90° nach rechts drehen" title="90° nach rechts drehen">⟳</button>
+        </div>
+        <p class="pe-hint muted">Im Bild ziehen, um den Ausschnitt zu verschieben. Die Grösse des Bildes im Material bleibt gleich – nur was davon zu sehen ist, ändert sich.</p>
+        <div class="pe-actions">
+          <button type="button" class="btn" data-ce="reset">Mitte, kein Zoom</button>
+          <span class="pe-spacer"></span>
+          <button type="button" class="btn" data-ce="cancel">Abbrechen</button>
+          <button type="button" class="btn primary" data-ce="apply">Übernehmen</button>
+        </div>
+      </form>`;
+    const canvas = dlg.querySelector('.ce-canvas');
+    const range = dlg.querySelector('input[type=range]');
+    const defaultFocus = () => [0.5, block.subject === 'portrait' ? 0.35 : 0.45];
+    const state = { fx: own.focus ? own.focus[0] : defaultFocus()[0], fy: own.focus ? own.focus[1] : defaultFocus()[1], zoom: own.zoom || 1, rotate: own.rotate || 0 };
+    range.value = String(Math.round(state.zoom * 100));
+    canvas.__lrCropState = state; // debug hook for the browser suite; harmless in production
+    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    const size = () => {
+      const w = canvas.clientWidth || 400, h = canvas.clientHeight || Math.round(w / ratio);
+      const bw = Math.round(w * dpr), bh = Math.round(h * dpr);
+      if (canvas.width !== bw || canvas.height !== bh) { canvas.width = bw; canvas.height = bh; }
+      return { w, h };
+    };
+    const redraw = () => {
+      const { w, h } = size();
+      const ctx = canvas.getContext('2d');
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.clearRect(0, 0, w, h);
+      const c = P.cropWindow(img.naturalWidth, img.naturalHeight, w, h, [state.fx, state.fy], state.zoom, state.rotate);
+      ctx.save();
+      ctx.translate(w / 2, h / 2);
+      if (c.rotate) ctx.rotate(c.rotate * Math.PI / 180);
+      ctx.drawImage(img, c.sx, c.sy, c.sw, c.sh, -c.dw / 2, -c.dh / 2, c.dw, c.dh);
+      ctx.restore();
+    };
+    let dragging = null;
+    canvas.addEventListener('pointerdown', (e) => { dragging = { x: e.clientX, y: e.clientY, fx: state.fx, fy: state.fy }; canvas.setPointerCapture(e.pointerId); });
+    canvas.addEventListener('pointermove', (e) => {
+      if (!dragging) return;
+      const { w, h } = size();
+      const [dxi, dyi] = unrotateDrag(e.clientX - dragging.x, e.clientY - dragging.y, state.rotate);
+      const c = P.cropWindow(img.naturalWidth, img.naturalHeight, w, h, [dragging.fx, dragging.fy], state.zoom, state.rotate);
+      const sx = Math.max(0, Math.min(img.naturalWidth - c.sw, c.sx - dxi / c.scale));
+      const sy = Math.max(0, Math.min(img.naturalHeight - c.sh, c.sy - dyi / c.scale));
+      state.fx = (sx + c.sw / 2) / img.naturalWidth;
+      state.fy = (sy + c.sh / 2) / img.naturalHeight;
+      redraw();
+    });
+    const stopDrag = (e) => { dragging = null; try { canvas.releasePointerCapture(e.pointerId); } catch (err) { /* already released */ } };
+    canvas.addEventListener('pointerup', stopDrag);
+    canvas.addEventListener('pointercancel', stopDrag);
+    // The keyboard moves the crop too, a small step per press — the arrow
+    // itself moves, the way scrolling a view does (right shows more of what
+    // is to the right); a drag has the opposite feel on purpose (the photo
+    // follows the cursor, like pushing a print across a table).
+    canvas.addEventListener('keydown', (e) => {
+      const step = { ArrowLeft: [-12, 0], ArrowRight: [12, 0], ArrowUp: [0, -12], ArrowDown: [0, 12] }[e.key];
+      if (!step) return;
+      e.preventDefault();
+      const { w, h } = size();
+      const [dxi, dyi] = unrotateDrag(step[0], step[1], state.rotate);
+      const c = P.cropWindow(img.naturalWidth, img.naturalHeight, w, h, [state.fx, state.fy], state.zoom, state.rotate);
+      // only the axis the arrow actually moves is written back — a press
+      // along one axis never nudges the other by however little, even when
+      // it sits against the edge (a box wider than the photo leaves no room
+      // on one axis, and the untouched axis must read back exactly as it was)
+      if (dxi) state.fx = (Math.max(0, Math.min(img.naturalWidth - c.sw, c.sx + dxi / c.scale)) + c.sw / 2) / img.naturalWidth;
+      if (dyi) state.fy = (Math.max(0, Math.min(img.naturalHeight - c.sh, c.sy + dyi / c.scale)) + c.sh / 2) / img.naturalHeight;
+      redraw();
+    });
+    range.addEventListener('input', () => { state.zoom = Number(range.value) / 100; redraw(); });
+    dlg.querySelector('[data-ce="rotate-left"]').addEventListener('click', () => { state.rotate = (state.rotate + 270) % 360; redraw(); });
+    dlg.querySelector('[data-ce="rotate-right"]').addEventListener('click', () => { state.rotate = (state.rotate + 90) % 360; redraw(); });
+    dlg.querySelector('[data-ce="reset"]').addEventListener('click', () => {
+      const d = defaultFocus();
+      state.fx = d[0]; state.fy = d[1]; state.zoom = 1; state.rotate = 0;
+      range.value = '100'; redraw();
+    });
+    dlg.querySelector('[data-ce="cancel"]').addEventListener('click', () => dlg.close());
+    dlg.querySelector('[data-ce="apply"]').addEventListener('click', async () => {
+      const btn = dlg.querySelector('[data-ce="apply"]');
+      btn.disabled = true;
+      try {
+        await setPictureCrop(m, block.slot, { focus: [Math.round(state.fx * 1000) / 1000, Math.round(state.fy * 1000) / 1000], zoom: Math.round(state.zoom * 100) / 100, rotate: state.rotate });
+        dlg.close();
+      } finally { btn.disabled = false; }
+    });
+    if (typeof dlg.showModal === 'function') dlg.showModal(); else dlg.setAttribute('open', '');
+    requestAnimationFrame(redraw);
+    canvas.focus();
   }
 
   /**
@@ -2879,5 +3055,5 @@
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init); else init();
 
-  window.LR.ui = { app, generate, produceWorksheet, openViewer, renderViewer, markPageBreaks, syncViewerOffsets, buildViewerRail, buildViewerDownloads, paintLayoutCanvas, proportionNote, mediumPng, renderHotspots, renderSheetHotspots, hotspotLayer, paperChips, bindPaperChips, attachWebPicture, loadOwnPictures, photoPromptCard, photoPlaces, ensurePhotoPrompts, photoToolbar, openAssignDialog, orderImages, imageURLFrom, fetchWebImage, pictureError, openPictureEditor, replacePicture, resetPicture, prepareImage, viewer, store, caps, showView, openCreator, importState, detectUnits, fetchTopics, confirmImport, newTextbook, askText, askConfirm, clone, parsePasted, initLevelPage, download, renderOutput, renderQualityPanel, renderTaskPreview, refreshDerived, renderLayout, renderSetupBar, openCustomSetup, backToTemplates, redrawTemplate, templateState, buildForm };
+  window.LR.ui = { app, generate, produceWorksheet, openViewer, renderViewer, markPageBreaks, syncViewerOffsets, buildViewerRail, buildViewerDownloads, paintLayoutCanvas, proportionNote, mediumPng, renderHotspots, renderSheetHotspots, hotspotLayer, paperChips, bindPaperChips, attachWebPicture, loadOwnPictures, photoPromptCard, photoPlaces, ensurePhotoPrompts, photoToolbar, openAssignDialog, orderImages, imageURLFrom, fetchWebImage, pictureError, openPictureEditor, openCropEditor, setPictureCrop, unrotateDrag, replacePicture, resetPicture, prepareImage, viewer, store, caps, showView, openCreator, importState, detectUnits, fetchTopics, confirmImport, newTextbook, askText, askConfirm, clone, parsePasted, initLevelPage, download, renderOutput, renderQualityPanel, renderTaskPreview, refreshDerived, renderLayout, renderSetupBar, openCustomSetup, backToTemplates, redrawTemplate, templateState, buildForm };
 })();

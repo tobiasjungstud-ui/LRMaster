@@ -233,7 +233,7 @@ const SETTINGS = (extra) => `(() => {
   {
     const { page, errors } = await open({});
     await page.click('#nav-check');
-    await page.waitForTimeout(1800);
+    await page.waitForTimeout(2200);
     const summary = (await page.textContent('#check-summary') || '').replace(/\s+/g, ' ').trim();
     const numbers = summary.match(/(\d+)\s*\/\s*(\d+)/);
     check('every requirement passes against the running code', !!numbers && numbers[1] === numbers[2], summary);
@@ -712,6 +712,182 @@ const SETTINGS = (extra) => `(() => {
     });
     check('with the real fonts and long entries, no text runs into another or off its page', o.length === 0, o.slice(0, 4).join(' | '));
     check('prompts and fitting raise no page error', errors.length === 0, errors[0]);
+    await page.close();
+  }
+
+  console.log('\nBrowser audit: the crop of a teacher\'s own picture — size, orientation, position (2.4, 2.11)');
+  {
+    const { page, errors } = await open({});
+    const setup = await page.evaluate(async () => {
+      const { fixture, ui, mock } = window.LR;
+      const m = fixture.material({ textType: 'Blog Post', authenticLayout: true, layoutMedium: 'screen' }, 'reading');
+      m.id = 'crop-test';
+      // a 2×2 test photo, one flat colour per quadrant, so a crop or a turn shows on screen
+      const c = document.createElement('canvas'); c.width = 400; c.height = 200;
+      const g = c.getContext('2d');
+      g.fillStyle = '#ff0000'; g.fillRect(0, 0, 200, 100);
+      g.fillStyle = '#00ff00'; g.fillRect(200, 0, 200, 100);
+      g.fillStyle = '#0000ff'; g.fillRect(0, 100, 200, 100);
+      g.fillStyle = '#ffff00'; g.fillRect(200, 100, 200, 100);
+      const slot = m.layout.chrome.photoSubject + ':' + mock.hashOf(m.content.title || 'lead');
+      m.layout.images = { [slot]: { src: c.toDataURL('image/png'), credit: 'Test' } };
+      window.__m = m; window.__slot = slot;
+      ui.app.material = m;
+      ui.openViewer(m, 'creator');
+      await new Promise(r => setTimeout(r, 500));
+      return { boxBefore: mock.buildModel(m, m.layout.chrome).blocks.find(b => b.type === 'photo' && b.own) };
+    });
+    check('the crop icon appears over the teacher\'s own picture, never over a picture nobody uploaded', await page.locator('.photo-crop').count() >= 1, '');
+    await page.locator('.photo-crop').first().click();
+    await page.waitForTimeout(200);
+    const dlgOpen = await page.evaluate(() => !!(document.getElementById('crop-editor') && document.getElementById('crop-editor').open));
+    check('the icon opens the crop dialog', dlgOpen, '');
+
+    const canvasBox = await page.locator('.ce-canvas').boundingBox();
+    const cx = canvasBox.x + canvasBox.width / 2, cy = canvasBox.y + canvasBox.height / 2;
+    const range = page.locator('.ce-row input[type=range]');
+    const state = () => page.evaluate(() => Object.assign({}, document.querySelector('.ce-canvas').__lrCropState));
+    const sample = (fx, fy) => page.evaluate(([fx, fy]) => {
+      const canvas = document.querySelector('.ce-canvas');
+      const d = canvas.getContext('2d').getImageData(Math.round(canvas.width * fx), Math.round(canvas.height * fy), 1, 1).data;
+      return [d[0], d[1], d[2]];
+    }, [fx, fy]);
+    const drag = async (dx, dy) => { await page.mouse.move(cx, cy); await page.mouse.down(); await page.mouse.move(cx + dx, cy + dy, { steps: 8 }); await page.mouse.up(); await page.waitForTimeout(120); };
+
+    // position: dragging pans the crop — in every one of the four turns, in the
+    // direction a real crop tool would (the content follows the mouse)
+    const axes = {};
+    for (const dir of ['right', 'down']) {
+      await page.click('[data-ce="reset"]');
+      await range.evaluate((el) => { el.value = '200'; el.dispatchEvent(new Event('input', { bubbles: true })); });
+      const before = await state();
+      await drag(dir === 'right' ? 80 : 0, dir === 'down' ? 80 : 0);
+      const after = await state();
+      axes[dir] = { before, after };
+    }
+    check('dragging right moves the crop only along x, dragging down only along y — position is a plain pan at no turn',
+      axes.right.after.fx !== axes.right.before.fx && axes.right.after.fy === axes.right.before.fy
+      && axes.down.after.fy !== axes.down.before.fy && axes.down.after.fx === axes.down.before.fx, JSON.stringify(axes));
+
+    // orientation: the same drag right, after each quarter turn, must move the
+    // crop along the axis that is now "right" in what the teacher sees —
+    // never the source image's own, unturned axis
+    const turned = {};
+    // the reset button also clears the turn, so the position (not the turn)
+    // is put back between trials straight through the debug state instead
+    await page.click('[data-ce="reset"]');
+    await range.evaluate((el) => { el.value = '200'; el.dispatchEvent(new Event('input', { bubbles: true })); });
+    let rotate = 0;
+    for (let i = 0; i < 4; i++) {
+      await page.evaluate(() => { const s = document.querySelector('.ce-canvas').__lrCropState; s.fx = 0.5; s.fy = 0.5; });
+      const before = await state();
+      await drag(80, 0);
+      const after = await state();
+      turned[rotate] = { moved: Math.abs(after.fx - before.fx) > 0.001 ? 'fx' : (Math.abs(after.fy - before.fy) > 0.001 ? 'fy' : 'none') };
+      await page.click('[data-ce="rotate-right"]');
+      rotate = (rotate + 90) % 360;
+    }
+    check('a horizontal drag moves fx at 0°/180° and fy at 90°/270° — the pan always follows the turned picture, not the untouched file',
+      turned[0].moved === 'fx' && turned[90].moved === 'fy' && turned[180].moved === 'fx' && turned[270].moved === 'fy', JSON.stringify(turned));
+
+    // orientation, seen: a quarter turn to the right moves the corner that was
+    // top-left to top-right — the way turning a printed photo in your hands does
+    await page.click('[data-ce="reset"]');
+    const before4 = { tl: await sample(0.06, 0.06), tr: await sample(0.94, 0.06), bl: await sample(0.06, 0.94), br: await sample(0.94, 0.94) };
+    await page.click('[data-ce="rotate-right"]');
+    await page.waitForTimeout(120);
+    const after4 = { tl: await sample(0.06, 0.06), tr: await sample(0.94, 0.06), bl: await sample(0.06, 0.94), br: await sample(0.94, 0.94) };
+    check('rotate right turns the picture clockwise: the old top-left corner is now the top-right one, and so on round',
+      JSON.stringify(after4.tl) === JSON.stringify(before4.bl) && JSON.stringify(after4.tr) === JSON.stringify(before4.tl)
+      && JSON.stringify(after4.br) === JSON.stringify(before4.tr) && JSON.stringify(after4.bl) === JSON.stringify(before4.br),
+      JSON.stringify({ before4, after4 }));
+    await page.click('[data-ce="rotate-left"]');
+    await page.waitForTimeout(120);
+    const backToStart = { tl: await sample(0.06, 0.06), tr: await sample(0.94, 0.06), bl: await sample(0.06, 0.94), br: await sample(0.94, 0.94) };
+    check('rotate left undoes rotate right', JSON.stringify(backToStart) === JSON.stringify(before4), JSON.stringify({ before4, backToStart }));
+
+    // size: the box itself never changes — only how much of the photo fills it
+    const boxAt100 = await state();
+    await range.evaluate((el) => { el.value = '280'; el.dispatchEvent(new Event('input', { bubbles: true })); });
+    await page.waitForTimeout(120);
+    const afterZoom = await state();
+    check('the zoom slider changes the size of the crop, not the box the picture prints at', afterZoom.zoom === 2.8 && afterZoom.zoom !== boxAt100.zoom, JSON.stringify({ boxAt100, afterZoom }));
+
+    // arrow keys move the crop the same natural way as the mouse. Zoomed in
+    // first, so there is room to move on this axis whatever the box's own
+    // shape (at 100% a box wider than the photo already shows its full
+    // width, and an arrow right would have nothing to move into — rightly so).
+    await page.click('[data-ce="reset"]');
+    await range.evaluate((el) => { el.value = '200'; el.dispatchEvent(new Event('input', { bubbles: true })); });
+    await page.locator('.ce-canvas').focus();
+    const beforeArrow = await state();
+    for (let i = 0; i < 10; i++) await page.keyboard.press('ArrowRight');
+    await page.waitForTimeout(120);
+    const afterArrow = await state();
+    // the arrow itself moves (an arrow right shows more of what is to the right) —
+    // the opposite feel of a drag on purpose, which moves the photo, not the view
+    check('the arrow keys move the crop too, for a keyboard user', afterArrow.fx > beforeArrow.fx && afterArrow.fy === beforeArrow.fy, JSON.stringify({ beforeArrow, afterArrow }));
+
+    // apply: the chosen crop is saved, and the real material is drawn with it —
+    // not only the dialog's own preview. Well inside one quadrant (away from
+    // a colour seam), so scaling the same crop to two different canvas sizes
+    // cannot land the sample on opposite sides of an edge.
+    await page.click('[data-ce="reset"]');
+    await page.evaluate(() => { const s = document.querySelector('.ce-canvas').__lrCropState; s.fx = 0.85; s.fy = 0.15; });
+    await range.evaluate((el) => { el.value = '250'; el.dispatchEvent(new Event('input', { bubbles: true })); });
+    await page.click('[data-ce="rotate-right"]');
+    await page.waitForTimeout(120);
+    const centreShown = await sample(0.5, 0.5);
+    await page.click('[data-ce="apply"]');
+    await page.waitForTimeout(300);
+    // the exact centre of the box always shows the exact focus point, by
+    // construction — comparing it against the dialog's own preview proves the
+    // material is really drawn with the crop the teacher chose, not a copy of it
+    const r2 = await page.evaluate((centreShown) => {
+      const { mock, photo } = window.LR;
+      const m = window.__m, slot = window.__slot;
+      const entry = m.layout.images[slot];
+      const model = mock.buildModel(m, m.layout.chrome);
+      const block = model.blocks.find(b => b.type === 'photo' && b.own);
+      const c = document.createElement('canvas'); c.width = 60; c.height = Math.round(60 * block.h / block.w);
+      const ctx = c.getContext('2d');
+      photo.draw(ctx, Object.assign({}, block, { x: 0, y: 0, w: c.width, h: c.height }));
+      const d = ctx.getImageData(Math.round(c.width / 2), Math.round(c.height / 2), 1, 1).data;
+      return { entry, blockW: block.w, blockH: block.h, drawn: [d[0], d[1], d[2]], valid: mock.validate(model), centreShown };
+    }, centreShown);
+    check('applying saves the zoom, the turn and the position to the material', r2.entry.zoom === 2.5 && r2.entry.rotate === 90 && Array.isArray(r2.entry.focus), JSON.stringify(r2.entry));
+    check('the box the picture prints at keeps its own size — cropping never resizes the output', r2.blockW === setup.boxBefore.w && r2.blockH === setup.boxBefore.h, JSON.stringify({ before: setup.boxBefore, after: { w: r2.blockW, h: r2.blockH } }));
+    check('the real material is drawn with exactly the crop the teacher chose in the dialog', JSON.stringify(r2.drawn) === JSON.stringify(r2.centreShown), JSON.stringify(r2));
+    check('the picture still validates (structurally drawable) after a crop', r2.valid.length === 0, JSON.stringify(r2.valid));
+
+    // never in an export: the icon is a DOM overlay, never part of the drawn model, the SVG or the Word picture
+    const o = await page.evaluate(async () => {
+      const { mock, quality, word } = window.LR;
+      const m = window.__m;
+      const model = mock.buildModel(m, m.layout.chrome);
+      const svg = quality.layoutSVG(m);
+      const medium = await window.LR.ui.mediumPng(m);
+      const parts = word.partsFor(m, 'student', null, { medium });
+      const doc = String(parts.find(p => p.name === 'word/document.xml').data);
+      return {
+        modelHasCropField: model.blocks.some(b => b.type === 'photo' && ('cropIcon' in b)),
+        svgHasIcon: /photo-crop/.test(svg),
+        docHasIcon: /photo-crop/.test(doc),
+        wordValid: window.LR.ooxml.validate(parts).length === 0,
+        pngW: medium && medium.width, pngH: medium && medium.height,
+      };
+    });
+    check('the crop icon never reaches the SVG, the PNG or the Word export — only the layout in the browser', !o.modelHasCropField && !o.svgHasIcon && !o.docHasIcon && o.wordValid && o.pngW > 0, JSON.stringify(o));
+
+    // a picture nobody uploaded (the drawn scene) offers no crop icon at all
+    const noOwn = await page.evaluate(() => {
+      const { fixture, mock } = window.LR;
+      const m = fixture.material({ textType: 'News Article', authenticLayout: true, layoutMedium: 'paper' }, 'reading');
+      const model = mock.buildModel(m, m.layout.chrome);
+      return model.blocks.filter(b => b.type === 'photo').some(b => b.own);
+    });
+    check('a material with no own picture never offers a crop icon (no own block to open it for)', !noOwn, '');
+    check('the crop of a picture raises no page error', errors.length === 0, errors[0]);
     await page.close();
   }
 

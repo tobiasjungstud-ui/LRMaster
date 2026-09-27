@@ -2,7 +2,7 @@
 
 Erzeugt von `npm run coverage`. Jede Zeile ist eine Anforderung aus `docs/Konzept_Listening_Reading_Creator.md`, gebunden an die Stelle im Code, die sie umsetzt, und das Ergebnis der automatischen Prüfung (`npm test`).
 
-**Ergebnis: 333 von 333 Anforderungen bestanden.**
+**Ergebnis: 336 von 336 Anforderungen bestanden.**
 
 Prüfarten: **setting** – Steuerelement vorhanden und Änderung des Werts verändert nachweislich den Prompt an Claude · **function** – Verhalten wird mit echten Eingaben ausgeführt und verglichen · **rule** – Qualitätsregel existiert als Messung oder Claude-Review-Kriterium · **render** – Ausgabe wird auf einer Fixture gerendert und inhaltlich geprüft · **ui** – Navigations-/Strukturelement existiert.
 
@@ -528,6 +528,14 @@ Prüfarten: **setting** – Steuerelement vorhanden und Änderung des Werts ver�
 | ✅ | `S38.redo` | Jede Karte hat einen Redo-Knopf: Claude schlägt eine neue Variante derselben Vorlage vor, geprüft übernommen | function | Funktion (siehe Check im Manifest) |
 | ✅ | `S38.folding` | Mit Vorlage bleiben die Einzeleinstellungen zugeklappt; „Vorlage anpassen“ und „Alles selbst einstellen“ öffnen sie | ui | Element `#btn-setup-adapt` |
 | ✅ | `S38.adjustable` | Eine Vorlage lässt sich weiter anpassen; danach gilt sie als „angepasst“ | setting | Setting `setupMode` (core.SCHEMA → Control `[data-setting="setupMode"]` → prompts.js) |
+
+## §39  (3/3)
+
+| Status | ID | Anforderung | Art | Umsetzung |
+|---|---|---|---|---|
+| ✅ | `S39.geometry` | Der Ausschnitt (`photo.cropWindow`) ist reine Geometrie: nie verzerrt, immer innerhalb des Fotos, die Box (der Platz, an dem das Bild gedruckt wird) behält ihre eigene Form und Grösse | function | Funktion (siehe Check im Manifest) |
+| ✅ | `S39.storage` | Grösse (Zoom, mindestens 1, höchstens 4), Drehung (ein Vielfaches von 90°) und Position (Fokuspunkt) werden geklemmt gespeichert; ein unangetastetes Bild bleibt beim einfachen, mittigen Ausschnitt | function | Funktion (siehe Check im Manifest) |
+| ✅ | `S39.ui` | Ein Symbol oben rechts an jedem eigenen Bild öffnet den Ausschnitt-Dialog: im Bild ziehen verschiebt die Position, ein Regler ändert die Grösse, zwei Knöpfe drehen um 90° – nur am Bildschirm, nie im Druck oder Export; kein Symbol ohne eigenes Bild oder auf einem runden Porträt | function | Funktion (siehe Check im Manifest) |
 
 ## Einstellungen (core.SCHEMA)
 
