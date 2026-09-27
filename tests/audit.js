@@ -20,6 +20,7 @@ const quality = require(path.join(APP, 'quality.js'));
 const prompts = require(path.join(APP, 'prompts.js'));
 const render = require(path.join(APP, 'render.js'));
 const mock = require(path.join(APP, 'mock.js'));
+const photo = require(path.join(APP, 'photo.js'));
 const word = require(path.join(APP, 'word.js'));
 const fixture = require(path.join(APP, 'fixture.js'));
 const controls = require(path.join(APP, 'controls.js'));
@@ -1690,6 +1691,78 @@ function pagedMaterial(over, words, perPara) {
   m.content.paragraphs = pageText(words, perPara);
   return m;
 }
+
+test('2.4', 'the crop of a picture: size (zoom), orientation (a quarter turn) and position (focus) — pure geometry, so it can be proven without a browser', () => {
+  const cw = photo.cropWindow;
+  // never distorted: the crop taken from the source is always in the box's
+  // own proportions, whatever the zoom, the turn or where it is centred —
+  // drawImage stretches sw×sh onto dw×dh, so a mismatch would stretch the photo
+  for (const [iw, ih] of [[400, 200], [200, 400], [500, 500], [77, 233]]) {
+    for (const [bw, bh] of [[100, 100], [90, 60], [60, 90], [340, 120]]) {
+      for (const rot of [0, 90, 180, 270]) {
+        for (const zoom of [1, 1.7, 4]) {
+          for (const focus of [[0.5, 0.5], [0.1, 0.9], [0, 0], [1, 1]]) {
+            const c = cw(iw, ih, bw, bh, focus, zoom, rot);
+            assert.ok(Math.abs(c.sw / c.sh - c.dw / c.dh) < 0.01, `${iw}x${ih} box ${bw}x${bh} rot${rot} zoom${zoom} focus${focus}: the crop would stretch the photo`);
+            // the box itself never changes shape or size — only its content does
+            assert.ok((c.dw === bw && c.dh === bh) || (c.dw === bh && c.dh === bw), 'the output box changed size');
+            assert.ok(c.sx >= -0.01 && c.sy >= -0.01 && c.sx + c.sw <= iw + 0.01 && c.sy + c.sh <= ih + 0.01, 'the crop runs off the source image');
+          }
+        }
+      }
+    }
+  }
+  // no zoom, no turn: the classic "cover" crop — the whole box is filled, centred by default
+  {
+    const c = cw(400, 200, 100, 100, [0.5, 0.5], 1, 0);
+    assert.equal(c.dw, 100); assert.equal(c.dh, 100);
+    assert.ok(Math.abs(c.sx + c.sw / 2 - 200) < 0.01 && Math.abs(c.sy + c.sh / 2 - 100) < 0.01, 'centred: the crop sits on the middle of the image');
+    assert.ok(Math.abs(c.sh - 200) < 0.01, 'the box is exactly as tall as the image, once scaled: no room to crop that axis');
+  }
+  // zoom narrows the crop, around the same centre — the box itself never changes size
+  {
+    const a = cw(400, 200, 100, 100, [0.5, 0.5], 1, 0), z = cw(400, 200, 100, 100, [0.5, 0.5], 2.5, 0);
+    assert.ok(z.sw < a.sw && z.sh < a.sh, 'a bigger zoom shows less of the source image');
+    assert.equal(z.dw, a.dw); assert.equal(z.dh, a.dh);
+    assert.ok(Math.abs((z.sx + z.sw / 2) - (a.sx + a.sw / 2)) < 0.01, 'zooming keeps the same centre');
+  }
+  // a quarter turn swaps which side of the box the source image's width fills —
+  // a photo taken sideways still ends up filling the box without distortion
+  {
+    const up = cw(400, 200, 90, 60, [0.5, 0.5], 1, 0);
+    for (const rot of [90, 270]) {
+      const t = cw(400, 200, 90, 60, [0.5, 0.5], 1, rot);
+      assert.equal(t.dw, 60); assert.equal(t.dh, 90, `rotate ${rot}: the drawing turns inside the same box, so its own local width/height are swapped`);
+      assert.notEqual(Math.round(t.sw), Math.round(up.sw), `rotate ${rot}: turning the photo changes how much of it is used`);
+    }
+    // a full turn (180°) changes nothing about which crop is chosen, only its orientation when drawn
+    const half = cw(400, 200, 90, 60, [0.5, 0.5], 1, 180);
+    assert.equal(Math.round(half.sw), Math.round(up.sw)); assert.equal(Math.round(half.sh), Math.round(up.sh));
+  }
+  // every value 90° apart lands on the same one of the four turns (never a slanted crop)
+  for (const raw of [-90, 45, 100, 730]) {
+    const r = cw(300, 300, 80, 80, [0.5, 0.5], 1, raw).rotate;
+    assert.ok([0, 90, 180, 270].includes(r), `rotate ${raw} → ${r} is not a quarter turn`);
+  }
+});
+
+test('2.4', "a teacher's own crop is stored sanely: the zoom never shows less than the box needs, the turn is always a quarter, an untouched picture keeps the plain default crop", () => {
+  const own = (extra) => mock.ownPicture({ x: Object.assign({ src: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=' }, extra) }, 'x');
+  assert.equal(own({}).zoom, 1); assert.equal(own({}).rotate, 0);
+  assert.equal(own({ zoom: 0.2 }).zoom, 1, 'a zoom under 1 would leave the box half empty');
+  assert.equal(own({ zoom: 99 }).zoom, 4, 'the zoom is capped, so a slip of the slider cannot crop away almost the whole photo');
+  assert.equal(own({ rotate: 91 }).rotate, 90); assert.equal(own({ rotate: -90 }).rotate, 270); assert.equal(own({ rotate: 360 }).rotate, 0);
+  assert.equal(own({ rotate: 'nonsense' }).rotate, 0);
+  // the block the layout draws carries the crop only when it differs from the default — and the
+  // default (zoom 1, no turn) never distorts a picture nobody has adjusted
+  const m = fixture.material({ textType: 'Blog Post', authenticLayout: true }, 'reading');
+  const slot = m.layout.chrome.photoSubject + ':' + mock.hashOf(m.content.title || 'lead');
+  m.layout.images = { [slot]: { src: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=', focus: [0.2, 0.8], zoom: 2.4, rotate: 180 } };
+  const block = mock.buildModel(m, m.layout.chrome).blocks.find(b => b.type === 'photo' && b.own);
+  assert.ok(block, 'the own picture is not drawn');
+  assert.equal(block.zoom, 2.4); assert.equal(block.rotate, 180); assert.deepEqual(block.focus, [0.2, 0.8]);
+  assert.deepEqual(mock.validate(mock.buildModel(m, m.layout.chrome)), []);
+});
 
 test('2.4 R4', 'every medium on 1–4 pages: the text once and whole, no line or picture cut by a page edge, never more pages than allowed without saying so', () => {
   let n = 0;

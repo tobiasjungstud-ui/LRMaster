@@ -1090,6 +1090,8 @@
           spec.credit = own.credit;
           if (own.caption) spec.caption = own.caption;
           if (own.focus) spec.focus = own.focus;
+          if (own.zoom !== 1) spec.zoom = own.zoom;
+          if (own.rotate) spec.rotate = own.rotate;
         } else {
           // 2. a real photograph the app ships with; its credit travels with
           // the block, because an invented credit under a real photo would
@@ -3484,10 +3486,15 @@
     if (!photo.isOwnSource(src)) return null;
     const credit = String(e.credit == null ? '' : e.credit).replace(/\s+/g, ' ').trim().slice(0, 120);
     const focus = Array.isArray(e.focus) && e.focus.length === 2 ? e.focus.map(v => Math.max(0, Math.min(1, Number(v) || 0.5))) : null;
+    // the teacher's own crop of her own picture: how far zoomed in (never
+    // less than the box needs) and turned by a quarter — never anything
+    // that would distort or stretch the photograph
+    const zoom = Math.max(1, Math.min(4, Number(e.zoom) || 1));
+    const rotate = ((Math.round((Number(e.rotate) || 0) / 90) * 90) % 360 + 360) % 360;
     // a photo found on the web carries its own caption: what its source says it
     // shows, never Claude's words about the story (which it does not show)
     const caption = String(e.caption == null ? '' : e.caption).replace(/\s+/g, ' ').trim().slice(0, 120);
-    return { src, credit, focus, caption, name: String(e.name || '').slice(0, 80) };
+    return { src, credit, focus, zoom, rotate, caption, name: String(e.name || '').slice(0, 80) };
   }
 
   /*

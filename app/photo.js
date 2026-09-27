@@ -908,15 +908,42 @@
     return !!src && typeof Image !== 'undefined' && isOwnSource(src) && !IMAGES.has(src) && !FAILED.has(src);
   }
 
-  /** Put an image into a box the way a layout does: fill it, crop the rest. */
-  function drawCover(ctx, img, box, focus) {
-    const iw = img.naturalWidth || img.width, ih = img.naturalHeight || img.height;
-    const scale = Math.max(box.w / iw, box.h / ih);
-    const sw = box.w / scale, sh = box.h / scale;
+  /**
+   * Which part of a source image fills a box (concept: the teacher's own
+   * crop). `focus` is the centre of the visible part, as a fraction of the
+   * ORIGINAL, unrotated image (0…1 on each axis) — the same point however
+   * the picture is turned or zoomed. `zoom` (>=1) narrows that part: 1 is
+   * the smallest crop that still covers the box (nothing of the box is
+   * empty), 2 shows half as much of the image on each axis. `rotate` is a
+   * quarter turn (0/90/180/270): a sideways photo is turned before it is
+   * cropped, so the box — which never changes shape — is filled by the
+   * rotated image, not a distorted one. Pure geometry, no canvas: the same
+   * numbers drive the drawing (`drawCover`, `draw`) and the crop editor's
+   * live preview and drag math (`ui.js`), so what the teacher sees while
+   * dragging is exactly what the material prints.
+   */
+  function cropWindow(iw, ih, boxW, boxH, focus, zoom, rotate) {
+    const rot = ((Math.round((rotate || 0) / 90) * 90) % 360 + 360) % 360;
+    const swapped = rot === 90 || rot === 270;
+    // the box as the turned image fills it: swapped on its side, on end otherwise
+    const dw = swapped ? boxH : boxW, dh = swapped ? boxW : boxH;
+    const scale = Math.max(dw / iw, dh / ih) * Math.max(1, Number(zoom) || 1);
+    const sw = Math.min(iw, dw / scale), sh = Math.min(ih, dh / scale);
     const fx = focus ? focus[0] : 0.5, fy = focus ? focus[1] : 0.4;
     const sx = Math.max(0, Math.min(iw - sw, iw * fx - sw / 2));
     const sy = Math.max(0, Math.min(ih - sh, ih * fy - sh / 2));
-    ctx.drawImage(img, sx, sy, sw, sh, box.x, box.y, box.w, box.h);
+    return { sx, sy, sw, sh, dw, dh, scale, rotate: rot };
+  }
+
+  /** Put an image into a box the way a layout does: fill it, crop the rest. */
+  function drawCover(ctx, img, box, focus, zoom, rotate) {
+    const iw = img.naturalWidth || img.width, ih = img.naturalHeight || img.height;
+    const c = cropWindow(iw, ih, box.w, box.h, focus, zoom, rotate);
+    ctx.save();
+    ctx.translate(box.x + box.w / 2, box.y + box.h / 2);
+    if (c.rotate) ctx.rotate(c.rotate * Math.PI / 180);
+    ctx.drawImage(img, c.sx, c.sy, c.sw, c.sh, -c.dw / 2, -c.dh / 2, c.dw, c.dh);
+    ctx.restore();
   }
 
   /**
@@ -940,13 +967,18 @@
     }
     const real = own || (b.photoId ? imageFor(byId(b.photoId)) : null);
     if (real) {
-      const entry = own ? { focus: Array.isArray(b.focus) ? b.focus : [0.5, b.subject === 'portrait' ? 0.35 : 0.45] } : byId(b.photoId);
+      // the teacher's own crop (size, orientation, position) only ever
+      // applies to her own picture — a library photograph keeps its focus,
+      // never a rotation or a zoom nobody chose for it
+      const entry = own
+        ? { focus: Array.isArray(b.focus) ? b.focus : [0.5, b.subject === 'portrait' ? 0.35 : 0.45], zoom: b.zoom, rotate: b.rotate }
+        : byId(b.photoId);
       ctx.save();
       ctx.beginPath();
       if (b.round) ctx.ellipse(box.x + box.w / 2, box.y + box.h / 2, box.w / 2, box.h / 2, 0, 0, Math.PI * 2);
       else ctx.rect(box.x, box.y, box.w, box.h);
       ctx.clip();
-      drawCover(ctx, real, box, entry.focus);
+      drawCover(ctx, real, box, entry.focus, entry.zoom, entry.rotate);
       if (b.colour === false) desaturate(ctx, box, 1);
       // a real photograph needs no invented light — only the screen of the
       // print where the page is paper
@@ -1381,7 +1413,7 @@
   return {
     SUBJECTS, SCENES, subjectFor, subjectHints, isSubject, draw, hashOf, LIGHTS, SKIN, HAIR, CLOTHES,
     useLibrary, photosFor, pick, byId, preload, imageFor, library: () => LIBRARY.slice(),
-    isOwnSource, loadSrc, imageForSrc,
+    isOwnSource, loadSrc, imageForSrc, cropWindow,
     promptsFor, promptSetOk, batchPrompt, PROJECT_INSTRUCTIONS, ROLE_INDEX,
     webQueryFor, webPlan, webLicenseOk, commonsCandidates, openverseCandidates, findWebPicture, decodeImage, isPending, sourceCaption,
     PENDING_TONE, webBlockedNow: () => webBlocked, resetWebBlocked: () => { webBlocked = false; },
