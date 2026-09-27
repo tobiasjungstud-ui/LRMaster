@@ -770,6 +770,7 @@
       ['Source', joinMeta([plan.textbookName, plan.unitName, plan.unitTopic])],
       ['Topic', plan.topic],
       ['Language', plan.cefr + ' · complexity ' + m.settings.languageComplexity + '/100 · explicitness ' + m.settings.explicitness + '/100'],
+      ['Content', core.contentComplexityProfile(m.settings.contentComplexity).en + ' (' + core.contentComplexityProfile(m.settings.contentComplexity).value + '/100) — the ideas, not the words'],
       m.kind === 'listening'
         ? ['Audio', joinMeta([plan.preset.label, Math.round(plan.seconds / 60 * 10) / 10 + ' min ≈ ' + plan.targetWords + ' words', plan.speakers.map(s => s.label + ' ' + s.share + ' %').join(' / '), 'emotion tags: ' + m.settings.emotionTags])]
         : ['Text', joinMeta([m.settings.textType === 'Custom' ? m.settings.customTextType : m.settings.textType, '≈ ' + plan.targetWords + ' words', DESIGNS[core.designIdFor(m.settings)].label])],

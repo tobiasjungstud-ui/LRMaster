@@ -305,6 +305,7 @@
     // 2 Content
     { key: 'topicMode', type: 'select', default: 'unit', options: ['unit', 'custom'], section: 2, mode: 'both', simple: true, label: 'Topic' },
     { key: 'customTopic', type: 'text', default: '', section: 2, mode: 'both', simple: true, label: 'Custom Topic' },
+    { key: 'contentComplexity', type: 'range', default: 50, min: 0, max: 100, section: 2, mode: 'both', simple: true, label: 'Content Complexity' },
     // 3 Language Level
     { key: 'cefr', type: 'select', default: 'B1.1', options: CEFR_BANDS, section: 3, mode: 'both', simple: true, label: 'CEFR level' },
     { key: 'levelMeter', type: 'toggle', default: true, section: 3, mode: 'both', simple: true, label: 'Schwierigkeit messen und nachsteuern' },
@@ -473,6 +474,35 @@
   }
 
   const WORDS_PER_A4 = 450;
+
+  /*
+   * Content complexity: how demanding the IDEAS are, not the words. A text at
+   * B1 can be about what happened on a bus ride, or about whether it is fair
+   * that the bus is free for some people and not for others — both in B1
+   * words. The dial chooses that; the vocabulary, grammar and idiom dials
+   * and the CEFR level stay exactly where they are. Five steps, each with
+   * what it asks of the text (for Claude) and a German name (for the form
+   * and the summary).
+   */
+  const CONTENT_COMPLEXITY = [
+    { key: 'concrete', de: 'konkret und direkt', en: 'concrete and direct',
+      ideas: 'one clear idea at a time, about people, things and events the reader can picture; events in the order they happen; reasons stated outright ("because …"); one point of view; nothing has to be read between the lines to get the main point' },
+    { key: 'mostly_concrete', de: 'überwiegend konkret', en: 'mostly concrete',
+      ideas: 'everyday situations with simple causes and effects; a reason or two for what people do; at most two points of view, clearly marked as such; every general statement is followed by an example' },
+    { key: 'balanced', de: 'ausgewogen', en: 'balanced',
+      ideas: 'concrete situations lead to a general point; ideas are connected (cause and effect, contrast, consequence); two or three points of view or motives; the reader follows a short line of reasoning across paragraphs' },
+    { key: 'abstract', de: 'abstrakt', en: 'abstract',
+      ideas: 'ideas and concepts (fairness, trust, change, responsibility, belonging …) carry the text, each anchored in an example; several factors interact; trade-offs and tensions between views; some implications are left for the reader to work out' },
+    { key: 'layered', de: 'abstrakt und vielschichtig', en: 'abstract and multi-layered',
+      ideas: 'several perspectives weighed against each other; consequences of consequences; ambiguity or irony, a surface meaning and a deeper one; the reader has to connect ideas across the whole text to see its point' },
+  ];
+  /** Where the content complexity dial points: value, step (0–4) and what that step asks for. */
+  function contentComplexityProfile(value) {
+    const n = Number(value);
+    const v = Number.isFinite(n) ? clamp(Math.round(n), 0, 100) : 50;
+    const step = Math.min(4, Math.floor(v / 20));
+    return Object.assign({ value: v, step }, CONTENT_COMPLEXITY[step]);
+  }
 
   /*
    * How many words fit on 1, 2, 3 and 4 A4 pages of a medium (concept §37).
@@ -919,7 +949,7 @@
     { key: 'podcast', kind: 'listening', label: 'Podcast-Interview', blurb: 'Host und Gast über Serien, locker und meinungsstark.',
       settings: {
         useUnitTopic: false, topicMode: 'custom', customTopic: 'a podcast interview about series people are watching right now and why they like them',
-        cefr: 'B1.2', levelMeter: true, languageComplexity: 55, grammarComplexity: 50, vocabularyDifficulty: 50, idiomaticLanguage: 55, explicitness: 45,
+        contentComplexity: 55, cefr: 'B1.2', levelMeter: true, languageComplexity: 55, grammarComplexity: 50, vocabularyDifficulty: 50, idiomaticLanguage: 55, explicitness: 45,
         format: 'dialogue', preset: 'podcast', speakerBalance: 'main', audioLength: '180', speakingSpeed: 55, turnLength: 55, turnVariability: 70, naturalness: 70, emotionTags: 'medium',
         vocabUsage: 60, targetVocabMin: 8, targetVocabMax: 12,
         createWorksheet: true, questionCount: '10', questionLevel: 'A', inferenceLevel: 60, distractorDifficulty: 60,
@@ -929,7 +959,7 @@
     { key: 'cafechat', kind: 'listening', label: 'Alltagsgespräch im Café', blurb: 'Zwei Jugendliche verabreden sich – einfache, klare Sprache.',
       settings: {
         useUnitTopic: true, topicMode: 'unit', customTopic: '',
-        cefr: 'A2.2', levelMeter: true, languageComplexity: 20, grammarComplexity: 15, vocabularyDifficulty: 20, idiomaticLanguage: 25, explicitness: 15,
+        contentComplexity: 20, cefr: 'A2.2', levelMeter: true, languageComplexity: 20, grammarComplexity: 15, vocabularyDifficulty: 20, idiomaticLanguage: 25, explicitness: 15,
         format: 'dialogue', preset: 'casual', speakerBalance: 'balanced', audioLength: '120', speakingSpeed: 40, turnLength: 20, turnVariability: 55, naturalness: 55, emotionTags: 'low',
         vocabUsage: 70, targetVocabMin: 6, targetVocabMax: 8,
         createWorksheet: true, questionCount: '8', questionLevel: 'B', inferenceLevel: 20, distractorDifficulty: 30,
@@ -939,7 +969,7 @@
     { key: 'radionews', kind: 'listening', label: 'Radio-Nachricht', blurb: 'Kurze, dichte Meldung im Nachrichtenton – zum Mitschreiben.',
       settings: {
         useUnitTopic: true, topicMode: 'unit', customTopic: '',
-        cefr: 'B2.1', levelMeter: true, languageComplexity: 75, grammarComplexity: 75, vocabularyDifficulty: 75, idiomaticLanguage: 15, explicitness: 30,
+        contentComplexity: 45, cefr: 'B2.1', levelMeter: true, languageComplexity: 75, grammarComplexity: 75, vocabularyDifficulty: 75, idiomaticLanguage: 15, explicitness: 30,
         format: 'monologue', preset: 'news', speakerBalance: 'balanced', audioLength: '120', speakingSpeed: 70, turnLength: 80, turnVariability: 30, naturalness: 25, emotionTags: 'off',
         vocabUsage: 50, targetVocabMin: 8, targetVocabMax: 10,
         createWorksheet: true, questionCount: '8', questionLevel: 'A', inferenceLevel: 45, distractorDifficulty: 70,
@@ -949,7 +979,7 @@
     { key: 'debate', kind: 'listening', label: 'Streitgespräch', blurb: 'Stimmen, die sich widersprechen und ins Wort fallen.',
       settings: {
         useUnitTopic: false, topicMode: 'custom', customTopic: 'a heated discussion in which three people disagree about a rule at school',
-        cefr: 'B2.1', levelMeter: true, languageComplexity: 70, grammarComplexity: 65, vocabularyDifficulty: 65, idiomaticLanguage: 75, explicitness: 65,
+        contentComplexity: 75, cefr: 'B2.1', levelMeter: true, languageComplexity: 70, grammarComplexity: 65, vocabularyDifficulty: 65, idiomaticLanguage: 75, explicitness: 65,
         format: 'conversation', speakerCount: 3, preset: 'debate', speakerBalance: 'natural', audioLength: '240', speakingSpeed: 60, turnLength: 45, turnVariability: 85, naturalness: 80, emotionTags: 'high',
         vocabUsage: 55, targetVocabMin: 8, targetVocabMax: 12,
         createWorksheet: true, questionCount: '10', questionLevel: 'A', inferenceLevel: 75, distractorDifficulty: 75,
@@ -959,7 +989,7 @@
     { key: 'servicecall', kind: 'listening', label: 'Telefonat mit dem Kundendienst', blurb: 'Funktionale Sprache, Zahlen und Details zum Heraushören.',
       settings: {
         useUnitTopic: false, topicMode: 'custom', customTopic: 'a phone call about an order that has not arrived: dates, numbers and what happens next',
-        cefr: 'B1.1', levelMeter: true, languageComplexity: 35, grammarComplexity: 30, vocabularyDifficulty: 35, idiomaticLanguage: 30, explicitness: 20,
+        contentComplexity: 25, cefr: 'B1.1', levelMeter: true, languageComplexity: 35, grammarComplexity: 30, vocabularyDifficulty: 35, idiomaticLanguage: 30, explicitness: 20,
         format: 'dialogue', preset: 'phone', speakerBalance: 'balanced', audioLength: '150', speakingSpeed: 50, turnLength: 30, turnVariability: 60, naturalness: 55, emotionTags: 'low',
         vocabUsage: 65, targetVocabMin: 6, targetVocabMax: 10,
         createWorksheet: true, questionCount: '10', questionLevel: 'B', inferenceLevel: 25, distractorDifficulty: 45,
@@ -969,7 +999,7 @@
     { key: 'anecdote', kind: 'listening', label: 'Erzählung / Anekdote', blurb: 'Eine Person erzählt, was ihr passiert ist – mit Pointe.',
       settings: {
         useUnitTopic: false, topicMode: 'custom', customTopic: 'someone tells the story of a day when a small misunderstanding turned into something bigger',
-        cefr: 'B1.1', levelMeter: true, languageComplexity: 40, grammarComplexity: 45, vocabularyDifficulty: 40, idiomaticLanguage: 50, explicitness: 50,
+        contentComplexity: 35, cefr: 'B1.1', levelMeter: true, languageComplexity: 40, grammarComplexity: 45, vocabularyDifficulty: 40, idiomaticLanguage: 50, explicitness: 50,
         format: 'monologue', preset: 'storytelling', speakerBalance: 'balanced', audioLength: '180', speakingSpeed: 45, turnLength: 70, turnVariability: 40, naturalness: 60, emotionTags: 'medium',
         vocabUsage: 60, targetVocabMin: 8, targetVocabMax: 10,
         createWorksheet: true, questionCount: '10', questionLevel: 'B', inferenceLevel: 45, distractorDifficulty: 50,
@@ -981,7 +1011,7 @@
     { key: 'horrorblog', kind: 'reading', label: 'Horror-Blogpost', blurb: 'Warum wir uns gern fürchten – Bloggerstimme, anspruchsvoll.',
       settings: {
         useUnitTopic: false, topicMode: 'custom', customTopic: 'the horror genre: why people enjoy being scared, from a blogger who watches everything',
-        cefr: 'B2.2', levelMeter: true, languageComplexity: 85, grammarComplexity: 80, vocabularyDifficulty: 85, idiomaticLanguage: 70, explicitness: 70,
+        contentComplexity: 40, cefr: 'B2.2', levelMeter: true, languageComplexity: 85, grammarComplexity: 80, vocabularyDifficulty: 85, idiomaticLanguage: 70, explicitness: 70,
         textType: 'Blog Post', lengthMode: 'words', wordCount: 380, paragraphLength: 'medium', styleBalance: 35, dialogueProportion: 15,
         vocabUsage: 55, targetVocabMin: 8, targetVocabMax: 12,
         createWorksheet: true, questionCount: '10', questionLevel: 'A', inferenceLevel: 80, distractorDifficulty: 75,
@@ -991,7 +1021,7 @@
     { key: 'newsreport', kind: 'reading', label: 'Zeitungsmeldung', blurb: 'Sachlich, dicht, mit Zahlen und Zitaten – wie auf einer Newsseite.',
       settings: {
         useUnitTopic: true, topicMode: 'unit', customTopic: '',
-        cefr: 'B2.1', levelMeter: true, languageComplexity: 70, grammarComplexity: 65, vocabularyDifficulty: 70, idiomaticLanguage: 20, explicitness: 25,
+        contentComplexity: 50, cefr: 'B2.1', levelMeter: true, languageComplexity: 70, grammarComplexity: 65, vocabularyDifficulty: 70, idiomaticLanguage: 20, explicitness: 25,
         textType: 'News Article', lengthMode: 'words', wordCount: 400, paragraphLength: 'short', styleBalance: 90, dialogueProportion: 20,
         vocabUsage: 50, targetVocabMin: 8, targetVocabMax: 12,
         createWorksheet: true, questionCount: '10', questionLevel: 'A', inferenceLevel: 45, distractorDifficulty: 70,
@@ -1001,7 +1031,7 @@
     { key: 'hostemail', kind: 'reading', label: 'E-Mail an die Gastfamilie', blurb: 'Kurz, freundlich, alles direkt gesagt.',
       settings: {
         useUnitTopic: false, topicMode: 'custom', customTopic: 'an exchange student writes to the host family before arriving: plans, questions and small worries',
-        cefr: 'A2.2', levelMeter: true, languageComplexity: 15, grammarComplexity: 15, vocabularyDifficulty: 15, idiomaticLanguage: 10, explicitness: 10,
+        contentComplexity: 20, cefr: 'A2.2', levelMeter: true, languageComplexity: 15, grammarComplexity: 15, vocabularyDifficulty: 15, idiomaticLanguage: 10, explicitness: 10,
         textType: 'Email', lengthMode: 'words', wordCount: 180, paragraphLength: 'short', styleBalance: 40, dialogueProportion: 10,
         vocabUsage: 70, targetVocabMin: 6, targetVocabMax: 8,
         createWorksheet: true, questionCount: '8', questionLevel: 'B', inferenceLevel: 20, distractorDifficulty: 30,
@@ -1011,7 +1041,7 @@
     { key: 'socialforum', kind: 'reading', label: 'Forumsthread', blurb: 'Mehrere Stimmen, umgangssprachlich, widersprüchlich.',
       settings: {
         useUnitTopic: false, topicMode: 'custom', customTopic: 'an online thread in which students argue about phones at school',
-        cefr: 'B1.1', levelMeter: true, languageComplexity: 40, grammarComplexity: 35, vocabularyDifficulty: 35, idiomaticLanguage: 55, explicitness: 35,
+        contentComplexity: 55, cefr: 'B1.1', levelMeter: true, languageComplexity: 40, grammarComplexity: 35, vocabularyDifficulty: 35, idiomaticLanguage: 55, explicitness: 35,
         textType: 'Forum Discussion', lengthMode: 'words', wordCount: 300, paragraphLength: 'short', styleBalance: 25, dialogueProportion: 85,
         vocabUsage: 60, targetVocabMin: 6, targetVocabMax: 10,
         createWorksheet: true, questionCount: '10', questionLevel: 'B', inferenceLevel: 40, distractorDifficulty: 45,
@@ -1021,7 +1051,7 @@
     { key: 'openstory', kind: 'reading', label: 'Kurzgeschichte, offenes Ende', blurb: 'Erzählend, vieles nur angedeutet – lädt zum Deuten ein.',
       settings: {
         useUnitTopic: false, topicMode: 'custom', customTopic: 'a short story with an open ending about two friends and a decision one of them keeps quiet',
-        cefr: 'B1.2', levelMeter: true, languageComplexity: 50, grammarComplexity: 50, vocabularyDifficulty: 45, idiomaticLanguage: 45, explicitness: 75,
+        contentComplexity: 70, cefr: 'B1.2', levelMeter: true, languageComplexity: 50, grammarComplexity: 50, vocabularyDifficulty: 45, idiomaticLanguage: 45, explicitness: 75,
         textType: 'Story', lengthMode: 'words', wordCount: 400, paragraphLength: 'medium', styleBalance: 5, dialogueProportion: 45,
         vocabUsage: 55, targetVocabMin: 8, targetVocabMax: 12,
         createWorksheet: true, questionCount: '10', questionLevel: 'A', inferenceLevel: 75, distractorDifficulty: 65,
@@ -1031,7 +1061,7 @@
     { key: 'filmreview', kind: 'reading', label: 'Serien-Kritik', blurb: 'Meinungsstark, mit Vergleichen und Wertungen.',
       settings: {
         useUnitTopic: false, topicMode: 'custom', customTopic: 'a review of a series everybody is talking about, with what works and what does not',
-        cefr: 'B1.2', levelMeter: true, languageComplexity: 55, grammarComplexity: 50, vocabularyDifficulty: 60, idiomaticLanguage: 60, explicitness: 55,
+        contentComplexity: 60, cefr: 'B1.2', levelMeter: true, languageComplexity: 55, grammarComplexity: 50, vocabularyDifficulty: 60, idiomaticLanguage: 60, explicitness: 55,
         textType: 'Review', lengthMode: 'words', wordCount: 320, paragraphLength: 'medium', styleBalance: 55, dialogueProportion: 15,
         vocabUsage: 60, targetVocabMin: 8, targetVocabMax: 12,
         createWorksheet: true, questionCount: '10', questionLevel: 'A', inferenceLevel: 60, distractorDifficulty: 60,
@@ -1080,6 +1110,7 @@
       out.push(topic);
       out.push(`${{ short: 'kurze', medium: 'mittlere', long: 'lange' }[s.paragraphLength]} Absätze · ${step(s.styleBalance, ['stark erzählend', 'eher erzählend', 'gemischt', 'eher sachlich', 'stark sachlich'])}${Number(s.dialogueProportion) >= 40 ? ' · viel wörtliche Rede' : ''}`);
     }
+    out.push(`inhaltlich ${contentComplexityProfile(s.contentComplexity).de}`);
     out.push(`${step(s.grammarComplexity, ['einfachste Strukturen', 'einfache Sätze', 'niveautypische Sätze', 'komplexe Sätze', 'volles Strukturrepertoire'])} · ${step(s.vocabularyDifficulty, ['nur häufigster', 'häufiger', 'niveautypischer', 'anspruchsvoller', 'sehr anspruchsvoller'])} Wortschatz`);
     out.push(`Idiomatik ${step(s.idiomaticLanguage, ['keine', 'selten', 'gelegentlich', 'häufig', 'sehr häufig'])} · Informationen ${step(s.explicitness, ['sehr direkt gesagt', 'direkt gesagt', 'teils implizit', 'oft implizit', 'stark implizit'])}`);
     out.push(`Zielvokabular: ${s.vocabSelectionMode === 'manual' ? `${(s.selectedVocab || []).length} selbst gewählte Wörter` : `${s.targetVocabMin}–${s.targetVocabMax} Wörter aus der Unit`} · ${step(s.vocabUsage, ['unauffällig', 'zurückhaltend', 'deutlich', 'prominent', 'sehr prominent'])} eingesetzt`);
@@ -1152,7 +1183,7 @@
   const VARIANT_KEYS = {
     customTopic: 'text',
     wordCount: [80, 1200], audioLength: 'audio',
-    languageComplexity: [0, 100], grammarComplexity: [0, 100], vocabularyDifficulty: [0, 100],
+    languageComplexity: [0, 100], grammarComplexity: [0, 100], vocabularyDifficulty: [0, 100], contentComplexity: [0, 100],
     idiomaticLanguage: [0, 100], explicitness: [0, 100], naturalness: [0, 100], inferenceLevel: [0, 100],
     dialogueProportion: [0, 100], styleBalance: [0, 100],
   };
@@ -1401,6 +1432,8 @@
       authenticLayout: !!(state.authenticLayout && state.kind === 'reading'),
       layoutMedium: state.layoutMedium || 'auto',
       levelMeter: state.levelMeter !== false,
+      // how demanding the ideas are — independent of words and grammar
+      contentComplexity: contentComplexityProfile(state.contentComplexity),
       targetWords: targetWordCount(state),
       // the pages the reading text may fill, and what they hold (§37)
       pageLimit: state.kind === 'reading' ? pageLimit(state) : null,
@@ -1530,7 +1563,7 @@
     META_SPECS, TEXT_TYPE_DESIGN, designIdFor,
     SCHEMA, SCHEMA_BY_KEY, SIMPLE_MODE_KEYS, EXAMPLE_CONFIG, WORDS_PER_A4,
     PAGE_CAPACITY, PAGE_CAPACITY_MEDIA, PAGE_SHORT_PARAGRAPHS, PAPER_BY_DEFAULT, textMedium, pageLimit, pageCapacity,
-    defaults, normalizeState, clone,
+    defaults, normalizeState, clone, CONTENT_COMPLEXITY, contentComplexityProfile,
     wordsPerMinute, audioSeconds, targetWordCount, effectiveSpeakerCount, speakerLabels,
     effectiveShares, roundToHundred, normalizeShares, applyPreset, presetByKey, applyTurnPreset,
     turnWordTarget, emotionTagTarget, questionCount, questionBand, autoSkillMix, effectiveSkillMix,

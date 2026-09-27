@@ -140,6 +140,25 @@
     ].filter(Boolean).join('\n');
   }
 
+  /*
+   * Content complexity: how demanding the ideas are. It is written as its
+   * own block, apart from the language dials, and says outright what it is
+   * NOT — the easy way to make a text "harder" is rarer words, and that is
+   * exactly what this dial must never do. The vocabulary targets above do
+   * not move with it; the check measures that afterwards.
+   */
+  function contentComplexityBlock(state, plan) {
+    const c = plan.contentComplexity || core.contentComplexityProfile(state.contentComplexity);
+    const what = state.kind === 'listening' ? 'the conversation' : 'the text';
+    return [
+      `Dial ${c.value}/100 → ${c.en}: ${c.ideas}.`,
+      `This dial is about the IDEAS only: how abstract they are, how many are connected, how many perspectives ${what} holds, how much the listener or reader has to combine and work out. It is NEVER made with rarer words, technical terms, longer sentences or harder grammar — the vocabulary, grammar and sentence-length targets above stay exactly the same at every content complexity, and they are measured afterwards.`,
+      c.step >= 2
+        ? `Say every abstract idea in plain words of ${plan.cefr}: "what is fair for everyone", not "equity"; "it made things worse in a way nobody expected", not "counterproductive"; "people who see it differently", not "dissenting stakeholders". A word above ${plan.cefr} is a mistake, however deep the thought behind it.`
+        : `Keep the thinking as simple as the words: no hidden second meaning, no abstract conclusion the ${state.kind === 'listening' ? 'listener' : 'reader'} has to build — a clear situation, clear reasons, clear results.`,
+    ].join('\n');
+  }
+
   function vocabularyBlock(state, plan) {
     const [min, max] = plan.vocabRange;
     const lines = [];
@@ -280,6 +299,7 @@
       `You are an experienced EFL materials writer. Write a ${state.kind === 'listening' ? 'listening script for an audio recording' : 'reading text'} for a class of teenagers, based on the settings below. The material must be didactically controllable: language level and structure follow the settings exactly.`,
       '## Source & topic\n' + sourceBlock(state, plan),
       '## Language level\n' + languageBlock(state, plan),
+      '## Content complexity (how demanding the ideas are — not the words)\n' + contentComplexityBlock(state, plan),
       '## Target vocabulary\n' + vocabularyBlock(state, plan),
       (state.kind === 'listening' ? '## Audio structure\n' + listeningStructureBlock(state, plan) : '## Text structure\n' + readingStructureBlock(state, plan)),
       '## Document details\n' + documentBlock(state),
@@ -546,6 +566,7 @@
       DATA_NOTE,
       `Kind: ${state.kind}; textbook unit: ${quoted(plan.unitName)}` + (plan.unitTopic ? ` (${quoted(plan.unitTopic)})` : '') + `; intended topic: ${quoted(plan.topic)}`,
       `Language level: ${plan.cefr}; question level: ${plan.questionBand}; question difficulty: ${plan.questionDifficulty == null ? state.questionDifficulty : plan.questionDifficulty}/100`,
+      plan.contentComplexity ? `Content complexity (the ideas, not the words): ${plan.contentComplexity.value}/100 — ${plan.contentComplexity.en}: ${plan.contentComplexity.ideas}; vocabulary difficulty ${state.vocabularyDifficulty}/100 inside ${plan.cefr}` : '',
       `Target vocabulary that should appear: ${plan.vocabulary.map(w => w.word).join(', ')}`,
       state.kind === 'listening' ? `Speakers and target shares: ${plan.speakers.map(s => `${s.label} ${s.share} %`).join(', ')}; emotion tags: ${state.emotionTags}; naturalness ${state.naturalness}/100` : `Text type: ${state.textType}`,
       worksheet ? `Planned skills: ${core.SKILL_KEYS.filter(k => plan.skillMix[k]).map(k => `${plan.skillMix[k]}× ${k}`).join(', ')}; allowed question bands: ${plan.questionBands.join(', ')}` + (plan.questionLevel ? ` (${plan.questionLevelLabel})` : '') : 'No worksheet.',
@@ -717,9 +738,9 @@
         + '- "blurb": one short German sentence that says what makes this variant different.\n'
         + `- "customTopic": the new content idea in English, one sentence, concrete enough to write ${isL ? 'a script' : 'a text'} from. It must work with the unit vocabulary above and be suitable for a school class.\n`
         + '- Optionally these dials, each 0–100, only where the idea really calls for it: '
-        + (isL ? '"languageComplexity", "grammarComplexity", "vocabularyDifficulty", "idiomaticLanguage", "explicitness", "naturalness", "inferenceLevel"' : '"languageComplexity", "grammarComplexity", "vocabularyDifficulty", "idiomaticLanguage", "explicitness", "inferenceLevel", "dialogueProportion", "styleBalance"')
+        + (isL ? '"contentComplexity", "languageComplexity", "grammarComplexity", "vocabularyDifficulty", "idiomaticLanguage", "explicitness", "naturalness", "inferenceLevel"' : '"contentComplexity", "languageComplexity", "grammarComplexity", "vocabularyDifficulty", "idiomaticLanguage", "explicitness", "inferenceLevel", "dialogueProportion", "styleBalance"')
         + `.\n- Keep every dial within ±20 of the template's value, so the variant stays at ${state.cefr}.`,
-      `## The template's dials\n` + ['languageComplexity', 'grammarComplexity', 'vocabularyDifficulty', 'idiomaticLanguage', 'explicitness', 'inferenceLevel', isL ? 'naturalness' : 'styleBalance', isL ? '' : 'dialogueProportion'].filter(Boolean).map(k => `- ${k}: ${state[k]}`).join('\n'),
+      `## The template's dials\n` + ['contentComplexity', 'languageComplexity', 'grammarComplexity', 'vocabularyDifficulty', 'idiomaticLanguage', 'explicitness', 'inferenceLevel', isL ? 'naturalness' : 'styleBalance', isL ? '' : 'dialogueProportion'].filter(Boolean).map(k => `- ${k}: ${state[k]}`).join('\n'),
       'Reply with only a JSON object: {"label": "…", "blurb": "…", "customTopic": "…", …optional dials…}',
     ].join('\n\n');
   }

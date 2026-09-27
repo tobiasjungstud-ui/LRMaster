@@ -584,6 +584,7 @@
     const rows = [
       ['Topic', plan.topic || '–', plan.topicSource === 'unit' ? '(Unit-Thema)' : '(eigenes Thema)'],
       ['Sprache', plan.cefr, `Complexity ${app.state.languageComplexity}/100`],
+      ['Inhalt', plan.contentComplexity.de, `Content Complexity ${plan.contentComplexity.value}/100 · Wortschatz bleibt auf ${plan.cefr}`],
       app.state.kind === 'listening' ? ['Audio', `${Math.round(plan.seconds / 60 * 10) / 10} min → ≈ ${plan.targetWords} Wörter`, plan.preset.label] : ['Text', `≈ ${plan.targetWords} Wörter`, app.state.textType],
       app.state.kind === 'reading' ? ['Seiten', `höchstens ${plan.pageLimit} A4 · ${PAGE_MEDIUM_LABEL[plan.pageMedium] || ''} ≈ ${plan.pageCapacity} Wörter`,
         plan.wordsCapped ? `(${app.state.wordCount} Wörter passen nicht auf ${plan.pageLimit} Seite${plan.pageLimit > 1 ? 'n' : ''} – auf ${plan.targetWords} begrenzt)` : ''] : null,

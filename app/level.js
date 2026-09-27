@@ -535,6 +535,25 @@
     return res;
   }
 
-  return { DIALS, DIAL_KEYS, dialAim, dialTargets, dialCheck,
+  /*
+   * How the ideas of a text hang together — a signal, not a level. Content
+   * complexity is about ideas, not words, so it is not one of the CEFR
+   * dimensions above; what can be counted is how often the text links one
+   * idea to another (reasons, contrasts, concessions, consequences,
+   * conditions) and how often it sets one view against another. The report
+   * shows it next to the content complexity dial; the words are measured
+   * on their own, by the dimensions above.
+   */
+  const IDEA_LINKS = /\b(because|so that|although|even though|though|however|whereas|unless|even if|therefore|as a result|which means|this means|that means|that is why|that's why|on the other hand|on the one hand|instead of|despite|in spite of|otherwise|whether|as long as|in other words|at the same time|what if|not only|rather than)\b/gi;
+  const PERSPECTIVES = /\b(some people|other people|others think|others say|some say|many people think|not everyone|critics|supporters|in my opinion|i think|i believe|she thinks|he thinks|they think|she believes|he believes|they believe|it depends|from (?:her|his|their|my|our) point of view|others disagree|people disagree)\b/gi;
+  function ideaSignals(content, kind) {
+    const text = plainText(content, kind === 'listening' ? 'listening' : 'reading');
+    const words = countWords(text).length;
+    const per100 = (n) => (words ? Math.round(n / words * 1000) / 10 : 0);
+    return { words, links: per100(count(IDEA_LINKS, text)), perspectives: per100(count(PERSPECTIVES, text)),
+      examples: { links: examples(IDEA_LINKS, text).slice(0, 4), perspectives: examples(PERSPECTIVES, text).slice(0, 3) } };
+  }
+
+  return { DIALS, DIAL_KEYS, dialAim, dialTargets, dialCheck, ideaSignals,
     BANDS, DESCRIPTORS, DIMENSIONS, measure, compare, targetsFor, targetLines, glossaryCandidates, rankOf, rankBand, lemmaOf, tokenize, sentences, candidates, americanize, maxRankFor, hardWordsFor, stripDirections, countWords };
 });

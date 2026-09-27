@@ -2490,5 +2490,92 @@
       return ok(!problems.length, problems.slice(0, 3).join(' | '));
     } });
 
+  /*
+   * §40 Inhaltliche Komplexität: how demanding the ideas are — concrete and
+   * direct at the low end, abstract and multi-layered at the high end — while
+   * the words stay at the chosen level. The easy way to make a text "harder"
+   * is rarer words; this dial must never do that, and the check measures it
+   * (Auftragserweiterung "Complexity Slider").
+   */
+  // the same argument twice: abstract ideas in plain B1 words, and the same ideas dressed in rare words
+  const IDEAS_PLAIN = [
+    'In our town the buses are free for old people but not for students. Some people say this is fair, because old people often have less money. Others think it is not fair, because many students have no money either and they need the bus to get to school.',
+    'At first the question seems simple. But if the buses were free for everyone, the town would have to pay for them. That means less money for other things, like parks or the library, which students also use. So a free bus could take something away from the same people it wants to help.',
+    'Maybe the real question is not who should pay, but what a town owes the people who live in it. Some say it owes them the same chances. Others say it should help those who need it most. Both ideas sound right, and that is why people still argue about it.',
+  ];
+  const IDEAS_RARE_WORDS = [
+    'In our municipality the transportation subsidies are allocated exclusively to pensioners, not to adolescents. Proponents assert this is equitable, given pensioners typically possess diminished financial resources. Opponents contend it is inequitable, since numerous adolescents are similarly impoverished and dependent on commuting infrastructure.',
+    'Initially the dilemma appears straightforward. Nevertheless, universal subsidisation would necessitate municipal expenditure, consequently diminishing allocations for amenities such as recreational facilities or libraries, which adolescents likewise utilise. Paradoxically, subsidisation could deprive precisely those beneficiaries it intends to support.',
+    'Perhaps the fundamental issue concerns not remuneration but municipal obligations towards inhabitants. Certain advocates prioritise equitable opportunity. Others emphasise targeted assistance for vulnerable demographics. Both perspectives appear legitimate, hence the controversy persists.',
+  ];
+  const complexityFinding = (env, cc, paragraphs) => {
+    const m = env.fixture.material({ cefr: 'B1.1', vocabularyDifficulty: 50, contentComplexity: cc }, 'reading');
+    m.content.paragraphs = paragraphs;
+    return env.quality.runContentChecks(m.settings, m.plan, m.content).find(x => x.id === 'content.complexity_words');
+  };
+  add({ id: 'S40.setting', section: 40, title: 'Regler „Content Complexity“: niedrig konkrete, direkte, leicht verständliche Ideen – hoch abstraktere, mehrschichtige Ideen, komplexere Zusammenhänge, mehr Denkleistung', kind: 'setting', key: 'contentComplexity', alt: 90, mode: 'both',
+    extra(env) {
+      const problems = [];
+      const P = env.core.contentComplexityProfile;
+      if (P(0).key !== 'concrete' || P(100).key !== 'layered' || P(50).key !== 'balanced') problems.push('the ends of the dial do not mean concrete and multi-layered');
+      if (!(P(-20).value === 0 && P(300).value === 100 && P('x').value === 50)) problems.push('the dial is not clamped to 0–100');
+      for (const kind of ['reading', 'listening']) {
+        const lo = env.state({ kind, contentComplexity: 5 }), hi = env.state({ kind, contentComplexity: 95 });
+        const pl = env.prompts.buildContentPrompt(lo, env.core.buildPlan(lo, env.ctx)), ph = env.prompts.buildContentPrompt(hi, env.core.buildPlan(hi, env.ctx));
+        if (!/concrete and direct/.test(pl) || !/one clear idea at a time/.test(pl)) problems.push(kind + ': the low end does not ask for concrete, direct ideas');
+        if (!/abstract and multi-layered/.test(ph) || !/several perspectives/.test(ph) || !/connect ideas across the whole text/.test(ph)) problems.push(kind + ': the high end does not ask for abstract, multi-layered ideas');
+      }
+      if (!env.core.setupPresets('reading').concat(env.core.setupPresets('listening')).every(p => Number.isFinite(p.settings.contentComplexity))) problems.push('a template leaves the content complexity open');
+      return ok(!problems.length, problems.slice(0, 3).join(' | '));
+    } });
+  add({ id: 'S40.words_stay', section: 40, title: 'Das Vokabular bleibt auf dem gewählten Sprachniveau: die Content Complexity ändert keinen Wortschatz-, Grammatik- oder Satzlängen-Zielwert, und der Prompt verbietet, Komplexität mit selteneren Wörtern zu erzeugen', kind: 'function',
+    check(env) {
+      const problems = [];
+      for (const kind of ['reading', 'listening']) {
+        const lo = env.state({ kind, cefr: 'B1.1', contentComplexity: 0 }), hi = env.state({ kind, cefr: 'B1.1', contentComplexity: 100 });
+        const pl = env.prompts.buildContentPrompt(lo, env.core.buildPlan(lo, env.ctx)), ph = env.prompts.buildContentPrompt(hi, env.core.buildPlan(hi, env.ctx));
+        // everything but the content complexity block is the same prompt: same level, same measurable word targets
+        const cut = (p) => p.replace(/## Content complexity[\s\S]*?(?=\n## )/, '');
+        if (cut(pl) !== cut(ph)) problems.push(kind + ': the content complexity changes more of the prompt than its own block');
+        const lang = (p) => (p.match(/## Language level[\s\S]*?(?=\n## )/) || [''])[0];
+        if (!lang(ph) || lang(pl) !== lang(ph)) problems.push(kind + ': the language targets move with the content complexity');
+        if (!/NEVER made with rarer words, technical terms, longer sentences or harder grammar/.test(ph)) problems.push(kind + ': the prompt does not forbid making it harder with words');
+        if (!/plain words of B1\.1/.test(ph) || !/not "equity"/.test(ph)) problems.push(kind + ': the prompt does not show how an abstract idea is said in plain words');
+      }
+      const tA = env.level.dialTargets('B1.1', { vocabularyDifficulty: 50, contentComplexity: 0 }, 'reading');
+      const tB = env.level.dialTargets('B1.1', { vocabularyDifficulty: 50, contentComplexity: 100 }, 'reading');
+      if (JSON.stringify(tA) !== JSON.stringify(tB)) problems.push('the measured word targets depend on the content complexity');
+      return ok(!problems.length, problems.slice(0, 3).join(' | '));
+    } });
+  add({ id: 'S40.rule_words', section: 40, title: 'Kontrolle (gemessen): höhere Complexity kommt aus den Ideen, nicht aus schwierigeren Wörtern – bei abstraktem Inhalt schlägt ein Wortschatz über dem Regler an, nennt die Wörter zum Ersetzen und löst die Korrektur aus', kind: 'rule', ruleId: 'content.complexity_words',
+    extra(env) {
+      const problems = [];
+      const plainHigh = complexityFinding(env, 90, IDEAS_PLAIN);
+      const rareHigh = complexityFinding(env, 90, IDEAS_RARE_WORDS);
+      const rareLow = complexityFinding(env, 10, IDEAS_RARE_WORDS);
+      if (!plainHigh || plainHigh.status !== 'pass') problems.push('abstract ideas in plain words are flagged: ' + (plainHigh && plainHigh.detail));
+      if (!rareHigh || rareHigh.status !== 'fail' || rareHigh.advisory) problems.push('the same ideas in rare words pass at a high content complexity');
+      else {
+        if (!/municipality|subsidies|equitable|adolescents/.test(rareHigh.detail)) problems.push('the finding does not name the words to replace');
+        if (!env.quality.repairable([rareHigh], 'fail').length) problems.push('the finding does not start a repair');
+      }
+      if (!rareLow || !rareLow.advisory || env.quality.repairable([rareLow], 'all').length) problems.push('at a low content complexity it is not only a hint (the dials rule covers the words there)');
+      if (!(plainHigh && plainHigh.measured && plainHigh.measured.ideaLinks > 0)) problems.push('the links between the ideas are not measured');
+      return ok(!problems.length, problems.slice(0, 3).join(' | '));
+    } });
+  add({ id: 'S40.rule_ideas', section: 40, title: 'Kontrolle (Claude): die Ideen sind so anspruchsvoll, wie der Regler sagt – und klingen nicht nur schwer, weil seltene Wörter oder lange Sätze darin stehen', kind: 'rule', ruleId: 'content.idea_complexity',
+    extra(env) {
+      const rule = env.quality.RULES.find(r => r.id === 'content.idea_complexity');
+      const problems = [];
+      if (!/rare words, technical terms or long sentences/.test(rule.failsWhen)) problems.push('the rule does not fail a text that only sounds demanding through its words');
+      const st = env.state({ kind: 'reading', contentComplexity: 85 });
+      const plan = env.core.buildPlan(st, env.ctx);
+      const m = env.fixture.material({ contentComplexity: 85 }, 'reading');
+      const rev = env.prompts.buildReviewPrompt(st, plan, m.content, null, env.quality.llmRules(st, plan, null), []);
+      if (!/Content complexity \(the ideas, not the words\): 85\/100/.test(rev)) problems.push('the reviewer is not told which content complexity to judge against');
+      if (!env.quality.llmRules(st, plan, null).some(r => r.id === 'content.idea_complexity')) problems.push('the rule is not asked when there is no worksheet');
+      return ok(!problems.length, problems.slice(0, 3).join(' | '));
+    } });
+
   return { REQUIREMENTS: M };
 });

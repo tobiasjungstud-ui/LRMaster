@@ -1692,6 +1692,35 @@ function pagedMaterial(over, words, perPara) {
   return m;
 }
 
+test('2.1 R4', 'content complexity moves the ideas only: at every level, kind and vocabulary dial the word, grammar and length targets of the prompt stay the same', () => {
+  for (const kind of ['reading', 'listening']) {
+    for (const cefr of core.CEFR_BANDS) {
+      for (const vd of [0, 50, 100]) {
+        const lo = core.normalizeState({ kind, cefr, vocabularyDifficulty: vd, contentComplexity: 0 });
+        const hi = core.normalizeState({ kind, cefr, vocabularyDifficulty: vd, contentComplexity: 100 });
+        const pl = prompts.buildContentPrompt(lo, core.buildPlan(lo, CTX)), ph = prompts.buildContentPrompt(hi, core.buildPlan(hi, CTX));
+        const cut = (p) => p.replace(/## Content complexity[\s\S]*?(?=\n## )/, '');
+        assert.equal(cut(pl), cut(ph), `${kind} ${cefr} vocab ${vd}: more than the content complexity block changed`);
+        assert.ok(/NEVER made with rarer words/.test(ph) && /NEVER made with rarer words/.test(pl), `${kind} ${cefr}: the prompt does not keep the words out of it`);
+        assert.equal(core.buildPlan(lo, CTX).targetWords, core.buildPlan(hi, CTX).targetWords, 'the length moves with the content complexity');
+      }
+    }
+  }
+});
+
+test('2.3 R3', 'the words check tells abstract ideas in plain words from the same ideas in rare words, at every content complexity', () => {
+  const PLAIN = ['In our town the buses are free for old people but not for students. Some people say this is fair, because old people often have less money. Others think it is not fair, because many students have no money either and they need the bus to get to school.', 'At first the question seems simple. But if the buses were free for everyone, the town would have to pay for them. That means less money for other things, like parks or the library, which students also use. So a free bus could take something away from the same people it wants to help.', 'Maybe the real question is not who should pay, but what a town owes the people who live in it. Some say it owes them the same chances. Others say it should help those who need it most. Both ideas sound right, and that is why people still argue about it.'];
+  const RARE = ['In our municipality the transportation subsidies are allocated exclusively to pensioners, not to adolescents. Proponents assert this is equitable, given pensioners typically possess diminished financial resources. Opponents contend it is inequitable, since numerous adolescents are similarly impoverished and dependent on commuting infrastructure.', 'Initially the dilemma appears straightforward. Nevertheless, universal subsidisation would necessitate municipal expenditure, consequently diminishing allocations for amenities such as recreational facilities or libraries, which adolescents likewise utilise.', 'Perhaps the fundamental issue concerns not remuneration but municipal obligations towards inhabitants. Certain advocates prioritise equitable opportunity. Others emphasise targeted assistance for vulnerable demographics. Both perspectives appear legitimate, hence the controversy persists.'];
+  for (const cc of [0, 30, 50, 60, 80, 100]) {
+    const run = (paras) => { const m = goodMaterial({ cefr: 'B1.1', contentComplexity: cc }, 'reading'); m.content.paragraphs = paras; return quality.runContentChecks(m.settings, m.plan, m.content).find(f => f.id === 'content.complexity_words'); };
+    const plain = run(PLAIN), rare = run(RARE);
+    assert.equal(plain.status, 'pass', `cc ${cc}: plain words flagged: ${plain.detail}`);
+    assert.notEqual(rare.status, 'pass', `cc ${cc}: rare words pass`);
+    if (cc >= 60) { assert.equal(rare.status, 'fail'); assert.ok(!rare.advisory); assert.ok(quality.repairable([rare], 'fail').length === 1, 'no repair'); }
+    else assert.ok(rare.advisory, `cc ${cc}: a hint became a repair`);
+  }
+});
+
 test('2.4', 'the crop of a picture: size (zoom), orientation (a quarter turn) and position (focus) — pure geometry, so it can be proven without a browser', () => {
   const cw = photo.cropWindow;
   // never distorted: the crop taken from the source is always in the box's

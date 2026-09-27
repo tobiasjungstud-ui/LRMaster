@@ -45,6 +45,7 @@
     postTaskDifficulty: ['Wiedergeben', 'Eigenes Produkt'],
     postTaskScaffolding: ['Keine Hilfen', 'Volle Hilfen'],
     preTaskScaffolding: ['Keine Hilfen', 'Volle Hilfen'],
+    contentComplexity: ['Konkret und direkt', 'Abstrakt und vielschichtig'],
     languageComplexity: ['Easy end of the level', 'Demanding end of the level'],
     grammarComplexity: ['Simplest of the level', 'Full range of the level'],
     vocabularyDifficulty: ['Most frequent words', 'Less frequent words'],
@@ -67,6 +68,7 @@
     useUnitTopic: 'ON: content clearly follows the unit topic. OFF: mainly the vocabulary is used and the topic is free.',
     languageComplexity: 'Oberregler für Satzlänge, Grammatik, Idiomatik, Synonyme, Gesprächssprache und Explizitheit – immer innerhalb des CEFR-Niveaus des Textes: 0 = leichtes Ende dieses Niveaus, 100 = anspruchsvolles Ende, nie darüber. Grammatik, Wortschatz und Idiomatik lassen sich darunter einzeln feiner stellen.',
     explicitness: 'How easily information can be taken from the material. Implicit material enables inference questions.',
+    contentComplexity: 'Wie anspruchsvoll die IDEEN sind – nicht die Wörter. Niedrig: konkrete, direkte, leicht verständliche Inhalte, ein Gedanke nach dem anderen, Gründe ausdrücklich genannt. Hoch: abstraktere, mehrschichtige Ideen, mehrere Perspektiven, Zusammenhänge über den ganzen Text, mehr Denkleistung. Der Wortschatz bleibt dabei auf dem gewählten Sprachniveau: abstrakte Gedanken werden in einfachen Wörtern gesagt. Die Qualitätskontrolle misst, ob der Wortschatz dort geblieben ist, und lässt Claude prüfen, ob die Komplexität aus den Ideen kommt.',
     turnVariability: 'High: some speakers only say “Really?” while others speak several sentences.',
     emotionTags: 'Tags such as [hesitant] or [laughing] are used selectively and can later drive a TTS system.',
     naturalness: 'Higher values add contractions, fillers, hesitation, reactions, reformulations and interruptions – always within the CEFR level.',
@@ -171,7 +173,7 @@
   // Ordering inside sections follows the concept.
   const ORDER = {
     1: ['setupMode', 'textbookId', 'unitId', 'useUnitTopic'],
-    2: ['topicMode', 'customTopic'],
+    2: ['topicMode', 'customTopic', 'contentComplexity'],
     3: ['cefr', 'levelMeter', 'languageComplexity'],
     4: ['format', 'speakerCount', 'preset', 'speakerBalance', 'customShares', 'turnLength', 'turnVariability', 'audioLength', 'audioLengthCustom', 'speakingSpeed', 'speakerProfiles', 'emotionTags', 'naturalness', 'explicitness',
         'textType', 'customTextType', 'lengthMode', 'wordCount', 'a4Pages'],
@@ -185,6 +187,7 @@
   const ADVANCED_GROUPS = [
     { title: 'Audio', keys: ['speakerCount', 'customShares', 'turnLength', 'turnVariability', 'speakingSpeed', 'naturalness', 'emotionTags', 'explicitness'] },
     { title: 'Text', keys: ['wordCount', 'paragraphLength', 'dialogueProportion', 'styleBalance'] },
+    { title: 'Content', keys: ['contentComplexity', 'explicitness', 'inferenceLevel'] },
     { title: 'Language', keys: ['cefr', 'levelMeter', 'grammarComplexity', 'vocabularyDifficulty', 'vocabUsage', 'idiomaticLanguage'] },
     { title: 'Questions', keys: ['questionCount', 'questionLevel', 'questionDifficulty', 'skillMixMode', 'questionFormats', 'distractorDifficulty', 'inferenceLevel', 'glossary', 'appendScript', 'authenticLayout', 'layoutMedium', 'paperColor', 'paperColorCustom'] },
     { title: 'Pre-Task', keys: ['preTask', 'preTaskTypes', 'preTaskCount', 'preTaskSocialMode', 'preTaskOralCount', 'preTaskDifficulty', 'preTaskScaffolding', 'preTaskCriteria'] },

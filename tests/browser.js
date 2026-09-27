@@ -564,6 +564,38 @@ const SETTINGS = (extra) => `(() => {
     await page.close();
   }
 
+  console.log('\nBrowser audit: content complexity — the ideas, not the words (2.1, 2.3, 2.11)');
+  {
+    const { page, errors } = await open({ scenario: 'ok' });
+    await page.click('#nav-reading');
+    const form = await page.evaluate(() => {
+      const el = document.querySelector('[data-setting="contentComplexity"]');
+      const field = el && el.closest('.field');
+      const vis = (x) => !!x && x.getClientRects().length > 0 && getComputedStyle(x).visibility !== 'hidden';
+      return { exists: !!el, range: el && el.type, visible: vis(el), text: field ? field.textContent.replace(/\s+/g, ' ') : '' };
+    });
+    check('the content complexity slider stands in the form, with its two ends named', form.exists && form.range === 'range' && /Konkret und direkt/.test(form.text) && /Abstrakt und vielschichtig/.test(form.text), JSON.stringify(form));
+    await run(page, { contentComplexity: 90 });
+    const r = await page.evaluate(() => {
+      const m = window.LR.ui.app.material;
+      if (!m) return { none: true };
+      const f = (id) => (m.quality.findings || []).find(x => x.id === id);
+      const plan = document.querySelector('#plan-preview') ? document.querySelector('#plan-preview').textContent.replace(/\s+/g, ' ') : '';
+      return {
+        prompt: /abstract and multi-layered/.test(m.prompts.content || '') && /NEVER made with rarer words/.test(m.prompts.content || ''),
+        planValue: m.plan.contentComplexity && m.plan.contentComplexity.value,
+        words: f('content.complexity_words') && f('content.complexity_words').status,
+        ideas: f('content.idea_complexity') && f('content.idea_complexity').status,
+        preview: /Inhalt/.test(plan) && /abstrakt und vielschichtig/.test(plan),
+      };
+    });
+    check('a run at high content complexity asks Claude for abstract, layered ideas in plain words', !r.none && r.prompt && r.planValue === 90, JSON.stringify(r));
+    check('the quality report measures the words and has Claude judge the ideas', r.words && r.words !== 'unverified' && !!r.ideas, JSON.stringify(r));
+    check('the plan names the content complexity', r.preview, JSON.stringify(r));
+    check('content complexity raises no page error', errors.length === 0, errors[0]);
+    await page.close();
+  }
+
   console.log('\nBrowser audit: the page limit — the text fills at most the pages allowed (2.4, 2.3, 2.5)');
   {
     const { page, errors } = await open({ scenario: 'long' });

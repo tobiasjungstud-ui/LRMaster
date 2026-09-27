@@ -2,7 +2,7 @@
 
 Erzeugt von `npm run coverage`. Jede Zeile ist eine Anforderung aus `docs/Konzept_Listening_Reading_Creator.md`, gebunden an die Stelle im Code, die sie umsetzt, und das Ergebnis der automatischen Prüfung (`npm test`).
 
-**Ergebnis: 336 von 336 Anforderungen bestanden.**
+**Ergebnis: 340 von 340 Anforderungen bestanden.**
 
 Prüfarten: **setting** – Steuerelement vorhanden und Änderung des Werts verändert nachweislich den Prompt an Claude · **function** – Verhalten wird mit echten Eingaben ausgeführt und verglichen · **rule** – Qualitätsregel existiert als Messung oder Claude-Review-Kriterium · **render** – Ausgabe wird auf einer Fixture gerendert und inhaltlich geprüft · **ui** – Navigations-/Strukturelement existiert.
 
@@ -537,6 +537,15 @@ Prüfarten: **setting** – Steuerelement vorhanden und Änderung des Werts ver�
 | ✅ | `S39.storage` | Grösse (Zoom, mindestens 1, höchstens 4), Drehung (ein Vielfaches von 90°) und Position (Fokuspunkt) werden geklemmt gespeichert; ein unangetastetes Bild bleibt beim einfachen, mittigen Ausschnitt | function | Funktion (siehe Check im Manifest) |
 | ✅ | `S39.ui` | Ein Symbol oben rechts an jedem eigenen Bild öffnet den Ausschnitt-Dialog: im Bild ziehen verschiebt die Position, ein Regler ändert die Grösse, zwei Knöpfe drehen um 90° – nur am Bildschirm, nie im Druck oder Export; kein Symbol ohne eigenes Bild oder auf einem runden Porträt | function | Funktion (siehe Check im Manifest) |
 
+## §40  (4/4)
+
+| Status | ID | Anforderung | Art | Umsetzung |
+|---|---|---|---|---|
+| ✅ | `S40.setting` | Regler „Content Complexity“: niedrig konkrete, direkte, leicht verständliche Ideen – hoch abstraktere, mehrschichtige Ideen, komplexere Zusammenhänge, mehr Denkleistung | setting | Setting `contentComplexity` (core.SCHEMA → Control `[data-setting="contentComplexity"]` → prompts.js) |
+| ✅ | `S40.words_stay` | Das Vokabular bleibt auf dem gewählten Sprachniveau: die Content Complexity ändert keinen Wortschatz-, Grammatik- oder Satzlängen-Zielwert, und der Prompt verbietet, Komplexität mit selteneren Wörtern zu erzeugen | function | Funktion (siehe Check im Manifest) |
+| ✅ | `S40.rule_words` | Kontrolle (gemessen): höhere Complexity kommt aus den Ideen, nicht aus schwierigeren Wörtern – bei abstraktem Inhalt schlägt ein Wortschatz über dem Regler an, nennt die Wörter zum Ersetzen und löst die Korrektur aus | rule | Quality rule `content.complexity_words` (gemessen in quality.js) |
+| ✅ | `S40.rule_ideas` | Kontrolle (Claude): die Ideen sind so anspruchsvoll, wie der Regler sagt – und klingen nicht nur schwer, weil seltene Wörter oder lange Sätze darin stehen | rule | Quality rule `content.idea_complexity` (Claude-Review über buildReviewPrompt) |
+
 ## Einstellungen (core.SCHEMA)
 
 | Key | Typ | Bereich | Modus | Simple Mode | Default |
@@ -547,6 +556,7 @@ Prüfarten: **setting** – Steuerelement vorhanden und Änderung des Werts ver�
 | `useUnitTopic` | toggle | 1 | both | nein | `true` |
 | `topicMode` | select | 2 | both | ja | `"unit"` |
 | `customTopic` | text | 2 | both | ja | `""` |
+| `contentComplexity` | range | 2 | both | ja | `50` |
 | `cefr` | select | 3 | both | ja | `"B1.1"` |
 | `levelMeter` | toggle | 3 | both | ja | `true` |
 | `languageComplexity` | range | 3 | both | nein | `50` |
@@ -640,6 +650,8 @@ Prüfarten: **setting** – Steuerelement vorhanden und Änderung des Werts ver�
 | `content.level` | content | llm | ja | Language matches the CEFR level |
 | `content.level_measured` | content | deterministic | nein | Measured difficulty matches the CEFR level |
 | `content.dials` | content | deterministic | nein | The text sits where the dials point inside the level |
+| `content.complexity_words` | content | deterministic | nein | Content complexity comes from the ideas, not from harder words |
+| `content.idea_complexity` | content | llm | nein | The ideas are as demanding as the content complexity asks |
 | `content.word_count` | content | deterministic | ja | Length matches the target |
 | `content.meta_fields` | content | deterministic | nein | Document details for the text type are complete |
 | `listening.shares` | listening | deterministic | ja | Speaking shares match the settings |

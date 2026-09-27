@@ -566,6 +566,49 @@
           : `Alle gemessenen Werte liegen dort, wohin die Regler innerhalb ${ctx.plan.cefr} zeigen.`;
         return finding(this, off.length ? 'warn' : 'pass', detail, { advisory: true, measured: rows });
       } },
+    /*
+     * Content complexity is made with ideas, never with harder words: the
+     * vocabulary is measured against the vocabulary dial and the level,
+     * whatever the content complexity. Where the ideas are asked to be
+     * abstract (step 3 and up) — the place where rarer words creep in — a
+     * miss is a real finding that the repair acts on, with the words to
+     * replace; below that it is only a hint (the dials rule covers it).
+     */
+    { id: 'content.complexity_words', group: 'content', kind: 'deterministic', title: 'Content complexity comes from the ideas, not from harder words', blocking: false,
+      check(ctx) {
+        const cc = ctx.plan.contentComplexity || core.contentComplexityProfile(ctx.state.contentComplexity);
+        const relevant = cc.step >= 3;
+        const measured = level.measure(ctx.content, ctx.state.kind, { seconds: ctx.plan.seconds, exclude: (ctx.plan.vocabulary || []).map(w => w.word) });
+        const signals = level.ideaSignals(ctx.content, ctx.state.kind);
+        const words = (measured.stats && measured.stats.words) || 0;
+        const extra = { advisory: !relevant, measured: { contentComplexity: cc.value, ideaLinks: signals.links, perspectives: signals.perspectives } };
+        if (words < 80) return finding(this, 'pass', `Zu kurz (${words} Wörter), um den Wortschatz verlässlich zu messen.`, extra);
+        // the words only: sentence length and grammar have their own measures (content.level_measured)
+        const rows = level.dialCheck(measured, ctx.plan.cefr, ctx.state, ctx.state.kind).filter(r => r.dial === 'vocabularyDifficulty');
+        // clearly above the level itself (a quarter beyond its range) is a
+        // fail; above where the vocabulary dial points, a warning — and where
+        // the ideas are not asked to be abstract, never more than a hint
+        const over = relevant ? rows.filter(r => r.value > r.range[1] + (r.range[1] - r.range[0]) * 0.25 && r.value > r.range[1] * 1.25) : [];
+        const high = rows.filter(r => r.off === 'above' && !over.includes(r));
+        const hard = (measured.hardWords || []).slice(0, 8).map(h => h.word);
+        const sig = `Ideen: ${signals.links} Verknüpfungen (weil, obwohl, deshalb …) und ${signals.perspectives} Sichtweisen pro 100 Wörter`;
+        extra.measured.lexical = rows.map(r => ({ key: r.key, value: r.value, aim: r.aim, range: r.range }));
+        extra.hardWords = hard;
+        if (!over.length && !high.length) {
+          return finding(this, 'pass', `Inhalt ${cc.de} (${cc.value}/100), der Wortschatz bleibt dort, wohin der Wortschatz-Regler innerhalb ${ctx.plan.cefr} zeigt. ${sig}.`, extra);
+        }
+        const say = (r) => `${r.label} ${r.value} ${r.unit} (Wortschatz-Regler ${r.dialValue} → Ziel ${r.aim[0]}–${r.aim[1]}, ${ctx.plan.cefr} erlaubt bis ${r.range[1]})`;
+        const detail = (relevant
+          ? `Inhalt ${cc.de} (${cc.value}/100), aber schwerer geworden sind die Wörter, nicht nur die Ideen: `
+          : `Der Wortschatz liegt über dem Wortschatz-Regler (Inhalt ${cc.de}, ${cc.value}/100): `) + `${over.concat(high).map(say).join('; ')}.`
+          + (hard.length ? ` Replace these words with common ones and keep the ideas exactly as they are: ${hard.join(', ')}.` : '')
+          + ` Abstract ideas are said in plain ${ctx.plan.cefr} words. ${sig}.`;
+        return finding(this, over.length ? 'fail' : 'warn', detail, extra);
+      } },
+    { id: 'content.idea_complexity', group: 'content', kind: 'llm', title: 'The ideas are as demanding as the content complexity asks',
+      criterion: 'the ideas of the material are as demanding as the content complexity in the settings asks (how abstract, how many ideas connected, how many perspectives, how much has to be worked out) — and that demand comes from the ideas themselves',
+      failsWhen: 'the ideas are clearly simpler than asked (a string of concrete events where abstract, multi-layered ideas were asked for) or clearly more demanding than asked (hidden meanings and abstract conclusions where concrete and direct was asked for), or the material only SOUNDS demanding because of rare words, technical terms or long sentences while the ideas themselves stay simple',
+      evidence: 'quote', whenUnsure: 'pass', notMine: 'how common the words are, sentence length and the CEFR level — those are measured', blocking: false },
     { id: 'content.word_count', group: 'content', kind: 'deterministic', title: 'Length matches the target', blocking: true,
       check(ctx) {
         const n = wordCount(materialText(ctx.content, ctx.state.kind).text.replace(/^[^:\n]+: /gm, ''));
