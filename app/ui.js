@@ -1050,6 +1050,34 @@
       progress('review', quality.repairable(reviewFindings, state.autoFix).length ? 'warn' : 'done', pfx + summaryText(reviewFindings));
       progress('question-fix', 'done', `${pfx}Runde ${round}: ${changed.length ? 'Q' + changed.join(', Q') + ' ersetzt · ' : ''}${summaryText(findings)}`);
     }
+    // A question a learner cannot work on from the sheet (a True/False
+    // question without its statement) never stays: whatever the other checks
+    // did, the incomplete questions are replaced on their own, twice if needed.
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      const cf = questionFindings.find(x => x.id === 'questions.complete' && x.status === 'fail');
+      if (!cf || !(cf.questions || []).length) break;
+      progress('question-fix', 'running', `${pfx}unvollständig: Q${cf.questions.join(', Q')} – wird ersetzt`);
+      try {
+        const pk = key('questionComplete' + attempt);
+        usedPrompts[pk] = prompts.buildQuestionRepairPrompt(state, plan, content, worksheet, [cf], cf.questions, '');
+        const patch = await askJSON(usedPrompts[pk], Object.assign({ signal: ctl.signal }, stream));
+        const list = Array.isArray(patch) ? patch : (patch && patch.questions) || [];
+        const patched = quality.applyQuestionPatch(worksheet, list);
+        if (patched === worksheet) continue;
+        const cand = inOrder(patched, maxRounds + attempt);
+        const candDet = quality.runDeterministic(state, plan, content, cand).filter(f => isWorksheetGroup(f));
+        const blockedBefore = new Set(questionFindings.filter(f => f.blocking && f.status === 'fail').map(f => f.id));
+        const newBlock = candDet.some(f => f.blocking && f.status === 'fail' && !blockedBefore.has(f.id));
+        if (quality.questionProblems(cand).bad.length >= quality.questionProblems(worksheet).bad.length || newBlock) continue;
+        const changed = quality.changedQuestions(worksheet, cand);
+        worksheet = cand; questionFindings = candDet;
+        try { const r = await reviewNow(worksheet, contentFindings.concat(candDet), 'Complete' + attempt); review = r.review; reviewFindings = r.findings; }
+        catch (e) { if (e.code === 'cancelled') throw e; }
+        findings = questionFindings.concat(reviewFindings);
+        repairs.push({ round: maxRounds + attempt, target: 'questions', questions: changed, fixed: [cf.title], accepted: true, variant: tag || undefined });
+        progress('question-fix', 'done', `${pfx}unvollständige Frage${changed.length > 1 ? 'n' : ''} Q${changed.join(', Q')} ersetzt`);
+      } catch (e) { if (e.code === 'cancelled') throw e; progress('question-fix', 'warn', pfx + errorCopy(e)); break; }
+    }
     // the check lines show where this variant ended up, not the first draft
     // before its corrections
     const corrected = repairs.some(r => r.variant === (tag || undefined) && r.accepted);
@@ -1091,6 +1119,8 @@
     $('#out-student').innerHTML = (multi ? '<div class="variant-switch" role="tablist">' + variants.map((v, i) => `<button type="button" class="chip-btn${i ? '' : ' active'}" data-variant="${esc(v.key)}">${esc(v.label)} · ${esc((v.plan || m.plan).questionBands ? (v.plan || m.plan).questionBands.join('–') : (v.plan || m.plan).questionBand)}</button>`).join('') + '</div>' : '')
       + variants.map((v, i) => `<div class="variant-sheet" data-variant="${esc(v.key || '')}"${i ? ' hidden' : ''}>${render.renderStudentHTML(m, v.key)}</div>`).join('')
       + (!variants.length ? render.renderStudentHTML(m) : '');
+    const notice = incompleteNotice(m);
+    if (notice) $('#out-student').prepend(notice);
     renderSheetHotspots(m, $('#out-student'));
     ensureOwnPictures(m);
     $$('#out-student [data-variant].chip-btn').forEach(b => b.addEventListener('click', () => {
@@ -1174,6 +1204,8 @@
       + `<div class="vw-sheet vw-print" id="vw-sheet">${model.html}</div>`
       + (model.hasMedium ? '<div class="vw-section" id="vw-medium"><h2>Das Medium, aus dem der Text kommt</h2><div class="vw-media" id="vw-media"></div></div>' : '')
       + `<div class="vw-section" id="vw-quality"><h2>Qualitätskontrolle</h2><div class="vw-media" style="display:block">${renderQualityPanel(m)}</div></div>`;
+    const incomplete = incompleteNotice(m);
+    if (incomplete) stage.insertBefore(incomplete, $('#vw-sheet'));
     if (m.layout && m.layout.chrome) {
       const media = $('#vw-media');
       media.innerHTML = '<div class="layout-shot"><canvas id="layout-canvas" data-fit="column"></canvas></div>'
@@ -2040,6 +2072,65 @@
     app.materials = (app.materials || []).filter(x => x.id !== m.id).concat([m]);
   }
 
+  /*
+   * A material made before the check knew better can hold a question a
+   * learner cannot work on (a True/False question without its statement).
+   * When it is shown, the app says so above the sheet (on screen only) and
+   * Claude replaces exactly those questions on one click.
+   */
+  function incompleteQuestions(m) {
+    return render.variantsOf(m).filter(v => v.worksheet).map(v => ({ v, bad: quality.questionProblems(v.worksheet).bad })).filter(x => x.bad.length);
+  }
+  function incompleteNotice(m) {
+    const list = incompleteQuestions(m);
+    if (!list.length) return null;
+    const box = document.createElement('div');
+    box.className = 'incomplete-notice';
+    box.setAttribute('role', 'alert');
+    const lines = list.map(x => (x.v.label ? x.v.label + ': ' : '') + x.bad.join('; ')).join(' · ');
+    box.innerHTML = `<strong>Unvollständige Frage – so nicht einsetzen.</strong> <span>${esc(lines)}</span>`
+      + (caps.sample ? ' <button type="button" class="btn tiny primary" data-incomplete="fix">Mit Claude ersetzen</button>' : ' <span class="muted">Claude ist hier nicht verfügbar – bitte das Material neu erstellen.</span>');
+    const btn = box.querySelector('[data-incomplete="fix"]');
+    if (btn) btn.addEventListener('click', async () => {
+      btn.disabled = true; btn.textContent = 'Claude ersetzt …';
+      try {
+        const r = await repairIncompleteQuestions(m);
+        await saveMaterial(m);
+        toast(r.left ? `${r.fixed.length} Frage(n) ersetzt, ${r.left} noch unvollständig.` : `Ersetzt: Q${r.fixed.join(', Q')}. Alle Fragen sind jetzt vollständig.`);
+        if ($('#view-viewer') && !$('#view-viewer').hidden && viewer.material === m) renderViewer(); else renderOutput(m);
+      } catch (e) { toast(errorCopy(e)); btn.disabled = false; btn.textContent = 'Mit Claude ersetzen'; }
+    });
+    return box;
+  }
+  async function repairIncompleteQuestions(m) {
+    const vs = render.variantsOf(m);
+    const fixed = [];
+    for (let i = 0; i < vs.length; i++) {
+      const v = vs[i];
+      if (!v.worksheet) continue;
+      for (let attempt = 1; attempt <= 2; attempt++) {
+        const bad = quality.questionProblems(v.worksheet).bad;
+        if (!bad.length) break;
+        const numbers = [...new Set(bad.map(x => Number((/Q(\d+)/.exec(x) || [])[1])).filter(Boolean))];
+        const f = { id: 'questions.complete', group: 'questions', kind: 'deterministic', title: 'Every question can be used as it stands', status: 'fail', blocking: true, detail: bad.join('; ') + '.', questions: numbers };
+        const prompt = prompts.buildQuestionRepairPrompt(m.settings || {}, v.plan || m.plan, m.content, v.worksheet, [f], numbers, '');
+        const patch = await askJSON(prompt);
+        const cand = quality.applyQuestionPatch(v.worksheet, Array.isArray(patch) ? patch : (patch && patch.questions) || []);
+        if (cand === v.worksheet || quality.questionProblems(cand).bad.length >= bad.length) continue;
+        quality.changedQuestions(v.worksheet, cand).forEach(n => fixed.push(n));
+        if (m.worksheet === v.worksheet || (i === 0 && Array.isArray(m.variants) && m.variants.length)) m.worksheet = cand;
+        v.worksheet = cand;
+        if (m.prompts) m.prompts['questionComplete' + (v.key || '')] = prompt;
+      }
+    }
+    const left = incompleteQuestions(m).reduce((a, x) => a + x.bad.length, 0);
+    // the stored check follows the sheet
+    for (const q of [m.quality].concat(vs.map(v => v.quality)).filter(Boolean)) {
+      (q.findings || []).forEach(f => { if (f.id === 'questions.complete' && !left) Object.assign(f, { status: 'pass', detail: 'Unvollständige Fragen ersetzt: Q' + fixed.join(', Q') + '.', questions: [] }); });
+    }
+    return { fixed, left };
+  }
+
   /** Draw the medium again wherever it is shown (Layout tab, viewer). */
   function repaintMedium(m) {
     if ($('#view-viewer') && !$('#view-viewer').hidden && viewer && viewer.material === m) { renderViewer(); return; }
@@ -2489,8 +2580,16 @@
     else if (kind === 'teacher') { filename = slug + '-teacher.html'; data = fullDocument(m.title + ' (teacher)', render.renderTeacherHTML(m)); }
     else { filename = slug + '.json'; data = JSON.stringify(m, null, 2); }
 
+    // the file always carries its extension (the viewer's save takes the type from it)
+    const EXT = { 'docx-student': 'docx', 'docx-teacher': 'docx', png: 'png', md: 'md', student: 'html', teacher: 'html' };
+    const ext = EXT[kind] || 'json';
+    if (!new RegExp('\\.' + ext + '$', 'i').test(filename)) filename = filename.replace(/\.[a-z0-9]{1,5}$/i, '') + '.' + ext;
     if (caps.downloads) {
-      try { await caps.downloads.save({ filename, data }); toast('Gespeichert: ' + filename); }
+      // bytes, not the Blob: a Blob is handed to the host as it is, and a host
+      // that saves it by its own rules can drop the name's extension; bytes
+      // make the platform build the file itself, typed by the extension
+      const payload = data instanceof Blob ? new Uint8Array(await data.arrayBuffer()) : data;
+      try { await caps.downloads.save({ filename, data: payload }); toast('Gespeichert: ' + filename); }
       catch (e) { if (e.code !== 'declined') toast('Download nicht möglich: ' + (e.message || e.code)); }
       return;
     }
@@ -3072,5 +3171,5 @@
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init); else init();
 
-  window.LR.ui = { app, generate, produceWorksheet, openViewer, renderViewer, markPageBreaks, syncViewerOffsets, buildViewerRail, buildViewerDownloads, paintLayoutCanvas, proportionNote, mediumPng, renderHotspots, renderSheetHotspots, hotspotLayer, paperChips, bindPaperChips, attachWebPicture, loadOwnPictures, photoPromptCard, photoPlaces, ensurePhotoPrompts, photoToolbar, openAssignDialog, orderImages, imageURLFrom, fetchWebImage, pictureError, openPictureEditor, openCropEditor, setPictureCrop, unrotateDrag, replacePicture, resetPicture, prepareImage, viewer, store, caps, showView, openCreator, importState, detectUnits, fetchTopics, confirmImport, newTextbook, askText, askConfirm, clone, parsePasted, initLevelPage, download, renderOutput, renderQualityPanel, renderTaskPreview, refreshDerived, renderLayout, renderSetupBar, openCustomSetup, backToTemplates, redrawTemplate, templateState, buildForm };
+  window.LR.ui = { app, generate, produceWorksheet, openViewer, renderViewer, markPageBreaks, syncViewerOffsets, buildViewerRail, buildViewerDownloads, paintLayoutCanvas, proportionNote, mediumPng, renderHotspots, renderSheetHotspots, hotspotLayer, paperChips, bindPaperChips, attachWebPicture, loadOwnPictures, photoPromptCard, photoPlaces, ensurePhotoPrompts, incompleteQuestions, incompleteNotice, repairIncompleteQuestions, photoToolbar, openAssignDialog, orderImages, imageURLFrom, fetchWebImage, pictureError, openPictureEditor, openCropEditor, setPictureCrop, unrotateDrag, replacePicture, resetPicture, prepareImage, viewer, store, caps, showView, openCreator, importState, detectUnits, fetchTopics, confirmImport, newTextbook, askText, askConfirm, clone, parsePasted, initLevelPage, download, renderOutput, renderQualityPanel, renderTaskPreview, refreshDerived, renderLayout, renderSetupBar, openCustomSetup, backToTemplates, redrawTemplate, templateState, buildForm };
 })();

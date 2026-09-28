@@ -100,6 +100,9 @@ const WORKSHEET = {
   higherOrder: [],
 };
 
+/** A question a learner cannot work on (as the app judges it, for the report of a check). */
+function quality_incomplete(q) { return !q || !(q.prompt || q.statement); }
+
 /** The stub for window.claude: `scenario` decides how badly it behaves. */
 function claudeStub({ scenario, text, xss, worksheet }) {
   window.__calls = [];
@@ -111,7 +114,8 @@ function claudeStub({ scenario, text, xss, worksheet }) {
       : /You design how a text looks/.test(s) ? 'layout'
       : /strict reviewer/.test(s) ? 'review'
         : /materials writer/.test(s) ? 'content'
-          : /test writer/.test(s) ? 'questions' : 'other';
+          : /test writer/.test(s) ? 'questions'
+            : /You are revising a worksheet/.test(s) ? 'questionRepair' : 'other';
     window.__calls.push(kind);
     if (scenario === 'throws') { const e = new Error('upstream'); e.code = 'upstream_error'; throw e; }
     if (scenario === 'hangs' && window.__calls.length === 1) return new Promise(() => {});
@@ -135,6 +139,11 @@ function claudeStub({ scenario, text, xss, worksheet }) {
         return Object.assign({}, text, { paragraphs: Array.from({ length: 10 }, () => text.paragraphs).reduce((a, x) => a.concat(x), []) });
       }
       return text;
+    }
+    if (kind === 'questionRepair') {
+      // replaces exactly the questions that had no statement, with a complete one
+      const ns = [...new Set((s.match(/Q(\d+): no statement to judge/g) || []).map(x => Number(/\d+/.exec(x)[0])))];
+      return { questions: ns.map(n => ({ n, skill: 'detail', format: 'true_false', difficulty: 'B1.1', prompt: 'True or false?', statement: 'Mostly older adults talk about the show with each other.', answer: 'False', evidenceQuote: '', evidenceRef: '' })) };
     }
     if (kind === 'photoPrompts') {
       const lines = s.match(/^\d\. .*$/gm) || ['1. '];
@@ -933,6 +942,52 @@ const SETTINGS = (extra) => `(() => {
     });
     check('a material with no own picture never offers a crop icon (no own block to open it for)', !noOwn, '');
     check('the crop of a picture raises no page error', errors.length === 0, errors[0]);
+    await page.close();
+  }
+
+  console.log('\nBrowser audit: every question can be worked on from the sheet, in every output (2.2, 2.5, 2.11)');
+  {
+    const { page, errors } = await open({ scenario: 'ok' });
+    const r = await page.evaluate(async () => {
+      const { fixture, ui, word, ooxml } = window.LR;
+      for (let i = 0; i < 30 && !ui.caps.sample; i++) await new Promise(res => setTimeout(res, 100));
+      const S = 'The text suggests that mainly older adults are discussing the show with each other.';
+      // the Word file of a True/False question: the statement stands under the instruction
+      const good = fixture.material({ createWorksheet: true }, 'reading');
+      good.id = 'tf-good';
+      const setQ2 = (m, patch) => { m.worksheet = Object.assign({}, m.worksheet, { questions: m.worksheet.questions.map((q, i) => i === 1 ? Object.assign({}, q, patch) : q) }); if (Array.isArray(m.variants) && m.variants.length) m.variants = m.variants.map((v, i) => i === 0 ? Object.assign({}, v, { worksheet: m.worksheet }) : v); };
+      setQ2(good, { format: 'true_false', prompt: 'True or false?', statement: S, answer: 'False' });
+      const wordText = ooxml.textOf(word.partsFor(good, 'student')).replace(/\s+/g, ' ');
+      const teacherText = ooxml.textOf(word.partsFor(good, 'teacher')).replace(/\s+/g, ' ');
+      // the download: bytes with the extension .docx
+      window.__saved = [];
+      const real = ui.caps.downloads;
+      ui.caps.downloads = { save: async (req) => { window.__saved.push({ filename: req.filename, blob: req.data instanceof Blob, bytes: req.data && (req.data.byteLength || req.data.length || 0), zip: req.data && req.data[0] === 0x50 && req.data[1] === 0x4B }); return { status: 'saved' }; } };
+      ui.app.material = good;
+      await ui.download('docx-student');
+      await ui.download('docx-teacher');
+      ui.caps.downloads = real;
+      // an older material with a True/False question without its statement
+      const old = fixture.material({ createWorksheet: true }, 'reading');
+      old.id = 'tf-old';
+      setQ2(old, { format: 'true_false', prompt: 'True or false?', statement: '', answer: 'True' });
+      ui.app.material = old; ui.openViewer(old, 'library');
+      await new Promise(res => setTimeout(res, 400));
+      const notice = document.querySelector('#vw-paper .incomplete-notice');
+      const noticeText = notice ? notice.textContent : '';
+      const inSheet = !!document.querySelector('#vw-sheet .incomplete-notice');
+      const btn = notice && notice.querySelector('[data-incomplete="fix"]');
+      if (btn) btn.click();
+      for (let i = 0; i < 50 && ui.incompleteQuestions(old).length; i++) await new Promise(res => setTimeout(res, 100));
+      await new Promise(res => setTimeout(res, 300));
+      return { wordHas: wordText.includes(S), teacherHas: teacherText.includes(S), saved: window.__saved, noticeText, inSheet, button: !!btn,
+        left: ui.incompleteQuestions(old).length, noticeGone: !document.querySelector('#vw-paper .incomplete-notice'), q2: old.worksheet.questions[1] };
+    });
+    check('the Word file shows the statement of a True/False question under the instruction, for students and in the key', r.wordHas && r.teacherHas, JSON.stringify(r));
+    check('the Word download always ends in .docx and is handed over as the bytes of the file', r.saved.length === 2 && r.saved.every(x => /\.docx$/.test(x.filename) && !x.blob && x.bytes > 1000 && x.zip), JSON.stringify(r.saved));
+    check('an older material with a True/False question without its statement says so when it is opened, above the sheet, not in it', /Unvollständige Frage/.test(r.noticeText) && /Q2: no statement to judge/.test(r.noticeText) && !r.inSheet && r.button, r.noticeText);
+    check('one click has Claude replace exactly that question; afterwards every question is complete and the notice is gone', r.left === 0 && r.noticeGone && !!r.q2 && !quality_incomplete(r.q2), JSON.stringify(r.q2));
+    check('incomplete questions raise no page error', errors.length === 0, errors[0]);
     await page.close();
   }
 

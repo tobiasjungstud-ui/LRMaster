@@ -503,6 +503,25 @@
       return ok(det.length >= 8 && llm.length >= 8 && blocking.length === 1 && blocking[0].id === 'questions.answerable' && llm.every(r => rp.includes('"' + r.id + '"')) && pipelineOk, 'quality pipeline incomplete');
     } });
 
+  add({ id: 'S29.statement_to_judge', section: 29, title: 'Jede Frage ist vom Blatt aus lösbar: eine True/False-Frage trägt ihre Aussage (nie nur „True or false?“), eine Frage ist nie nur eine Anweisung – sonst blockiert die Prüfung, die Pipeline ersetzt genau diese Frage, und ein älteres Material zeigt beim Öffnen einen Hinweis mit „Mit Claude ersetzen“', kind: 'function',
+    check(env) {
+      const problems = [];
+      const m = env.fixture.material({ createWorksheet: true }, 'reading');
+      const plan = env.core.buildPlan(m.settings, env.ctx);
+      const broken = Object.assign({}, m.worksheet, { questions: m.worksheet.questions.map((q, i) => i === 1 ? Object.assign({}, q, { format: 'true_false', prompt: 'True or false?', statement: '', answer: 'True' }) : q) });
+      const f = env.quality.runDeterministic(m.settings, plan, m.content, broken).find(x => x.id === 'questions.complete');
+      if (!f || f.status !== 'fail' || !f.blocking || !(f.questions || []).includes(2)) problems.push('a True/False question without its statement passes: ' + (f && f.detail));
+      const ok2 = Object.assign({}, broken, { questions: broken.questions.map((q, i) => i === 1 ? Object.assign({}, q, { statement: 'Mostly older adults talk about the show with each other.' }) : q) });
+      const g = env.quality.runDeterministic(m.settings, plan, m.content, ok2).find(x => x.id === 'questions.complete');
+      if (!g || g.status !== 'pass') problems.push('a True/False question with its statement is refused: ' + (g && g.detail));
+      if (!env.quality.stemProblem({ format: 'multiple_choice', prompt: 'Choose the correct answer.', options: ['a', 'b', 'c'] })) problems.push('a multiple-choice question that is only the instruction passes');
+      const split = env.quality.normalizeWorksheet({ questions: [{ n: 1, format: 'true_false', prompt: 'True or false: Tom likes the show.', answer: 'True' }] }).questions[0];
+      if (split.statement !== 'Tom likes the show.') problems.push('"True or false: …" is not split into its statement');
+      const src = env.pipelineSource || '', ui = env.uiSource || '';
+      if (src && !/questionComplete' \+ attempt/.test(src)) problems.push('the pipeline does not replace the incomplete questions on their own');
+      if (ui && !(/function incompleteNotice/.test(ui) && /Mit Claude ersetzen/.test(ui) && /function repairIncompleteQuestions/.test(ui))) problems.push('an older material with an incomplete question is not flagged when it is opened');
+      return ok(!problems.length, problems.slice(0, 3).join(' | '));
+    } });
   add({ id: 'S29.blocking_visible', section: 29, title: 'Nicht bestandene blockierende Prüfungen werden ausgewiesen – im Lauf, im Quality-Check, in der Lehrerversion und im Word-Export', kind: 'function',
     check(env) {
       const m = env.fixture.material({ createWorksheet: true }, 'reading');
@@ -699,6 +718,21 @@
   const docXml = (env, m, which) => String(docParts(env, m, which).find(p => p.name === 'word/document.xml').data);
   const docText = (env, m, which) => env.ooxml.textOf(docParts(env, m, which)).replace(/\s+/g, ' ');
   const squash = (x) => String(x).replace(/\s+/g, '');
+  add({ id: 'S33.statement_everywhere', section: 33, title: 'Die Aussage einer True/False- oder Who-said-it-Frage steht in jeder Ausgabe unter der Anweisung – Bildschirm, Word (Schüler- und Lehrerfassung), Markdown und in den Prompts an Claude; der Word-Download trägt immer die Endung .docx', kind: 'render',
+    check(env) {
+      const problems = [];
+      const m = env.fixture.material({ createWorksheet: true }, 'reading');
+      const S = 'The text suggests that mainly older adults are discussing the show with each other.';
+      m.worksheet = Object.assign({}, m.worksheet, { questions: m.worksheet.questions.map((q, i) => i === 1 ? Object.assign({}, q, { format: 'true_false', prompt: 'True or false?', statement: S, answer: 'False' }) : q) });
+      if (Array.isArray(m.variants)) m.variants = m.variants.map((v, i) => i === 0 ? Object.assign({}, v, { worksheet: m.worksheet }) : v);
+      const outs = { screen: env.render.renderStudentHTML(m), teacherScreen: env.render.renderTeacherHTML(m), markdown: env.render.renderMarkdown(m), wordStudent: docText(env, m, 'student'), wordTeacher: docText(env, m, 'teacher'),
+        repairPrompt: env.prompts.buildQuestionRepairPrompt(m.settings, m.plan, m.content, m.worksheet, [], [2], '') };
+      for (const [where, text] of Object.entries(outs)) if (!String(text).includes(S)) problems.push(where + ' drops the statement');
+      if (!/\.docx$/.test(env.word.filename(m, 'student', 'A')) || !/\.docx$/.test(env.word.filename(m, 'teacher'))) problems.push('the Word file name has no .docx');
+      const ui = env.uiSource || '';
+      if (ui && !(/new Uint8Array\(await data\.arrayBuffer\(\)\)/.test(ui) && /'docx-student': 'docx'/.test(ui))) problems.push('the download does not hand over bytes with a checked extension');
+      return ok(!problems.length, problems.slice(0, 3).join(' | '));
+    } });
 
   add({ id: 'S33.button_student', section: 33, title: 'Download „Word: Schülerversion“', kind: 'ui', selector: '[data-download="docx-student"]' });
   add({ id: 'S33.button_teacher', section: 33, title: 'Download „Word: Lehrerversion“', kind: 'ui', selector: '[data-download="docx-teacher"]' });

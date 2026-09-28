@@ -588,9 +588,11 @@
     const d = ctx.d, out = [];
     const seed = ctx.m.id;
     const numRun = T(q.n + '. ', { font: WS.display, size: 11, bold: true, color: d.accent });
-    const promptText = q.prompt || q.statement || '';
-    out.push(P([numRun].concat(textRuns(promptText, { highlight: null }, { font: WS.body, size: 11, color: INK })),
+    // the question and, for True/False and who-said-it, the statement to judge
+    const parts = core.questionParts(q);
+    out.push(P([numRun].concat(textRuns(parts.prompt, { highlight: null }, { font: WS.body, size: 11, color: INK })),
       { left: 0.8, hanging: 0.8, after: 4, keepNext: true }));
+    if (parts.statement) out.push(P(textRuns('\u201C' + parts.statement + '\u201D', { highlight: null }, { font: WS.body, size: 11, italic: true, color: INK }), { left: 0.8, after: 4, keepNext: true }));
     const optionList = (items, marker) => items.forEach((o, i) => {
       out.push(P([checkbox(11), T(marker ? marker(i) + ') ' : '', { font: WS.body, size: 11, bold: true, color: GREY }), T(String(o).replace(/^[A-E][).:]\s*/, ''), { font: WS.body, size: 11, color: INK })],
         { left: 1.5, hanging: 0.7, after: 2 }));
@@ -815,12 +817,16 @@
   }
 
   function answerText(q) {
+    // the key names the statement it judges, so "False" is never a bare word
+    const parts = core.questionParts(q);
+    const judged = ['true_false', 'true_false_correction', 'who_said_it'].includes(q.format) ? parts.statement || parts.prompt : '';
+    if (judged) return '\u201C' + judged + '\u201D \u2192 ' + answerText(Object.assign({}, q, { format: q.format + ':answer' }));
     if (q.format === 'matching') return (q.items || []).map(it => it.left + ' → ' + it.right).join('; ');
     if (q.format === 'ordering') return (q.items || []).map((it, i) => (i + 1) + '. ' + (typeof it === 'string' ? it : JSON.stringify(it))).join('  ');
     if (Array.isArray(q.answer)) return q.answer.join(' · ');
     if (q.answer && typeof q.answer === 'object') return JSON.stringify(q.answer);
     let a = String(q.answer === undefined ? '' : q.answer);
-    if (q.format === 'true_false_correction' && q.correction) a += ' — ' + q.correction;
+    if (/^true_false_correction/.test(q.format) && q.correction) a += ' — ' + q.correction;
     if (q.acceptable && q.acceptable.length) a += ' (also: ' + q.acceptable.join('; ') + ')';
     return a;
   }

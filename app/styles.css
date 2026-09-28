@@ -467,6 +467,10 @@ mark.vocab { background: var(--mark); color: inherit; border-radius: 3px; paddin
 .pa-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .td-text { width: 100%; box-sizing: border-box; font: .8rem/1.4 ui-monospace, monospace; }
 @media print { .photo-tools { display: none !important; } }
+.incomplete-notice { margin: 0 0 .7rem; padding: .6rem .8rem; border: 1px solid var(--bad); border-radius: 10px; background: var(--bad-soft); color: var(--ink, inherit); font-size: .88rem; line-height: 1.45; }
+.incomplete-notice strong { color: var(--bad); }
+.vw-paper > .incomplete-notice, #vw-paper > .incomplete-notice { width: calc(var(--paper-w) * var(--zoom)); max-width: 100%; box-sizing: border-box; }
+@media print { .incomplete-notice { display: none !important; } }
 .layout-paper { margin-left: .6rem; align-items: center; }
 .layout-paper .chips-label { font-size: .8rem; color: var(--muted); margin-right: .2rem; }
 .paper-custom { display: inline-flex; align-items: center; gap: .35rem; cursor: pointer; }

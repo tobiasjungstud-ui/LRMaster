@@ -30,14 +30,14 @@
 
   const FORMAT_SHAPES = {
     multiple_choice: '"options": ["first option", "second option", "third option", "fourth option"] — WITHOUT letters, the worksheet adds A, B, C itself; "answer": the letter of the correct option, e.g. "B"',
-    true_false: '"statement": "…", "answer": "True" | "False"',
-    true_false_correction: '"statement": "…", "answer": "True" | "False", "correction": "corrected statement if false, otherwise empty"',
+    true_false: '"prompt": "True or false?", "statement": "the complete statement about the material that the learner judges — one declarative sentence with its own content (e.g. \\"Maya watches three episodes every night.\\"), never empty, never a question, never only the instruction", "answer": "True" | "False"',
+    true_false_correction: '"prompt": "True or false? Correct the false statement.", "statement": "the complete statement about the material that the learner judges — one declarative sentence with its own content, never empty, never a question, never only the instruction", "answer": "True" | "False", "correction": "corrected statement if false, otherwise empty"',
     short_answer: '"answer": "model answer (a few words)", "acceptable": ["variant", …]',
     wh_question: '"answer": "model answer", "acceptable": ["variant", …]',
     sentence_completion: '"prompt" contains a sentence with ____ to complete, "answer": "the missing words"',
     gap_fill: '"prompt" contains a short passage with numbered gaps (1)…, "answer": ["gap 1", "gap 2", …]',
     matching: '"items": [{"left": "…", "right": "…"}, …] (3–6 pairs, correct pairing; the student version shuffles the right column), "answer": "see items"',
-    who_said_it: '"statement": "paraphrased statement", "options": [speaker names, without letters], "answer": "speaker name"',
+    who_said_it: '"statement": "the paraphrased statement the learner assigns to a speaker — a full sentence with its own content, never empty", "options": [speaker names, without letters], "answer": "speaker name"',
     ordering: '"items": ["event 1", "event 2", …] in the CORRECT order (the student version shuffles them), "answer": "see items"',
     table_completion: '"table": {"headers": ["…"], "rows": [["…", "___", "…"], …]}, "answer": ["cell 1", "cell 2", …] in reading order of the blanks',
     select_all: '"options": [five options, WITHOUT letters], "answer": ["A","C"] (the letters of every correct option)',
@@ -454,7 +454,7 @@
     lines.push('## Format shapes\n' + plan.formats.map(f => `- ${f}: ${FORMAT_SHAPES[f]}`).join('\n'));
     lines.push('## Order (mandatory)\n' + chronologyRule(isL));
     lines.push('## Evidence\nFor every question give "evidenceQuote": a VERBATIM excerpt (5–20 words, copied exactly) from the material that contains or implies the answer, and "evidenceRef": the line number ' + (isL ? '[n]' : '[¶n]') + ' where it is found. For Inference, Connecting, Attitude and Purpose questions add "rationale": one sentence explaining why the answer follows from the material (for Connecting questions name both places).');
-    lines.push('## Quality rules\n- Every question is answerable unambiguously and only from the material.\n- No two questions test the same piece of information.\n- Inference questions are genuinely inferential, not disguised detail questions.\n- Distractors are plausible but clearly wrong given the material.\n- Give each question "difficulty": its CEFR band, one of ' + plan.questionBands.map(b => '"' + b + '"').join(', ') + '.');
+    lines.push('## Quality rules\n- Every question can be worked on from the sheet alone: a True/False question carries the full statement to judge in "statement" (never only "True or false?"); a question text is never only an instruction such as "Choose the correct answer."\n- Every question is answerable unambiguously and only from the material.\n- No two questions test the same piece of information.\n- Inference questions are genuinely inferential, not disguised detail questions.\n- Distractors are plausible but clearly wrong given the material.\n- Give each question "difficulty": its CEFR band, one of ' + plan.questionBands.map(b => '"' + b + '"').join(', ') + '.');
 
     if (plan.higherOrderCount > 0) {
       lines.push('## Higher-order thinking\n' + `Additionally write ${plan.higherOrderCount} higher-order task(s) in a SEPARATE array "higherOrder" (do not mix them with the comprehension questions). Types to use: ${plan.higherOrderTypes.join(', ')} — Interpretation: interpret meaning more deeply; Transfer: apply information to a new situation; Evaluation: judge a decision or position on the basis of the material. Use "type" for the type and a short-answer shape with "answer" as a model answer and "rationale".`);
@@ -637,7 +637,7 @@
       .map(f => `${f.title}: ${f.detail || ''}`.trim() + (f.failsWhen ? ` [broken when: ${f.failsWhen}]` : ''));
     const otherLines = (worksheet.questions || [])
       .filter(q => !targets.includes(Number(q.n)))
-      .map(q => `Q${q.n} (${skillLabel(q.skill)}): ${q.prompt || q.statement || ''} → ${Array.isArray(q.answer) ? q.answer.join(' / ') : q.answer}`);
+      .map(q => `Q${q.n} (${skillLabel(q.skill)}): ${core.questionLine(q)} → ${Array.isArray(q.answer) ? q.answer.join(' / ') : q.answer}`);
     const formats = [...new Set(targets.map(n => (byNumber.get(n) || {}).format).filter(Boolean))];
 
     const lines = [];
@@ -681,7 +681,7 @@
     const isL = state.kind === 'listening';
     const isPre = phaseKey !== 'post';
     const field = isPre ? 'preTasks' : 'postTasks';
-    const questions = (worksheet.questions || []).map(q => `Q${q.n} (${skillLabel(q.skill)}): ${q.prompt || q.statement || ''} → ${Array.isArray(q.answer) ? q.answer.join(' / ') : q.answer}`).join('\n');
+    const questions = (worksheet.questions || []).map(q => `Q${q.n} (${skillLabel(q.skill)}): ${core.questionLine(q)} → ${Array.isArray(q.answer) ? q.answer.join(' / ') : q.answer}`).join('\n');
     return [
       `You are revising the ${isPre ? 'pre' : 'post'}-${isL ? 'listening' : 'reading'} tasks of a worksheet. The comprehension questions stay exactly as they are; write the ${isPre ? 'pre' : 'post'}-tasks again so that every problem below is gone.`,
       '## Material\n' + contentAsText(content, state),

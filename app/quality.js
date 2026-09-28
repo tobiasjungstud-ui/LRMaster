@@ -284,12 +284,114 @@
       evidenceRef: String(q.evidenceRef || '').trim(),
       rationale: q.rationale ? String(q.rationale).trim() : '',
     });
-    if (q.statement && !out.prompt) out.prompt = String(q.statement).trim();
-    if (q.statement) out.statement = String(q.statement).trim();
+    // the statement a learner judges may come under another name
+    const statement = [q.statement, q.claim, q.sentence].find(x => typeof x === 'string' && x.trim());
+    if (statement && !out.prompt) out.prompt = String(statement).trim();
+    if (statement) out.statement = String(statement).trim();
+    // "True or false: Maya was late." — the instruction and the statement in one
+    // field: the statement is split off, so it stands on the sheet as a statement
+    if (/^true_false/.test(out.format) && !out.statement) {
+      const m = /^\s*(?:true\s*(?:or|\/)\s*false|decide(?: whether| if)?[^:?]*|is (?:this|the following) (?:statement )?true or false)\s*[?:.\-\u2013\u2014]+\s*(.+)$/i.exec(out.prompt);
+      if (m && m[1].trim()) { out.statement = m[1].trim().replace(/^["\u201C\u201D']|["\u201C\u201D']$/g, ''); out.prompt = 'True or false?'; }
+    }
     if (Array.isArray(q.options)) out.options = q.options.map(String);
     if (Array.isArray(q.items)) out.items = q.items;
     if (Array.isArray(q.acceptable)) out.acceptable = q.acceptable.map(String);
     return out;
+  }
+
+  /*
+   * A question is complete only when a learner can work on it from the sheet
+   * alone. For True/False the sheet must carry the STATEMENT to judge — an
+   * instruction such as "True or false?" or "Decide whether the statement is
+   * true" is not one. The same holds for a multiple-choice or open question
+   * whose text is only "Choose the correct answer."
+   */
+  const INSTRUCTION_WORDS = new Set(('true false correct incorrect right wrong or and not decide tick mark circle choose select pick read listen look '
+    + 'say write check whether if the a an this that these those following statement statements sentence sentences claim claims is are was were be it '
+    + 'answer answers question questions box boxes one best option options who said says which of to in on from for text audio recording material '
+    + 'according passage below above your you correction please then give explain why').split(' '));
+  function contentWords(text) {
+    return String(text || '').toLowerCase().replace(/[^\p{L}\p{N}\s'-]/gu, ' ').split(/\s+/).filter(w => w && !INSTRUCTION_WORDS.has(w));
+  }
+  /** Why the question text carries nothing to judge or answer (empty when it does). */
+  function stemProblem(q) {
+    const f = q.format;
+    const statement = String(q.statement || '').trim(), prompt = String(q.prompt || '').trim();
+    if (f === 'true_false' || f === 'true_false_correction' || f === 'who_said_it') {
+      const instruction = (t) => /\btrue\b[\s\S]*\bfalse\b|\bfalse\b[\s\S]*\btrue\b|^\s*(?:decide|tick|mark|circle|choose|select|read|listen|look|say|write|check|correct)\b|\bthe following\b|\bstatements?\b/i.test(t);
+      const judged = [statement, prompt].find(t => t && (contentWords(t).length >= 2 || (!instruction(t) && contentWords(t).length >= 1)));
+      if (!judged) return `no statement to judge — only the instruction “${(statement || prompt).slice(0, 60)}”`;
+      return '';
+    }
+    if (['multiple_choice', 'select_all', 'short_answer', 'wh_question', 'sentence_completion'].includes(f) && !contentWords(prompt || statement).length) {
+      return `the question is only an instruction (“${(prompt || statement).slice(0, 60)}”)`;
+    }
+    return '';
+  }
+  /** Every question that cannot be used as it stands: `bad` blocks, `soft` warns. */
+  function questionProblems(worksheet) {
+        const bad = [], soft = [];
+        const answerOf = (q) => (Array.isArray(q.answer) ? q.answer.join(', ') : String(q.answer == null ? '' : q.answer)).trim();
+        const optionsOf = (q) => (Array.isArray(q.options) ? q.options : []).map(o => String(o).trim()).filter(Boolean);
+        const itemsOf = (q) => (Array.isArray(q.items) ? q.items : []);
+        const letterIndex = (a) => (/^[A-Za-z]$/.test(a) ? a.toUpperCase().charCodeAt(0) - 65 : -1);
+        for (const q of (worksheet && worksheet.questions) || []) {
+          const answer = answerOf(q), opts = optionsOf(q), items = itemsOf(q);
+          const text = String(q.prompt || q.statement || '').trim();
+          const say = (why) => bad.push(`Q${q.n}: ${why}`);
+          if (!text) say('no question text');
+          if (!answer && !items.length) say('no answer');
+          // the words a learner judges or answers must be there — not only the instruction
+          const stemWhy = stemProblem(q);
+          if (text && stemWhy) say(stemWhy);
+          switch (q.format) {
+            case 'multiple_choice': case 'best_summary': {
+              if (opts.length < 3) say(`only ${opts.length} option(s)`);
+              else {
+                const i = letterIndex(answer);
+                const hit = i >= 0 ? i < opts.length : opts.some(o => normalizeForSearch(o) === normalizeForSearch(answer));
+                if (!hit) say(`the answer “${answer}” is not one of the options`);
+              }
+              break;
+            }
+            case 'select_all': {
+              if (opts.length < 3) say(`only ${opts.length} option(s)`);
+              const letters = (Array.isArray(q.answer) ? q.answer : String(q.answer || '').split(/[,\s]+/)).map(x => letterIndex(String(x).trim()));
+              if (!letters.length || letters.some(i => i < 0 || i >= opts.length)) say('the answer does not name options that exist');
+              break;
+            }
+            case 'true_false': case 'true_false_correction': {
+              if (!/^(true|false)$/i.test(answer)) say(`the answer “${answer}” is not True or False`);
+              if (q.format === 'true_false_correction' && /^false$/i.test(answer) && !String(q.correction || '').trim()) soft.push(`Q${q.n}: no correction for a false statement`);
+              break;
+            }
+            case 'matching': {
+              const pairs = items.filter(it => it && String(it.left || '').trim() && String(it.right || '').trim());
+              if (pairs.length < 3) say(`only ${pairs.length} complete pair(s)`);
+              break;
+            }
+            case 'ordering': { if (items.length < 3) say(`only ${items.length} item(s) to order`); break; }
+            case 'who_said_it': {
+              if (opts.length < 2) say('fewer than two speakers to choose from');
+              else if (!opts.some(o => normalizeForSearch(o) === normalizeForSearch(answer)) && letterIndex(answer) < 0) say(`the answer “${answer}” is not one of the speakers`);
+              break;
+            }
+            case 'table_completion': {
+              const t = q.table || {};
+              if (!Array.isArray(t.rows) || !t.rows.length) say('no table');
+              if (!Array.isArray(q.answer) || !q.answer.length) say('no entries for the blanks');
+              break;
+            }
+            case 'gap_fill': case 'note_taking': {
+              if (!Array.isArray(q.answer) || !q.answer.length) say('no list of answers for the gaps');
+              break;
+            }
+            case 'sentence_completion': { if (!/_{2,}|\.\.\./.test(text)) soft.push(`Q${q.n}: no gap marked in the sentence`); break; }
+            default: break;
+          }
+        }
+        return { bad, soft };
   }
 
   function normalizeWorksheet(raw) {
@@ -686,63 +788,7 @@
     { id: 'questions.distractors', group: 'questions', kind: 'llm', title: 'Distractors are plausible', needsWorksheet: true, criterion: 'distractors in closed formats are plausible but clearly wrong', failsWhen: 'a distractor is also correct, or so absurd that it can be ruled out without reading the material', evidence: 'questions', whenUnsure: 'pass', notMine: 'the number of options and whether the answer is one of them — already measured', blocking: false },
     { id: 'questions.complete', group: 'questions', kind: 'deterministic', title: 'Every question can be used as it stands', needsWorksheet: true, blocking: true,
       check(ctx) {
-        const bad = [], soft = [];
-        const answerOf = (q) => (Array.isArray(q.answer) ? q.answer.join(', ') : String(q.answer == null ? '' : q.answer)).trim();
-        const optionsOf = (q) => (Array.isArray(q.options) ? q.options : []).map(o => String(o).trim()).filter(Boolean);
-        const itemsOf = (q) => (Array.isArray(q.items) ? q.items : []);
-        const letterIndex = (a) => (/^[A-Za-z]$/.test(a) ? a.toUpperCase().charCodeAt(0) - 65 : -1);
-        for (const q of ctx.worksheet.questions || []) {
-          const answer = answerOf(q), opts = optionsOf(q), items = itemsOf(q);
-          const text = String(q.prompt || q.statement || '').trim();
-          const say = (why) => bad.push(`Q${q.n}: ${why}`);
-          if (!text) say('no question text');
-          if (!answer && !items.length) say('no answer');
-          switch (q.format) {
-            case 'multiple_choice': case 'best_summary': {
-              if (opts.length < 3) say(`only ${opts.length} option(s)`);
-              else {
-                const i = letterIndex(answer);
-                const hit = i >= 0 ? i < opts.length : opts.some(o => normalizeForSearch(o) === normalizeForSearch(answer));
-                if (!hit) say(`the answer “${answer}” is not one of the options`);
-              }
-              break;
-            }
-            case 'select_all': {
-              if (opts.length < 3) say(`only ${opts.length} option(s)`);
-              const letters = (Array.isArray(q.answer) ? q.answer : String(q.answer || '').split(/[,\s]+/)).map(x => letterIndex(String(x).trim()));
-              if (!letters.length || letters.some(i => i < 0 || i >= opts.length)) say('the answer does not name options that exist');
-              break;
-            }
-            case 'true_false': case 'true_false_correction': {
-              if (!/^(true|false)$/i.test(answer)) say(`the answer “${answer}” is not True or False`);
-              if (q.format === 'true_false_correction' && /^false$/i.test(answer) && !String(q.correction || '').trim()) soft.push(`Q${q.n}: no correction for a false statement`);
-              break;
-            }
-            case 'matching': {
-              const pairs = items.filter(it => it && String(it.left || '').trim() && String(it.right || '').trim());
-              if (pairs.length < 3) say(`only ${pairs.length} complete pair(s)`);
-              break;
-            }
-            case 'ordering': { if (items.length < 3) say(`only ${items.length} item(s) to order`); break; }
-            case 'who_said_it': {
-              if (opts.length < 2) say('fewer than two speakers to choose from');
-              else if (!opts.some(o => normalizeForSearch(o) === normalizeForSearch(answer)) && letterIndex(answer) < 0) say(`the answer “${answer}” is not one of the speakers`);
-              break;
-            }
-            case 'table_completion': {
-              const t = q.table || {};
-              if (!Array.isArray(t.rows) || !t.rows.length) say('no table');
-              if (!Array.isArray(q.answer) || !q.answer.length) say('no entries for the blanks');
-              break;
-            }
-            case 'gap_fill': case 'note_taking': {
-              if (!Array.isArray(q.answer) || !q.answer.length) say('no list of answers for the gaps');
-              break;
-            }
-            case 'sentence_completion': { if (!/_{2,}|\.\.\./.test(text)) soft.push(`Q${q.n}: no gap marked in the sentence`); break; }
-            default: break;
-          }
-        }
+        const { bad, soft } = questionProblems(ctx.worksheet);
         const numbers = (list) => [...new Set(list.map(x => Number(/(\d+)/.exec(x)[1])))].sort((a, b) => a - b);
         const status = bad.length ? 'fail' : soft.length ? 'warn' : 'pass';
         return finding(this, status, bad.concat(soft).join('; ') + (bad.length || soft.length ? '.' : '')
@@ -1350,7 +1396,7 @@
     speakerStats, tagStats, normalizeContent, normalizeMeta, normalizeWorksheet, normalizeQuestion,
     repairable, repairPlan, problemScore, applyQuestionPatch, applyTaskPatch, applyPreTaskPatch, applyPostTaskPatch,
     changedQuestions, changedTasks, changedPreTasks, changedPostTasks, STRUCTURAL, applicableRules, runDeterministic,
-    normalizePreTask, preTaskText, socialLabel, taskRules, normalizeChrome, mergeChrome, layoutModel, sharedRun,
+    normalizePreTask, preTaskText, socialLabel, questionProblems, stemProblem, taskRules, normalizeChrome, mergeChrome, layoutModel, sharedRun,
     photoCredits, layoutSVG, mediumOf, pageFit, fitComposition, runContentChecks, llmRules, mergeReview, verdictSupported, blockingFailures, summarize,
     chronologyReport, enforceChronology, normalizeGlossary, slimMeasurement,
   };

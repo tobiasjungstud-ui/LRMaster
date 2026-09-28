@@ -2,7 +2,7 @@
 
 Erzeugt von `npm run coverage`. Jede Zeile ist eine Anforderung aus `docs/Konzept_Listening_Reading_Creator.md`, gebunden an die Stelle im Code, die sie umsetzt, und das Ergebnis der automatischen Prüfung (`npm test`).
 
-**Ergebnis: 342 von 342 Anforderungen bestanden.**
+**Ergebnis: 344 von 344 Anforderungen bestanden.**
 
 Prüfarten: **setting** – Steuerelement vorhanden und Änderung des Werts verändert nachweislich den Prompt an Claude · **function** – Verhalten wird mit echten Eingaben ausgeführt und verglichen · **rule** – Qualitätsregel existiert als Messung oder Claude-Review-Kriterium · **render** – Ausgabe wird auf einer Fixture gerendert und inhaltlich geprüft · **ui** – Navigations-/Strukturelement existiert.
 
@@ -271,7 +271,7 @@ Prüfarten: **setting** – Steuerelement vorhanden und Änderung des Werts ver�
 | ✅ | `S28.viewer` | Viewer: das fertige Material als Dokument – Blatt in A4-Breite mit Druckumbruch, Inhaltsverzeichnis, Schüler-/Lehrerfassung, Niveaus, Zoom, Bild des Mediums, Qualität und allen Downloads an einem Ort | ui | Element `#view-viewer` |
 | ✅ | `X.no_hardcoded_content` | Kontrolle: keine hartkodierten Textbausteine für Titel, Instruktion, Fragen, Pre-Tasks oder Themen | function | Funktion (siehe Check im Manifest) |
 
-## §29 Quality Check (38/38)
+## §29 Quality Check (39/39)
 
 | Status | ID | Anforderung | Art | Umsetzung |
 |---|---|---|---|---|
@@ -293,6 +293,7 @@ Prüfarten: **setting** – Steuerelement vorhanden und Änderung des Werts ver�
 | ✅ | `S29.questions.difficulty` | Quality Check – Questions: Difficulty entspricht Stufe | rule | Quality rule `questions.difficulty` (Claude-Review über buildReviewPrompt) |
 | ✅ | `S29.questions.inference_genuine` | Quality Check – Questions: Inference-Fragen wirklich inferentiell | rule | Quality rule `questions.inference_genuine` (Claude-Review über buildReviewPrompt) |
 | ✅ | `S29.before_output` | Qualitätskontrolle läuft automatisch vor der Ausgabe (deterministisch + Claude-Review, Revision bei Fehlern) | function | Funktion (siehe Check im Manifest) |
+| ✅ | `S29.statement_to_judge` | Jede Frage ist vom Blatt aus lösbar: eine True/False-Frage trägt ihre Aussage (nie nur „True or false?“), eine Frage ist nie nur eine Anweisung – sonst blockiert die Prüfung, die Pipeline ersetzt genau diese Frage, und ein älteres Material zeigt beim Öffnen einen Hinweis mit „Mit Claude ersetzen“ | function | Funktion (siehe Check im Manifest) |
 | ✅ | `S29.blocking_visible` | Nicht bestandene blockierende Prüfungen werden ausgewiesen – im Lauf, im Quality-Check, in der Lehrerversion und im Word-Export | function | Funktion (siehe Check im Manifest) |
 | ✅ | `S29.llm_guardrails` | Jede Claude-Regel hat Leitplanken: Entscheidungsregel, Belegpflicht, Zweifelsregel, Abgrenzung – und ein Urteil ohne Beleg zählt bei blockierenden Regeln nicht als bestanden | function | Funktion (siehe Check im Manifest) |
 | ✅ | `S29.review_data_complete` | Jede Claude-Regel bekommt die Daten, über die sie urteilt: das Arbeitsblatt steht vollständig im Prüf-Prompt, und eine Regel ohne ihre Daten wird nicht gefragt, sondern als ungeprüft gemeldet | function | Funktion (siehe Check im Manifest) |
@@ -357,10 +358,11 @@ Prüfarten: **setting** – Steuerelement vorhanden und Änderung des Werts ver�
 |---|---|---|---|---|
 | ✅ | `S32.example` | Beispielkonfiguration (Podcast Interview, B1.2, 3 min, 30/70, 10 Fragen, Skill-Mix, MC/Short Answer/Matching) ladbar | function | Funktion (siehe Check im Manifest) |
 
-## §33 Word-Export (formatiert, typgerecht) (28/28)
+## §33 Word-Export (formatiert, typgerecht) (29/29)
 
 | Status | ID | Anforderung | Art | Umsetzung |
 |---|---|---|---|---|
+| ✅ | `S33.statement_everywhere` | Die Aussage einer True/False- oder Who-said-it-Frage steht in jeder Ausgabe unter der Anweisung – Bildschirm, Word (Schüler- und Lehrerfassung), Markdown und in den Prompts an Claude; der Word-Download trägt immer die Endung .docx | render | render.js (renderStudentHTML / renderTeacherHTML) |
 | ✅ | `S33.button_student` | Download „Word: Schülerversion“ | ui | Element `[data-download="docx-student"]` |
 | ✅ | `S33.button_teacher` | Download „Word: Lehrerversion“ | ui | Element `[data-download="docx-teacher"]` |
 | ✅ | `S33.filename` | Datei wird als .docx mit sprechendem Namen ausgeliefert | function | Funktion (siehe Check im Manifest) |

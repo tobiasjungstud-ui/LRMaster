@@ -241,6 +241,22 @@
   ];
 
   /*
+   * The text of a question as every output shows it: the question or
+   * instruction, and — where the format has one (True/False, who said it) —
+   * the statement the learner works on. Screen, Word, Markdown and the prompts
+   * to Claude all take it from here, so no output can drop the statement.
+   */
+  function questionParts(q) {
+    const prompt = String((q && q.prompt) || '').trim(), statement = String((q && q.statement) || '').trim();
+    if (!prompt) return { prompt: statement, statement: '' };
+    return { prompt, statement: statement && statement !== prompt ? statement : '' };
+  }
+  function questionLine(q) {
+    const p = questionParts(q);
+    return p.statement ? p.prompt + ' \u201C' + p.statement + '\u201D' : p.prompt;
+  }
+
+  /*
    * What a task says about itself ON THE WORKSHEET: the sheet is in English,
    * so the kind of task, the social form and the way of working are English
    * too, one word each — "Debate · Pair work · speaking · 10 min", never the
@@ -1578,7 +1594,7 @@
     storedSize, fitForStore,
     CEFR_BANDS, SKILLS, SKILL_KEYS, HIGHER_ORDER_TYPES, QUESTION_FORMATS, FORMAT_KEYS, TEXT_TYPES,
     EMOTION_TAGS, PRE_TASK_TYPES, PRE_TASK_TYPE_KEYS, POST_TASK_TYPES, POST_TASK_TYPE_KEYS, TASK_PHASES,
-    SOCIAL_FORMS, SOCIAL_FORM_KEYS, PRE_TASK_MODES, taskHeading, taskMeta,
+    SOCIAL_FORMS, SOCIAL_FORM_KEYS, PRE_TASK_MODES, taskHeading, taskMeta, questionParts, questionLine,
     AUDIO_LENGTHS, QUESTION_COUNTS, PRESETS, TURN_PRESETS, TASK_PRESETS, SETUP_PRESETS,
     META_SPECS, TEXT_TYPE_DESIGN, designIdFor,
     SCHEMA, SCHEMA_BY_KEY, SIMPLE_MODE_KEYS, EXAMPLE_CONFIG, WORDS_PER_A4,

@@ -132,9 +132,9 @@
   function questionBody(q, opts) {
     const seed = (opts.seed || '') + ':' + q.n;
     let html = '';
-    const promptText = q.prompt || q.statement || '';
-    if (promptText) html += `<p class="q-prompt">${esc(promptText)}</p>`;
-    if (q.statement && q.prompt && q.statement !== q.prompt) html += `<p class="q-statement">“${esc(q.statement)}”</p>`;
+    const parts = core.questionParts(q);
+    if (parts.prompt) html += `<p class="q-prompt">${esc(parts.prompt)}</p>`;
+    if (parts.statement) html += `<p class="q-statement">“${esc(parts.statement)}”</p>`;
     switch (q.format) {
       case 'multiple_choice':
       case 'best_summary':
@@ -177,12 +177,16 @@
   }
 
   function answerText(q) {
+    // the key names the statement it judges, so "False" is never a bare word
+    const parts = core.questionParts(q);
+    const judged = ['true_false', 'true_false_correction', 'who_said_it'].includes(q.format) ? parts.statement || parts.prompt : '';
+    if (judged) return `“${esc(judged)}” → ` + answerText(Object.assign({}, q, { format: q.format + ':answer' }));
     if (q.format === 'matching') return (q.items || []).map(it => `${esc(it.left)} → ${esc(it.right)}`).join('; ');
     if (q.format === 'ordering') return (q.items || []).map((it, i) => `${i + 1}. ${esc(typeof it === 'string' ? it : JSON.stringify(it))}`).join(' ');
     if (Array.isArray(q.answer)) return q.answer.map(esc).join(', ');
     if (q.answer && typeof q.answer === 'object') return esc(JSON.stringify(q.answer));
     let a = esc(q.answer);
-    if (q.format === 'true_false_correction' && q.correction) a += ` — ${esc(q.correction)}`;
+    if (/^true_false_correction/.test(q.format) && q.correction) a += ` — ${esc(q.correction)}`;
     if (q.acceptable && q.acceptable.length) a += ` <span class="muted">(also: ${q.acceptable.map(esc).join('; ')})</span>`;
     return a;
   }
@@ -497,7 +501,7 @@
     for (const v of variantsOf(m).filter(x => x.worksheet)) {
     if (v.label) out.push(`### ${v.label}`);
     for (const q of v.worksheet.questions) {
-      out.push(`${q.n}. ${q.prompt || q.statement || ''} (${formatLabel(q.format)})`);
+      out.push(`${q.n}. ${core.questionLine(q)} (${formatLabel(q.format)})`);
       if (q.options) out.push(...q.options.map(o => `   - ${o}`));
       if (q.items && q.format === 'matching') out.push(...q.items.map((it, i) => `   ${i + 1}. ${it.left}`), ...seededShuffle(q.items.map(i => i.right), m.id).map((r, i) => `   ${String.fromCharCode(97 + i)}) ${r}`));
       if (q.items && q.format === 'ordering') out.push(...seededShuffle(q.items, m.id).map(it => `   ___ ${it}`));

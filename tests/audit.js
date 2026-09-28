@@ -1272,6 +1272,12 @@ test('2.2', 'a question that cannot be used is caught, per format', () => {
     ['matching without pairs', { format: 'matching', items: [{ left: 'a', right: '' }], answer: 'see items' }],
     ['ordering without items', { format: 'ordering', items: ['only one'], answer: 'see items' }],
     ['select all with an answer outside the options', { format: 'select_all', options: ['a', 'b', 'c'], answer: ['A', 'Z'] }],
+    // the case a teacher met: "True or false" with nothing to judge
+    ['true/false with only the instruction and no statement', { format: 'true_false', prompt: 'True or false?', statement: '', answer: 'True' }],
+    ['true/false whose statement is the instruction again', { format: 'true_false', prompt: 'Read the statement.', statement: 'Decide whether the statement is true or false.', answer: 'False' }],
+    ['true/false with correction but no statement', { format: 'true_false_correction', prompt: 'Is the following statement true or false?', statement: '', answer: 'False', correction: 'x' }],
+    ['who said it without a statement', { format: 'who_said_it', prompt: 'Who said it?', statement: '', options: ['Maya', 'Tom'], answer: 'Maya' }],
+    ['multiple choice whose question is only the instruction', { format: 'multiple_choice', prompt: 'Choose the correct answer.', options: ['one', 'two', 'three'], answer: 'A' }],
   ];
   for (const [name, patch] of CASES) {
     const broken = JSON.parse(JSON.stringify(m));
@@ -1281,6 +1287,30 @@ test('2.2', 'a question that cannot be used is caught, per format', () => {
     assert.ok(f.questions.includes(1), name + ': the question number is not reported');
   }
   assert.equal(checkAll(m).find(x => x.id === 'questions.complete').status, 'pass', 'complete questions are rejected');
+});
+
+test('2.2 2.8', 'a True/False question always carries its statement: short real statements pass, the instruction alone never does, and Claude is told so', () => {
+  const tf = (o) => quality.stemProblem(Object.assign({ format: 'true_false' }, o));
+  for (const q of [{ prompt: 'True or false?', statement: 'Maya thinks binge-watching helps her relax.' }, { prompt: 'True or false?', statement: 'It was cold.' }, { prompt: 'Maya was late for school.' }, { prompt: 'Tom was angry.' }]) assert.equal(tf(q), '', 'a real statement is refused: ' + JSON.stringify(q));
+  for (const q of [{ prompt: 'True or false?' }, { prompt: 'Tick true or false.' }, { prompt: 'Decide whether the statement is true or false.' }, { prompt: 'Is the following statement true or false?', statement: ' ' }]) assert.ok(tf(q), 'an instruction passes as a statement: ' + JSON.stringify(q));
+  // "True or false: <statement>" in one field: the statement is split off and stands on the sheet
+  const ws = quality.normalizeWorksheet({ questions: [{ n: 1, format: 'true_false', prompt: 'True or false: Maya watches series every night.', answer: 'False' }, { n: 2, format: 'true_false', claim: 'Tom likes the show.', answer: 'True' }] });
+  assert.equal(ws.questions[0].statement, 'Maya watches series every night.');
+  assert.equal(ws.questions[1].statement, 'Tom likes the show.');
+  const m = goodMaterial({ textType: 'Blog Post', createWorksheet: true }, 'reading');
+  m.worksheet = Object.assign({}, m.worksheet, { questions: m.worksheet.questions.map((q, i) => i === 1 ? Object.assign({}, q, { format: 'true_false', prompt: 'True or false?', statement: '', answer: 'True' }) : q) });
+  const f = checkAll(m).find(x => x.id === 'questions.complete');
+  assert.equal(f.status, 'fail'); assert.ok(f.blocking, 'the finding does not block'); assert.deepEqual(f.questions, [2]);
+  assert.ok(/no statement to judge/.test(f.detail), f.detail);
+  assert.ok(quality.repairPlan([f], 'blocking').questions.includes(2), 'the question is not handed to the repair');
+  // the sheet shows the statement under the instruction
+  const q = { n: 2, format: 'true_false', prompt: 'True or false?', statement: 'Maya watches series every night.', answer: 'False' };
+  assert.ok(render.questionBody(q, {}).includes('Maya watches series every night.'));
+  // the question prompt asks for the statement in its own field, never the instruction alone
+  const st = core.normalizeState(Object.assign(core.defaults('reading'), { createWorksheet: true, questionFormats: ['true_false'] }));
+  const plan = core.buildPlan(st, CTX);
+  const qp = prompts.buildQuestionPrompt(st, plan, m.content);
+  assert.ok(/the complete statement about the material that the learner judges/.test(qp) && /never only "True or false\?"/.test(qp), 'Claude is not told to write the statement');
 });
 
 /* ------------------------------------------------------------------ */
