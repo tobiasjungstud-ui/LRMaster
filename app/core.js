@@ -177,23 +177,23 @@
    * that are naturally spoken.
    */
   const PRE_TASK_TYPES = [
-    { key: 'confrontation', label: 'Konfrontationsaufgabe', short: 'Konfrontation', interaction: 3, oral: true,
+    { key: 'confrontation', label: 'Konfrontationsaufgabe', student: 'Take a stand', short: 'Konfrontation', interaction: 3, oral: true,
       definition: 'Confrontation task: a pointed claim, dilemma or contradiction about the topic that learners must take a position on BEFORE they meet the material. It can honestly be argued both ways, it creates the need to find out, and the material must not be needed to answer it.' },
-    { key: 'activation', label: 'Vorwissen aktivieren', short: 'Vorwissen', interaction: 2, oral: true,
+    { key: 'activation', label: 'Vorwissen aktivieren', student: 'Warm-up', short: 'Vorwissen', interaction: 2, oral: true,
       definition: 'Activating prior knowledge: learners collect what they already know, have experienced or believe about the topic.' },
-    { key: 'brainstorm', label: 'Wortfeld / Brainstorming', short: 'Wortfeld', interaction: 2, oral: false,
+    { key: 'brainstorm', label: 'Wortfeld / Brainstorming', student: 'Word field', short: 'Wortfeld', interaction: 2, oral: false,
       definition: 'Word field: learners collect words and ideas around the topic (mind map, list, categories) and so build the vocabulary the material will use.' },
-    { key: 'ranking', label: 'Ranking / Positionierung', short: 'Ranking', interaction: 3, oral: true,
+    { key: 'ranking', label: 'Ranking / Positionierung', student: 'Ranking', short: 'Ranking', interaction: 3, oral: true,
       definition: 'Ranking: learners order, weigh or place given statements or items (most to least important, agree/disagree line) and justify the order.' },
-    { key: 'survey', label: 'Klassenumfrage', short: 'Umfrage', interaction: 3, oral: true,
+    { key: 'survey', label: 'Klassenumfrage', student: 'Class survey', short: 'Umfrage', interaction: 3, oral: true,
       definition: 'Class survey: learners ask several classmates the same one or two questions and note the answers.' },
-    { key: 'speaking', label: 'Speaking Prompt', short: 'Sprechimpuls', interaction: 3, oral: true,
+    { key: 'speaking', label: 'Speaking Prompt', student: 'Speaking', short: 'Sprechimpuls', interaction: 3, oral: true,
       definition: 'Speaking prompt: a short spoken exchange about the topic, with a clear question and a turn for each partner.' },
-    { key: 'vocabulary', label: 'Vocabulary Activation', short: 'Wortschatz', interaction: 1, oral: false,
+    { key: 'vocabulary', label: 'Vocabulary Activation', student: 'Vocabulary', short: 'Wortschatz', interaction: 1, oral: false,
       definition: 'Vocabulary activation: pre-teach target words of the unit — matching, completing, sorting, or using them in own sentences. The words must be the target vocabulary listed above.' },
-    { key: 'hypothesis', label: 'Fragen & Hypothesen', short: 'Hypothesen', interaction: 2, oral: false,
+    { key: 'hypothesis', label: 'Fragen & Hypothesen', student: 'Questions and guesses', short: 'Hypothesen', interaction: 2, oral: false,
       definition: 'Questions and hypotheses: learners write down questions they expect the material to answer, or hypotheses they will verify while listening/reading.' },
-    { key: 'prediction', label: 'Vermutungen zum Text', short: 'Vermutung', interaction: 1, oral: false,
+    { key: 'prediction', label: 'Vermutungen zum Text', student: 'Prediction', short: 'Vermutung', interaction: 1, oral: false,
       definition: 'Prediction: from the title and the kind of material, learners predict what will be said or written.' },
   ];
   const PRE_TASK_TYPE_KEYS = PRE_TASK_TYPES.map(t => t.key);
@@ -204,41 +204,61 @@
    * something of their own. Same fields as the pre-task types.
    */
   const POST_TASK_TYPES = [
-    { key: 'discussion', label: 'Diskussion', short: 'Diskussion', interaction: 3, oral: true,
+    { key: 'discussion', label: 'Diskussion', student: 'Discussion', short: 'Diskussion', interaction: 3, oral: true,
       definition: 'Discussion: learners talk about what they have just heard/read — they react to concrete statements of the material, agree, disagree and build on each other.' },
-    { key: 'debate', label: 'Debatte (Pro/Contra)', short: 'Debatte', interaction: 3, oral: true,
+    { key: 'debate', label: 'Debatte (Pro/Contra)', student: 'Debate', short: 'Debatte', interaction: 3, oral: true,
       definition: 'Debate: two sides argue a question that the material raises. Each side uses at least one point from the material plus own arguments, and the debate ends with a conclusion.' },
-    { key: 'roleplay', label: 'Rollenspiel / Simulation', short: 'Rollenspiel', interaction: 3, oral: true,
+    { key: 'roleplay', label: 'Rollenspiel / Simulation', student: 'Role play', short: 'Rollenspiel', interaction: 3, oral: true,
       definition: 'Role play: learners play a situation that follows from the material (a conversation afterwards, a different outcome, another person involved), with a clear role for each person.' },
-    { key: 'transfer', label: 'Transfer auf die eigene Lebenswelt', short: 'Transfer', interaction: 2, oral: false,
+    { key: 'transfer', label: 'Transfer auf die eigene Lebenswelt', student: 'Over to you', short: 'Transfer', interaction: 2, oral: false,
       definition: 'Transfer: learners apply what the material says to their own life, school or town, or to a new situation, and say what is the same and what is different.' },
-    { key: 'mediation', label: 'Sprachmittlung / Zusammenfassung', short: 'Mediation', interaction: 2, oral: false,
+    { key: 'mediation', label: 'Sprachmittlung / Zusammenfassung', student: 'Mediation', short: 'Mediation', interaction: 2, oral: false,
       definition: 'Mediation: learners pass the content on to a named addressee for a named purpose (a friend who missed the lesson, a message, a short summary), selecting what that person needs — not everything.' },
-    { key: 'opinion', label: 'Stellungnahme', short: 'Stellungnahme', interaction: 1, oral: false,
+    { key: 'opinion', label: 'Stellungnahme', student: 'Your opinion', short: 'Stellungnahme', interaction: 1, oral: false,
       definition: 'Written stance: learners state and justify their position on a question from the material, using at least one point from it and giving reasons.' },
-    { key: 'creative', label: 'Kreatives Produkt', short: 'Kreativ', interaction: 1, oral: false,
+    { key: 'creative', label: 'Kreatives Produkt', student: 'Creative task', short: 'Kreativ', interaction: 1, oral: false,
       definition: 'Creative product: learners write or make something of their own that follows from the material — a continuation, a reply, a post, a review, a short dialogue — in the same world as the material.' },
-    { key: 'vocabulary', label: 'Wortschatz anwenden', short: 'Wortschatz', interaction: 1, oral: false,
+    { key: 'vocabulary', label: 'Wortschatz anwenden', student: 'Use the words', short: 'Wortschatz', interaction: 1, oral: false,
       definition: 'Using the vocabulary: learners use the target words of the unit productively in their own sentences or in a short text about the topic. The words must be the target vocabulary listed above.' },
-    { key: 'research', label: 'Mini-Recherche / Projekt', short: 'Recherche', interaction: 2, oral: false,
+    { key: 'research', label: 'Mini-Recherche / Projekt', student: 'Mini research', short: 'Recherche', interaction: 2, oral: false,
       definition: 'Mini research: learners look one open question from the material up and bring back a named, small result (three facts, one example, one number) they can show.' },
-    { key: 'peerfeedback', label: 'Partnerfeedback', short: 'Feedback', interaction: 3, oral: true,
+    { key: 'peerfeedback', label: 'Partnerfeedback', student: 'Peer feedback', short: 'Feedback', interaction: 3, oral: true,
       definition: 'Peer feedback: learners compare their products or answers and give each other feedback along the success criteria — what works, one concrete thing to improve.' },
   ];
   const POST_TASK_TYPE_KEYS = POST_TASK_TYPES.map(t => t.key);
 
   /** Social forms of a pre-task (Einzel-, Partner-, Gruppen-, Plenumsarbeit). */
   const SOCIAL_FORMS = [
-    { key: 'single', label: 'Einzelarbeit', short: 'EA', en: 'on your own', interaction: 0, weight: 2 },
-    { key: 'pair', label: 'Partnerarbeit', short: 'PA', en: 'with your partner', interaction: 2, weight: 2 },
-    { key: 'group', label: 'Gruppenarbeit', short: 'GA', en: 'in a group of three or four', interaction: 3, weight: 1 },
-    { key: 'plenary', label: 'Plenum / ganze Klasse', short: 'Plenum', en: 'with the whole class', interaction: 3, weight: 1 },
+    { key: 'single', label: 'Einzelarbeit', student: 'Individual work', short: 'EA', en: 'on your own', interaction: 0, weight: 2 },
+    { key: 'pair', label: 'Partnerarbeit', student: 'Pair work', short: 'PA', en: 'with your partner', interaction: 2, weight: 2 },
+    { key: 'group', label: 'Gruppenarbeit', student: 'Group work', short: 'GA', en: 'in a group of three or four', interaction: 3, weight: 1 },
+    { key: 'plenary', label: 'Plenum / ganze Klasse', student: 'Whole class', short: 'Plenum', en: 'with the whole class', interaction: 3, weight: 1 },
   ];
   const SOCIAL_FORM_KEYS = SOCIAL_FORMS.map(f => f.key);
   const PRE_TASK_MODES = [
-    { key: 'written', label: 'schriftlich', en: 'written — learners write their answer down' },
-    { key: 'oral', label: 'mündlich', en: 'oral — learners speak; nothing has to be written down' },
+    { key: 'written', label: 'schriftlich', student: 'writing', en: 'written — learners write their answer down' },
+    { key: 'oral', label: 'mündlich', student: 'speaking', en: 'oral — learners speak; nothing has to be written down' },
   ];
+
+  /*
+   * What a task says about itself ON THE WORKSHEET: the sheet is in English,
+   * so the kind of task, the social form and the way of working are English
+   * too, one word each — "Debate · Pair work · speaking · 10 min", never the
+   * German teacher labels and never a German word with its translation.
+   */
+  function taskHeading(p, phase) {
+    const list = phase === 'post' ? POST_TASK_TYPES : PRE_TASK_TYPES;
+    const t = list.find(x => x.key === (p && p.type));
+    const kind = t ? t.student : String((p && p.type) || 'Task');
+    const title = String((p && p.title) || '').trim();
+    if (!title) return kind;
+    return kind + (/[:?!]/.test(title) ? ' — ' : ': ') + title;
+  }
+  function taskMeta(p) {
+    const f = SOCIAL_FORMS.find(x => x.key === (p && p.socialForm));
+    const m = PRE_TASK_MODES.find(x => x.key === (p && p.mode));
+    return [f ? f.student : '', m ? m.student : '', p && p.minutes ? p.minutes + ' min' : ''].filter(Boolean);
+  }
 
   const AUDIO_LENGTHS = [
     { key: '60', label: '1:00' }, { key: '90', label: '1:30' }, { key: '120', label: '2:00' },
@@ -1558,7 +1578,7 @@
     storedSize, fitForStore,
     CEFR_BANDS, SKILLS, SKILL_KEYS, HIGHER_ORDER_TYPES, QUESTION_FORMATS, FORMAT_KEYS, TEXT_TYPES,
     EMOTION_TAGS, PRE_TASK_TYPES, PRE_TASK_TYPE_KEYS, POST_TASK_TYPES, POST_TASK_TYPE_KEYS, TASK_PHASES,
-    SOCIAL_FORMS, SOCIAL_FORM_KEYS, PRE_TASK_MODES,
+    SOCIAL_FORMS, SOCIAL_FORM_KEYS, PRE_TASK_MODES, taskHeading, taskMeta,
     AUDIO_LENGTHS, QUESTION_COUNTS, PRESETS, TURN_PRESETS, TASK_PRESETS, SETUP_PRESETS,
     META_SPECS, TEXT_TYPE_DESIGN, designIdFor,
     SCHEMA, SCHEMA_BY_KEY, SIMPLE_MODE_KEYS, EXAMPLE_CONFIG, WORDS_PER_A4,

@@ -1260,11 +1260,33 @@
       const ds = docText(env, m, 'student');
       const dt = docText(env, m, 'teacher');
       const note = m.worksheet.preTasks[0].teacherNote;
-      return ok(/Partnerarbeit/.test(st) && /mündlich/.test(st) && /4 min/.test(st) && /Success criteria/.test(st)
-        && /Partnerarbeit/.test(md) && /Partnerarbeit/.test(ds) && /Success criteria/.test(ds)
+      return ok(/Pair work/.test(st) && /speaking|writing/.test(st) && /4 min/.test(st) && /Success criteria/.test(st)
+        && /Pair work/.test(md) && /Pair work/.test(ds) && /Success criteria/.test(ds)
         && t.includes(env.render.esc(note)) && /Sozialform/.test(dt) && dt.includes(note), 'pre-task details missing in an output');
     } });
 
+  add({ id: 'S35.english_sheet', section: 35, title: 'Auf dem Arbeitsblatt benennen sich Pre- und Post-Tasks auf Englisch und nur einmal („Debate · Pair work · speaking · 10 min“) – nie die deutschen Lehrer-Bezeichnungen (Debatte, Partnerarbeit, mündlich) und nie ein deutsches Wort mit Übersetzung; die deutsche Übersicht bleibt in der Lehrerfassung', kind: 'render',
+    check(env) {
+      const problems = [];
+      const C = env.core;
+      const german = [].concat(C.PRE_TASK_TYPES.map(t => t.label), C.POST_TASK_TYPES.map(t => t.label), C.SOCIAL_FORMS.map(f => f.label), C.PRE_TASK_MODES.map(x => x.label)).filter(l => l !== 'Speaking Prompt' && l !== 'Vocabulary Activation');
+      const socials = C.SOCIAL_FORM_KEYS, modes = C.PRE_TASK_MODES.map(x => x.key);
+      const task = (type, i) => ({ n: i + 1, type, socialForm: socials[i % socials.length], mode: modes[i % modes.length], minutes: 10, title: 'Binge-watching: good habit or bad habit?', prompt: 'Talk about it.', criteria: ['I give a reason.'] });
+      const m = env.fixture.material({ preTask: true, postTask: true }, 'listening');
+      m.worksheet = Object.assign({}, m.worksheet, { preTasks: C.PRE_TASK_TYPES.map((t, i) => task(t.key, i)), postTasks: C.POST_TASK_TYPES.map((t, i) => task(t.key, i)) });
+      const outs = { screen: env.render.renderStudentHTML(m), teacherSheet: env.render.renderTeacherHTML(m), markdown: env.render.renderMarkdown(m), word: docText(env, m, 'student') };
+      for (const [where, text] of Object.entries(outs)) {
+        const hit = german.find(l => new RegExp('(^|[^\\p{L}])' + l.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&') + '($|[^\\p{L}])', 'u').test(text));
+        if (hit) problems.push(where + ': German label "' + hit + '"');
+        if (/with your partner|on your own|\(with /.test(text)) problems.push(where + ': the social form is explained in brackets');
+      }
+      const deb = C.taskHeading({ type: 'debate', title: 'Binge-watching: good habit or bad habit?' }, 'post');
+      if (deb !== 'Debate \u2014 Binge-watching: good habit or bad habit?') problems.push('heading: ' + deb);
+      if (C.taskMeta({ socialForm: 'pair', mode: 'oral', minutes: 10 }).join(' · ') !== 'Pair work · speaking · 10 min') problems.push('meta: ' + C.taskMeta({ socialForm: 'pair', mode: 'oral', minutes: 10 }).join(' · '));
+      if (!/Debate/.test(outs.word) || !/Pair work · speaking · 10 min/.test(outs.word)) problems.push('Word does not name the task in English');
+      if (!/Sozialform/.test(docText(env, m, 'teacher'))) problems.push('the teacher overview lost its German table');
+      return ok(!problems.length, problems.slice(0, 3).join(' | '));
+    } });
 
   /* §36 Post-Task: dieselbe Mechanik nach dem Hören/Lesen (Auftragserweiterung) */
   const postState = (env, over) => env.state(Object.assign({ createWorksheet: true, postTask: true }, over || {}));
@@ -1479,7 +1501,7 @@
       const ds = docText(env, m, 'student');
       const dt = docText(env, m, 'teacher');
       const post = m.worksheet.postTasks[0];
-      return ok(st.indexOf('Questions') < st.indexOf('After you listen') && /Diskussion/.test(st) && /Partnerarbeit/.test(st) && /Result:/.test(st) && st.includes(env.render.esc(post.criteria[0]))
+      return ok(st.indexOf('Questions') < st.indexOf('After you listen') && /Discussion/.test(st) && /Pair work/.test(st) && /Result:/.test(st) && st.includes(env.render.esc(post.criteria[0]))
         && /## After you listen/.test(md) && /After you listen/.test(ds) && ds.includes(post.product)
         && /Post-Task/.test(dt) && dt.includes(post.reference) && t.includes(env.render.esc(post.reference)), 'post-task details missing in an output');
     } });

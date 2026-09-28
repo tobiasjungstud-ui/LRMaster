@@ -657,7 +657,7 @@
 
   function summaryText(findings) {
     const s = quality.summarize(findings);
-    return `${s.pass} ok · ${s.warn} Warnungen · ${s.fail} Fehler`;
+    return `${s.pass} ok · ${s.warn} ${s.warn === 1 ? 'Warnung' : 'Warnungen'} · ${s.fail} Fehler` + (s.unverified ? ` · ${s.unverified} nicht geprüft` : '');
   }
   function findingsLabel(items) {
     return items.slice(0, 2).map(f => f.title).join(', ') + (items.length > 2 ? ` +${items.length - 2}` : '');
@@ -870,8 +870,10 @@
       const open = quality.repairable(findingsAll, state.autoFix === 'off' ? 'all' : state.autoFix).length;
       // a blocking check that still fails means: do not hand this out as it is
       const blocked = quality.blockingFailures(findingsAll);
+      // the end result after every correction — and what is still the teacher's to look at
       progress('done', blocked.length ? 'fail' : open ? 'warn' : 'done',
-        `${Math.round((Date.now() - t0) / 1000)} s · ${summaryText(findingsAll)}` + (blocked.length ? ` · ${blocked.length} blockierend` : ''));
+        `${Math.round((Date.now() - t0) / 1000)} s · Endstand nach Korrektur: ${summaryText(findingsAll)}`
+        + (blocked.length ? ` · ${blocked.length} blockierend – bitte im Quality Check ansehen: ${findingsLabel(blocked)}` : open ? ` – offen, im Quality Check: ${findingsLabel(quality.repairable(findingsAll, state.autoFix === 'off' ? 'all' : state.autoFix))}` : ''));
       const fixedCount = repairs.filter(r => r.accepted).length;
       toast(blocked.length
         ? `Material erstellt, aber ${blocked.length} blockierende Prüfung(en) nicht bestanden – siehe Quality Check.`
@@ -1048,6 +1050,12 @@
       progress('review', quality.repairable(reviewFindings, state.autoFix).length ? 'warn' : 'done', pfx + summaryText(reviewFindings));
       progress('question-fix', 'done', `${pfx}Runde ${round}: ${changed.length ? 'Q' + changed.join(', Q') + ' ersetzt · ' : ''}${summaryText(findings)}`);
     }
+    // the check lines show where this variant ended up, not the first draft
+    // before its corrections
+    const corrected = repairs.some(r => r.variant === (tag || undefined) && r.accepted);
+    const state1 = corrected ? 'nach Korrektur: ' : '';
+    progress('question-check', quality.repairable(questionFindings, state.autoFix).length ? 'warn' : 'done', pfx + state1 + summaryText(questionFindings));
+    progress('review', quality.repairable(reviewFindings, state.autoFix).length ? 'warn' : 'done', pfx + state1 + summaryText(reviewFindings));
     if (!repairs.some(r => r.variant === (tag || undefined) && (r.target === 'questions' || r.target === 'worksheet'))) {
       progress('question-fix', 'skip', maxRounds ? pfx + 'nicht nötig' : 'automatische Korrektur aus');
     }

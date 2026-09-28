@@ -533,16 +533,16 @@
   }
 
   function socialLabel(k) { const f = core.SOCIAL_FORMS.find(x => x.key === k); return f ? f.label : k; }
-  function socialEn(k) { const f = core.SOCIAL_FORMS.find(x => x.key === k); return f ? f.en : k; }
   function modeLabel(k) { const m = core.PRE_TASK_MODES.find(x => x.key === k); return m ? m.label : k; }
 
   function postLabel(k) { const t = core.POST_TASK_TYPES.find(x => x.key === k); return t ? t.label : k; }
 
   function preTaskBlocks(p, ctx, i, phase) {
     const d = ctx.d;
-    const meta = [p.socialForm ? socialLabel(p.socialForm) + ' (' + socialEn(p.socialForm) + ')' : '', p.mode ? modeLabel(p.mode) : '', p.minutes ? p.minutes + ' min' : ''].filter(Boolean);
+    // the worksheet is English: the task names itself in English, once
+    const meta = core.taskMeta(p);
     const blocks = [
-      P((p.n ? p.n + '. ' : '') + (phase === 'post' ? postLabel(p.type) : preLabel(p.type)) + (p.title ? ': ' + p.title : ''), { after: 2, run: { font: WS.display, size: 9, bold: true, caps: true, letterSpacing: 1, color: d.accent } }),
+      P((p.n ? p.n + '. ' : '') + core.taskHeading(p, phase), { after: 2, run: { font: WS.display, size: 9, bold: true, caps: true, letterSpacing: 1, color: d.accent } }),
     ];
     if (meta.length) blocks.push(P(joinMeta(meta), { after: 4, run: { font: WS.body, size: 8.5, italic: true, color: GREY } }));
     blocks.push(P(p.prompt, { after: p.items && p.items.length ? 4 : 0, run: { font: WS.body, size: 10.5, color: INK } }));

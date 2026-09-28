@@ -58,6 +58,8 @@ Beide Phasen laufen über **dieselbe geprüfte Mechanik** (`core.buildTaskPlan`,
 |---|---|
 | Keine Pre-Task · Kurzer Einstieg (1 Aufgabe, Partnerarbeit, mündlich, 5 min) · Konfrontation (These beziehen, dann Vermutungen, 8 min) · Wortschatz vorentlasten (Wortfeld und Zielwörter, schriftlich, 8 min) · Sprechen aktivieren (Umfrage und Sprechimpuls, 10 min) | Keine Post-Task · Kurze Sicherung (8 min) · Diskussion & Position (Debatte, dann Stellungnahme, 20 min) · Schreibprodukt (25 min) · Sprachmittlung & Feedback (20 min) · Transfer & Recherche (30 min) |
 
+**Auf dem Arbeitsblatt ist alles Englisch.** Die deutschen Bezeichnungen (Debatte, Partnerarbeit, mündlich) sind für die Lehrperson in der App und in der Übersicht der Lehrerfassung. Auf dem Blatt der Lernenden – am Bildschirm, in Word und in Markdown – nennt sich jede Aufgabe englisch und nur einmal: „5. DEBATE — Binge-watching: good habit or bad habit?“ und darunter „Pair work · speaking · 10 min“, ohne übersetzende Klammern.
+
 Darunter steht die **Vorschau der geplanten Abfolge** – Aufgabe für Aufgabe mit Sozialform, Arbeitsweise und Minuten, dazu die Gesamtzeit, das Sprachniveau und sofort sichtbare Probleme („3 mündlich, aber nur 1 interaktive Sozialform“). Schnellwahl und Vorschau sind **auch im Simple Mode** bedienbar; der Advanced Mode öffnet zusätzlich jede Einzeleinstellung, und sobald man dort etwas ändert, gilt die Folge als eigener Mix. Zu viele mündliche Aufgaben werden automatisch auf die Anzahl Aufgaben begrenzt.
 
 ### Pre-Task
@@ -357,7 +359,7 @@ Damit Bildschirm und Ausgabe nicht auseinanderlaufen, liefert **eine einzige Fun
 
 ## Kontrollmechanismen
 
-- **Konzept-Manifest** (`app/manifest.js`): 341 Anforderungen aus dem Konzeptdokument und den Auftragserweiterungen (§33 Word-Export, §34 Schwierigkeitsmesser & Niveau der Fragen, §35 Pre-Task, §36 Post-Task, §37 Authentisches Layout, Seitenlimit & Bilder, §38 Vorlagen, §39 Bildausschnitt, §40 Inhaltliche Komplexität), jede mit Prüfart:
+- **Konzept-Manifest** (`app/manifest.js`): 342 Anforderungen aus dem Konzeptdokument und den Auftragserweiterungen (§33 Word-Export, §34 Schwierigkeitsmesser & Niveau der Fragen, §35 Pre-Task, §36 Post-Task, §37 Authentisches Layout, Seitenlimit & Bilder, §38 Vorlagen, §39 Bildausschnitt, §40 Inhaltliche Komplexität), jede mit Prüfart:
   - `setting` – Steuerelement existiert **und** die Änderung des Werts verändert nachweislich mindestens einen Prompt (Prompt-Sensitivitätstest; tote Einstellungen fallen durch).
   - `function` – Verhalten wird mit echten Eingaben ausgeführt (z. B. Preset *Interview* ⇒ Anteile 25/75, Skill-Mix verschiebt sich mit der Schwierigkeit, Beispielkonfiguration §32 reproduziert alle Werte).
   - `rule` – Qualitätsregel existiert als Messfunktion oder als Review-Kriterium und wird im Review-Prompt an Claude übergeben.
@@ -374,7 +376,7 @@ Damit Bildschirm und Ausgabe nicht auseinanderlaufen, liefert **eine einzige Fun
 - **Blockierende Befunde sind sichtbar**: Prüfungen, die als blockierend definiert sind (Wortzahl, Zielvokabular, Fragenzahl, Chronologie, Sozialformen, Bildidentität …), färben den Lauf rot, nennen sich im Quality-Check mit eigenem Kasten, stehen in der Lehrerversion und im Word-Export – Material, das sie nicht besteht, wird nicht stillschweigend als fertig ausgegeben.
 
 - **Selbstkontrolle des Auftrags**: jede Audit-Prüfung trägt das Kapitel aus `AUDIT.md`, das sie beantwortet; die Suite listet am Ende alle Kapitel und Schwachstellen mit der Zahl ihrer Prüfungen und **fällt durch, sobald eines ohne Prüfung bleibt**.
-- **Browser-Audit** (`tests/browser.js`, 152 Prüfungen, `npm run audit:browser`): was ohne echten Browser nicht prüfbar ist – die In-App-Konzeptprüfung gegen den exportierten Quelltext, der ganze Durchlauf gegen neun bösartige Claude-Antworten, XSS in allen Tabs, kaputter und voller Speicher, Doppelstart, Stop bei hängendem Aufruf, Tastatur, Fokus, Dunkelmodus, 360 px, Navigation während des Laufs.
+- **Browser-Audit** (`tests/browser.js`, 154 Prüfungen, `npm run audit:browser`): was ohne echten Browser nicht prüfbar ist – die In-App-Konzeptprüfung gegen den exportierten Quelltext, der ganze Durchlauf gegen neun bösartige Claude-Antworten, XSS in allen Tabs, kaputter und voller Speicher, Doppelstart, Stop bei hängendem Aufruf, Tastatur, Fokus, Dunkelmodus, 360 px, Navigation während des Laufs.
 
 ```bash
 npm test          # Unit-Tests + Konzept-Abdeckung + Audit-Suite

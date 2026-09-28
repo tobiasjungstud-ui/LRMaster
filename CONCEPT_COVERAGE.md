@@ -2,7 +2,7 @@
 
 Erzeugt von `npm run coverage`. Jede Zeile ist eine Anforderung aus `docs/Konzept_Listening_Reading_Creator.md`, gebunden an die Stelle im Code, die sie umsetzt, und das Ergebnis der automatischen Prüfung (`npm test`).
 
-**Ergebnis: 341 von 341 Anforderungen bestanden.**
+**Ergebnis: 342 von 342 Anforderungen bestanden.**
 
 Prüfarten: **setting** – Steuerelement vorhanden und Änderung des Werts verändert nachweislich den Prompt an Claude · **function** – Verhalten wird mit echten Eingaben ausgeführt und verglichen · **rule** – Qualitätsregel existiert als Messung oder Claude-Review-Kriterium · **render** – Ausgabe wird auf einer Fixture gerendert und inhaltlich geprüft · **ui** – Navigations-/Strukturelement existiert.
 
@@ -409,7 +409,7 @@ Prüfarten: **setting** – Steuerelement vorhanden und Änderung des Werts ver�
 | ✅ | `S34.glossary` | Option „Fremdwörter auf der 1. Seite erklärt“: Messer wählt die Wörter über dem Niveau (ohne Zielvokabular), Claude erklärt sie; Ausgabe auf Seite 1 (HTML, Word) | setting | Setting `glossary` (core.SCHEMA → Control `[data-setting="glossary"]` → prompts.js) |
 | ✅ | `S34.append_script` | Option „Skript auf der letzten Seite abgebildet“ (Listening): Schülerversion endet mit dem Skript (HTML, Word, Markdown) | setting | Setting `appendScript` (core.SCHEMA → Control `[data-setting="appendScript"]` → prompts.js) |
 
-## §35 Pre-Task: Typen, Sozialformen, Anforderungsniveau (30/30)
+## §35 Pre-Task: Typen, Sozialformen, Anforderungsniveau (31/31)
 
 | Status | ID | Anforderung | Art | Umsetzung |
 |---|---|---|---|---|
@@ -443,6 +443,7 @@ Prüfarten: **setting** – Steuerelement vorhanden und Änderung des Werts ver�
 | ✅ | `S35.simple_access` | Auch im Simple Mode bedienbar: Schnellwahl und Vorschau stehen ausserhalb der Advanced-Steuerelemente | function | Funktion (siehe Check im Manifest) |
 | ✅ | `S35.repair` | Beanstandete Pre-Task wird gezielt neu erstellt, die Fragen bleiben unverändert | function | Funktion (siehe Check im Manifest) |
 | ✅ | `S35.output` | Sozialform, Arbeitsweise, Zeit und Kriterien stehen auf dem Arbeitsblatt (Bildschirm, Word, Markdown); Lehrerversion mit Pre-Task-Übersicht | render | render.js (renderStudentHTML / renderTeacherHTML) |
+| ✅ | `S35.english_sheet` | Auf dem Arbeitsblatt benennen sich Pre- und Post-Tasks auf Englisch und nur einmal („Debate · Pair work · speaking · 10 min“) – nie die deutschen Lehrer-Bezeichnungen (Debatte, Partnerarbeit, mündlich) und nie ein deutsches Wort mit Übersetzung; die deutsche Übersicht bleibt in der Lehrerfassung | render | render.js (renderStudentHTML / renderTeacherHTML) |
 
 ## §36 Post-Task: Typen, Sozialformen, Anforderungsniveau (31/31)
 

@@ -188,17 +188,18 @@
   }
 
   function socialLabel(k) { const f = core.SOCIAL_FORMS.find(x => x.key === k); return f ? f.label : k; }
-  function socialEn(k) { const f = core.SOCIAL_FORMS.find(x => x.key === k); return f ? f.en : k; }
   function modeLabel(k) { const m = core.PRE_TASK_MODES.find(x => x.key === k); return m ? m.label : k; }
 
   function preTaskHtml(p, teacher, phase) {
+    // the worksheet is English: the task names itself in English, once
+    const social = core.SOCIAL_FORMS.find(x => x.key === p.socialForm), mode = core.PRE_TASK_MODES.find(x => x.key === p.mode);
     const badges = [
-      p.socialForm ? `<span class="badge social ${esc(p.socialForm)}">${esc(socialLabel(p.socialForm))} · ${esc(socialEn(p.socialForm))}</span>` : '',
-      p.mode ? `<span class="badge mode ${esc(p.mode)}">${p.mode === 'oral' ? '🗣 ' : '✎ '}${esc(modeLabel(p.mode))}</span>` : '',
+      social ? `<span class="badge social ${esc(p.socialForm)}">${esc(social.student)}</span>` : '',
+      mode ? `<span class="badge mode ${esc(p.mode)}">${p.mode === 'oral' ? '🗣 ' : '✎ '}${esc(mode.student)}</span>` : '',
       p.minutes ? `<span class="badge time">${p.minutes} min</span>` : '',
     ].filter(Boolean).join('');
     const isPost = phase === 'post';
-    let html = `<section class="pretask${isPost ? ' posttask' : ''}" data-mode="${esc(p.mode || 'written')}"><h3>${p.n ? esc(String(p.n)) + '. ' : ''}${esc(isPost ? postLabel(p.type) : preLabel(p.type))}${p.title ? ': ' + esc(p.title) : ''}</h3>`;
+    let html = `<section class="pretask${isPost ? ' posttask' : ''}" data-mode="${esc(p.mode || 'written')}"><h3>${p.n ? esc(String(p.n)) + '. ' : ''}${esc(core.taskHeading(p, phase))}</h3>`;
     if (badges) html += `<p class="pretask-meta">${badges}</p>`;
     html += `<p>${esc(p.prompt)}</p>`;
     if (p.items && p.items.length) html += '<ul class="pretask-items">' + p.items.map(i => `<li>${esc(i)}</li>`).join('') + '</ul>';
@@ -479,15 +480,15 @@
     out.push('## Student version' + (variantsOf(m).length > 1 ? ' — ' + variantsOf(m).map(v => v.label).join(' / ') : ''));
     if (ws && ws.instructions) out.push(ws.instructions, '');
     const taskLines = (list, phase) => list.flatMap(p => [
-      `### ${p.n ? p.n + '. ' : ''}${phase === 'post' ? postLabel(p.type) : preLabel(p.type)}${p.title ? ': ' + p.title : ''}`,
-      [socialLabel(p.socialForm), modeLabel(p.mode), p.minutes ? p.minutes + ' min' : ''].filter(Boolean).join(' · '),
+      `### ${p.n ? p.n + '. ' : ''}${core.taskHeading(p, phase)}`,
+      core.taskMeta(p).join(' · '),
       '', p.prompt, ...(p.items || []).map(i => `- ${i}`),
       ...(p.product ? ['', `Result: ${p.product}`] : []),
       ...((p.criteria || []).length ? ['', 'Success criteria:', ...p.criteria.map(c => `- ${c}`)] : []), '']);
     if (ws && (ws.preTasks || []).length) out.push(`## Before you ${isL ? 'listen' : 'read'}`, '');
     for (const p of (ws && ws.preTasks) || []) out.push(
-      `### ${p.n ? p.n + '. ' : ''}${preLabel(p.type)}${p.title ? ': ' + p.title : ''}`,
-      [socialLabel(p.socialForm), modeLabel(p.mode), p.minutes ? p.minutes + ' min' : ''].filter(Boolean).join(' · '),
+      `### ${p.n ? p.n + '. ' : ''}${core.taskHeading(p, 'pre')}`,
+      core.taskMeta(p).join(' · '),
       '', p.prompt, ...(p.items || []).map(i => `- ${i}`),
       ...((p.criteria || []).length ? ['', 'Success criteria:', ...p.criteria.map(c => `- ${c}`)] : []), '');
     // the words the text needs come after the pre-task and before the text

@@ -266,6 +266,8 @@ const SETTINGS = (extra) => `(() => {
         llmBlockingUnverified: findings.filter(f => f.kind === 'llm' && f.blocking && f.status === 'unverified').length,
         inventedRule: findings.some(f => f.id === 'made.up'),
         doneStatus: (document.querySelector('#progress li[data-step="done"]') || { dataset: {} }).dataset.status || '',
+        doneNote: ((document.querySelector('#progress li[data-step="done"] .note') || {}).textContent || ''),
+        blockingTitles: findings.filter(f => f.status === 'fail' && f.blocking).map(f => f.title),
       };
     });
     const usable = !r.running && r.buttonUsable && !errors.length;
@@ -273,6 +275,9 @@ const SETTINGS = (extra) => `(() => {
       && (scenario === 'ok' || scenario === 'tooShort' || scenario === 'injection' || scenario === 'reviewFails' ? true : true)
       && !r.inventedRule, JSON.stringify(r) + (errors[0] ? ' | ' + errors[0] : ''));
     if (scenario === 'tooShort') check('a blocking failure is shown as blocking', r.doneStatus === 'fail' && r.blockingShown, JSON.stringify(r));
+    // the last line says it is the end result after the corrections, and names what the teacher must look at
+    if (scenario === 'tooShort') check('the last progress line is the end result and names the blocking check to look at', /Endstand nach Korrektur: \d+ ok/.test(r.doneNote) && /blockierend – bitte im Quality Check ansehen: /.test(r.doneNote) && r.blockingTitles.length > 0 && r.doneNote.includes(r.blockingTitles[0]) && !/ 1 Warnungen/.test(r.doneNote), r.doneNote);
+    if (scenario === 'ok') check('the last progress line is the end result after the corrections, and names a blocking check only when there is one', /Endstand nach Korrektur: \d+ ok/.test(r.doneNote) && (r.blockingTitles.length ? r.doneNote.includes('bitte im Quality Check ansehen: ' + r.blockingTitles[0]) : !/blockierend/.test(r.doneNote)), r.doneNote);
     if (scenario === 'reviewFails') check('a failed review leaves the rules unverified', r.unverified > 0, JSON.stringify(r));
     if (scenario === 'injection') check('an invented rule never reaches the report', !r.inventedRule, JSON.stringify(r));
     if (scenario === 'ok') check('a well-founded review is accepted', r.llmPassed > 5 && r.llmBlockingUnverified === 0, JSON.stringify(r));
