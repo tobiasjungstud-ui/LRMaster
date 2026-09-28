@@ -115,7 +115,9 @@ function claudeStub({ scenario, text, xss, worksheet }) {
       : /strict reviewer/.test(s) ? 'review'
         : /materials writer/.test(s) ? 'content'
           : /test writer/.test(s) ? 'questions'
-            : /You are revising a worksheet/.test(s) ? 'questionRepair' : 'other';
+            : /You are revising a worksheet/.test(s) ? 'questionRepair'
+              : /You are changing ONE part/.test(s) ? 'reviewEdit'
+                : /You are adding ONE new/.test(s) ? 'reviewInsert' : 'other';
     window.__calls.push(kind);
     if (scenario === 'throws') { const e = new Error('upstream'); e.code = 'upstream_error'; throw e; }
     if (scenario === 'hangs' && window.__calls.length === 1) return new Promise(() => {});
@@ -139,6 +141,23 @@ function claudeStub({ scenario, text, xss, worksheet }) {
         return Object.assign({}, text, { paragraphs: Array.from({ length: 10 }, () => text.paragraphs).reduce((a, x) => a.concat(x), []) });
       }
       return text;
+    }
+    if (kind === 'reviewEdit') {
+      // the review mode: change exactly the target, as a careful model does
+      if (/GARBAGE/.test(s)) return { block: { prompt: 'x' } };
+      const scope = /SCOPE: (\w+)/.exec(s)[1];
+      const tj = JSON.parse(/^TARGET_JSON: (.*)$/m.exec(s)[1]);
+      if (scope === 'text' || scope === 'span') return { text: (scope === 'span' ? tj.marked : tj.text) + ' (clearer)' };
+      const b = JSON.parse(JSON.stringify(scope === 'fields' ? tj.block : tj));
+      if (scope === 'fields') for (const f of tj.fields) { const k = f.split('.'); let o = b; for (let i = 0; i < k.length - 1; i++) o = o[k[i]]; o[k[k.length - 1]] = o[k[k.length - 1]] + ' (changed)'; }
+      else b.prompt = (/Make this question harder/.test(s) ? 'Harder: ' : 'Rewritten: ') + (b.prompt || '');
+      return { block: b };
+    }
+    if (kind === 'reviewInsert') {
+      const near = /^Before it: (\{.*\})$/m.exec(s) || /^After it: (\{.*\})$/m.exec(s);
+      const nb = JSON.parse(near[1]);
+      if (/comprehension question/.test(s)) return { block: { skill: 'detail', format: 'short_answer', difficulty: nb.difficulty || 'B1.2', prompt: 'New inserted question about the text?', answer: 'An answer', evidenceQuote: nb.evidenceQuote, evidenceRef: nb.evidenceRef } };
+      return { block: Object.assign({}, nb, { title: 'New task', prompt: 'Talk to your partner about the new idea from the text.' }) };
     }
     if (kind === 'questionRepair') {
       // replaces exactly the questions that had no statement, with a complete one
@@ -942,6 +961,126 @@ const SETTINGS = (extra) => `(() => {
     });
     check('a material with no own picture never offers a crop icon (no own block to open it for)', !noOwn, '');
     check('the crop of a picture raises no page error', errors.length === 0, errors[0]);
+    await page.close();
+  }
+
+  console.log('\nBrowser audit: review mode — change the students\' sheet in the viewer (2.5, 2.8, 2.11)');
+  {
+    const { page, errors } = await open({ scenario: 'ok', before: () => { try { localStorage.setItem('lr.review.v1', JSON.stringify({ review: true, edit: false })); } catch (e) { /* keep */ } } });
+    await page.evaluate(async () => {
+      const { fixture, ui } = window.LR;
+      for (let i = 0; i < 30 && !ui.caps.sample; i++) await new Promise(r => setTimeout(r, 100));
+      const m = fixture.material({ createWorksheet: true, preTask: true, postTask: true }, 'reading');
+      m.id = 'review-material';
+      window.__m = m; ui.app.material = m; ui.openViewer(m, 'library');
+    });
+    await page.waitForTimeout(500);
+    const W = () => page.evaluate(() => JSON.parse(JSON.stringify(window.LR.review.worksheetOf(window.__m, null))));
+    const a = await page.evaluate(() => ({ units: document.querySelectorAll('#vw-sheet [data-unit]').length, edits: document.querySelectorAll('#vw-sheet [data-edit]').length, gaps: document.querySelectorAll('#vw-paper .rv-gap').length, bar: !!document.querySelector('#vw-review .rv-toolbar [data-rv-toggle="review"]') && !!document.querySelector('#vw-review [data-rv-toggle="edit"]') }));
+    check('the viewer has the switches „Überarbeiten“ and „Bearbeiten“, and the tools lie over every block of the students\' sheet', a.bar && a.units >= 6 && a.edits > 20 && a.gaps >= 6, JSON.stringify(a));
+    // 1. hover: the level of the question, answer and evidence at the press of a button
+    const q2 = await page.$('#vw-sheet [data-unit="questions.1"]');
+    await q2.scrollIntoViewIfNeeded();
+    let bb = await q2.boundingBox();
+    await page.mouse.move(bb.x + bb.width - 60, bb.y + bb.height / 2);
+    await page.waitForTimeout(150);
+    const before = await W();
+    const tag = await page.evaluate(() => { const t = document.querySelector('#vw-paper .rv-layer .rv-tag'); return t ? { text: t.textContent, outlined: document.querySelector('#vw-sheet [data-unit="questions.1"]').classList.contains('rv-hover') } : null; });
+    check('hovering a question outlines it and shows what a click changes, with its level', !!tag && tag.outlined && /Frage 2 · .*Klick: ändern/.test(tag.text) && tag.text.includes(before.questions[1].difficulty), JSON.stringify(tag));
+    await page.click('#vw-paper .rv-layer .rv-tag [data-rv="answer"]');
+    await page.click('#vw-paper .rv-layer .rv-tag [data-rv="evidence"]');
+    await page.waitForTimeout(100);
+    const rev = await page.evaluate(() => { const r = document.querySelector('#vw-sheet [data-unit="questions.1"] .rv-reveal'); return r ? r.textContent : ''; });
+    check('one button shows the answer, one the evidence — marked in the text when it stands there', rev.includes(String(before.questions[1].answer)) && rev.includes(before.questions[1].evidenceQuote) && /im Text markiert/.test(rev), rev);
+    // 2. ▲: one level harder, only this question changes, undo restores
+    await page.click('#vw-paper .rv-layer .rv-tag [data-rv="harder"]');
+    await page.waitForTimeout(700);
+    const up = await W();
+    const toast = await page.evaluate(() => (document.querySelector('.rv-toast') || {}).textContent || '');
+    const next = { 'A2.1': 'A2.2', 'A2.2': 'B1.1', 'B1.1': 'B1.2', 'B1.2': 'B2.1', 'B2.1': 'B2.2' }[before.questions[1].difficulty];
+    check('▲ makes the question one level harder with Claude — only this question changes, the answer and evidence stay on screen', up.questions[1].difficulty === next && /^Harder: /.test(up.questions[1].prompt)
+      && JSON.stringify(up.questions.filter((_, i) => i !== 1)) === JSON.stringify(before.questions.filter((_, i) => i !== 1))
+      && await page.evaluate(() => !!document.querySelector('#vw-sheet [data-unit="questions.1"] .rv-reveal')) && /Rückgängig/.test(toast), JSON.stringify({ q: up.questions[1], toast }));
+    await page.click('.rv-toast [data-a="undo"]');
+    await page.waitForTimeout(300);
+    check('Undo brings back exactly what was there before', JSON.stringify(await W()) === JSON.stringify(before), '');
+    // 3. one element: a bubble; only the option changes, the correct letter stays
+    const mi = before.questions.findIndex(q => q.format === 'multiple_choice');
+    await page.click(`#vw-sheet [data-edit="questions.${mi}.options.1"]`);
+    await page.waitForTimeout(100);
+    const bub = await page.evaluate(() => { const b = document.querySelector('.rv-bubble'); return b ? { title: b.querySelector('strong').textContent, chips: Array.from(b.querySelectorAll('.rv-chip')).map(c => c.textContent), acts: Array.from(b.querySelectorAll('[data-a]')).map(x => x.dataset.a) } : null; });
+    check('a click on an option opens a bubble with the chips for items, own words, „Selbst bearbeiten“, „Entfernen“ and „Ganze Aufgabe …“', !!bub && /Option B/.test(bub.title) && bub.chips.join('|') === 'Leichter|Schwieriger|Anderer Inhalt|Klarer|Nur eine richtige Antwort' && ['apply', 'self', 'remove', 'whole'].every(x => bub.acts.includes(x)), JSON.stringify(bub));
+    await page.click('.rv-bubble .rv-chip');
+    await page.click('.rv-bubble [data-a="apply"]');
+    await page.waitForTimeout(700);
+    const opt = await W();
+    check('applying changes only that option; the answer key keeps its letter', /\(changed\)$/.test(opt.questions[mi].options[1]) && opt.questions[mi].options.filter((o, i) => i !== 1).join('|') === before.questions[mi].options.filter((o, i) => i !== 1).join('|') && opt.questions[mi].answer === before.questions[mi].answer && opt.questions[mi].prompt === before.questions[mi].prompt, JSON.stringify(opt.questions[mi]));
+    // marking across options: "Optionen A–C" together; the click that ends the drag opens nothing else
+    const oa = await (await page.$(`#vw-sheet [data-edit="questions.${mi}.options.0"]`)).boundingBox();
+    const oc = await (await page.$(`#vw-sheet [data-edit="questions.${mi}.options.2"]`)).boundingBox();
+    await page.mouse.move(oa.x + 2, oa.y + oa.height / 2); await page.mouse.down();
+    await page.mouse.move(oc.x + oc.width - 3, oc.y + oc.height / 2, { steps: 6 }); await page.mouse.up();
+    await page.waitForTimeout(150);
+    const multi = await page.evaluate(() => ({ bubble: (document.querySelector('.rv-bubble strong') || {}).textContent || '', panel: !!document.querySelector('.rv-panel') }));
+    check('marking several options opens one bubble for them together, and the end of the drag is no click', /Optionen A–C/.test(multi.bubble) && !multi.panel, JSON.stringify(multi));
+    await page.keyboard.press('Escape');
+    // a wrong answer from Claude: said in the bubble, the sheet stays as it is
+    const w0 = await W();
+    await page.click(`#vw-sheet [data-edit="questions.${mi}.prompt"]`);
+    await page.fill('.rv-bubble .rv-words', 'GARBAGE');
+    await page.click('.rv-bubble [data-a="apply"]');
+    await page.waitForTimeout(700);
+    const err = await page.evaluate(() => ((document.querySelector('.rv-bubble .rv-status') || {}).textContent || ''));
+    check('an unusable answer from Claude is named in the bubble and leaves the sheet unchanged', /Nicht übernommen/.test(err) && JSON.stringify(await W()) === JSON.stringify(w0), err);
+    await page.keyboard.press('Escape');
+    check('Esc closes the bubble — and only the bubble: the viewer stays open', await page.evaluate(() => !document.querySelector('.rv-bubble') && !document.querySelector('#view-viewer').hidden), '');
+    // 2. the whole block: panel, note (never exported), remove with a second click
+    await page.click('#vw-sheet [data-unit="questions.2"] .q-format');
+    const pan = await page.evaluate(() => { const p = document.querySelector('.rv-panel'); return p ? { title: p.querySelector('strong').textContent, chips: p.querySelectorAll('.rv-chip').length } : null; });
+    check('a click on a block opens its panel with nine presets', !!pan && pan.title === 'Frage 3 ändern' && pan.chips === 9, JSON.stringify(pan));
+    await page.fill('.rv-panel textarea', 'NOTE-ONLY-FOR-ME about the second paragraph');
+    await page.click('.rv-panel [data-a="note"]');
+    await page.waitForTimeout(300);
+    const note = await page.evaluate(() => { const m = window.__m, R = window.LR; return { bar: !!document.querySelector('#vw-sheet [data-unit="questions.2"] .rv-note'), count: (document.querySelector('#vw-review .rv-notes-count') || {}).textContent, exported: [R.render.renderStudentHTML(m), R.render.renderTeacherHTML(m), R.render.renderMarkdown(m), R.ooxml.textOf(R.word.partsFor(m, 'student')), JSON.stringify(R.review.stripNotes(m))].some(x => x.includes('NOTE-ONLY-FOR-ME')) }; });
+    check('an instruction kept as a note stands on its block and is counted, and it reaches no export', note.bar && note.count === '1 Notiz' && !note.exported, JSON.stringify(note));
+    // 4. "+" between question 2 and 3
+    const gap = await page.$('#vw-paper .rv-gap[data-list="questions"][data-index="2"]');
+    await gap.scrollIntoViewIfNeeded();
+    await gap.click();
+    const pos = await page.evaluate(() => { const p = document.querySelector('.rv-insert'); return p ? p.querySelector('strong').textContent + ' | ' + p.querySelector('.rv-pos').textContent : ''; });
+    check('„+“ between two questions opens „Neue Frage“ for exactly that place', pos === 'Neue Frage | zwischen Frage 2 und Frage 3', pos);
+    await page.click('.rv-insert [data-group="idea"] .rv-chip');
+    await page.click('.rv-insert [data-a="add"]');
+    await page.waitForTimeout(700);
+    const ins = await W();
+    const plan = await page.evaluate(() => window.LR.review.planOf(window.__m, null).questionCount);
+    check('the new question stands at place 3, everything after it moves up one number, the plan follows', ins.questions.length === before.questions.length + 1 && ins.questions[2].prompt === 'New inserted question about the text?' && ins.questions.every((q, i) => q.n === i + 1) && plan === ins.questions.length, JSON.stringify(ins.questions.map(q => q.n + ':' + q.prompt.slice(0, 20))));
+    await page.click('#vw-sheet [data-unit="questions.0"] .q-format');
+    await page.click('.rv-panel [data-a="remove"]');
+    const armed = await page.evaluate(() => document.querySelector('.rv-panel [data-a="remove"]').textContent);
+    await page.click('.rv-panel [data-a="remove"]');
+    await page.waitForTimeout(300);
+    const rem = await W();
+    check('„Entfernen“ asks once more; then the block is gone and the numbering closes up', armed === 'Wirklich entfernen?' && rem.questions.length === ins.questions.length - 1 && rem.questions.every((q, i) => q.n === i + 1), armed);
+    // Bearbeiten: type straight into the sheet, it reaches the Word file
+    await page.click('#vw-review [data-rv-toggle="edit"]');
+    await page.waitForTimeout(200);
+    await page.click('#vw-sheet [data-edit="questions.0.prompt"]');
+    await page.keyboard.press('End'); await page.keyboard.type(' typed also s and l'); await page.keyboard.press('Enter');
+    await page.waitForTimeout(200);
+    const typed = await page.evaluate(() => ({ model: window.LR.review.worksheetOf(window.__m, null).questions[0].prompt, word: window.LR.ooxml.textOf(window.LR.word.partsFor(window.__m, 'student')).includes('typed also s and l') }));
+    const still = await page.evaluate(() => ({ view: !document.querySelector('#view-viewer').hidden, student: !!document.querySelector('#vw-version [data-version="student"].active') }));
+    check('„Bearbeiten“: what is typed into the sheet goes into the model and into the Word file — and typing s or l is no shortcut of the viewer', /typed also s and l$/.test(typed.model) && typed.word && still.view && still.student, JSON.stringify({ typed, still }));
+    await page.click('#vw-review [data-rv-toggle="edit"]');
+    // only on the screen: not printed, not in the teacher version
+    await page.emulateMedia({ media: 'print' });
+    const printed = await page.evaluate(() => Array.from(document.querySelectorAll('.rv-toolbar, .rv-layer, .rv-note')).every(el => getComputedStyle(el).display === 'none'));
+    await page.emulateMedia({ media: 'screen' });
+    await page.click('#vw-version [data-version="teacher"]');
+    await page.waitForTimeout(300);
+    const teacher = await page.evaluate(() => ({ units: document.querySelectorAll('#vw-sheet [data-unit]').length, slot: document.querySelector('#vw-review').hidden }));
+    check('the tools are never printed, and the teacher version has none', printed && teacher.units === 0 && teacher.slot, JSON.stringify({ printed, teacher }));
+    check('the review mode raises no page error', errors.length === 0, errors[0]);
     await page.close();
   }
 

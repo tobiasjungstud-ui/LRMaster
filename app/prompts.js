@@ -625,6 +625,130 @@
    * Claude sees the whole worksheet (so the replacements test something new)
    * but returns only the numbered questions it was asked to replace.
    */
+  /* ------------------------------------------------------------------ */
+  /* Review mode: change one part of the sheet, or add one block          */
+  /* ------------------------------------------------------------------ */
+
+  const LIST_NAMES = { questions: 'comprehension question', preTasks: 'pre-task', postTasks: 'post-task', higherOrder: 'higher-order task' };
+  const blockLabel = (list, i) => ({ questions: 'Q', preTasks: 'Pre-task ', postTasks: 'Post-task ', higherOrder: 'Beyond-the-text task ' }[list] || 'Block ') + (i + 1);
+  /** A block as the model sees it: the teacher's own notes are not part of it. */
+  const bare = (b) => { if (!b || typeof b !== 'object') return b; const c = Object.assign({}, b); delete c.reviewNote; return c; };
+  function taskShape(list) {
+    return '{"n": …, "type": one of ' + (list === 'postTasks' ? core.POST_TASK_TYPES : core.PRE_TASK_TYPES).map(t => '"' + t.key + '"').join(' | ')
+      + ', "title": "a short title", "prompt": "the instruction for the students, in English", "items": ["…"] (optional prompts, sentence starters or statements), "socialForm": ' + core.SOCIAL_FORM_KEYS.map(k => '"' + k + '"').join(' | ')
+      + ', "mode": "oral" | "written", "minutes": a number, "criteria": ["observable success criterion", …], "product": "what the students hand in or say at the end"' + (list === 'postTasks' ? ', "reference": "the place in the material it starts from"' : '') + ', "teacherNote": "…"}';
+  }
+  function questionRules(state, plan, q, isL) {
+    const bands = plan.questionBands || [plan.questionBand];
+    const closed = ['multiple_choice', 'best_summary'].includes(q && q.format);
+    return [
+      '- Keep "n" as it is; the app numbers the questions.',
+      '- The answer key must fit the changed question exactly: "answer" (and "acceptable", "correction", "rationale" where the format has them). A student who understood the material finds exactly this answer.',
+      closed ? `- If the format stays ${q.format}, the correct option stays at the same letter ("answer": "${String(q.answer || '').trim()}"); the distractors stay plausible but clearly wrong.` : '',
+      `- "evidenceQuote": a VERBATIM excerpt (5–20 words) from the material that supports the answer; "evidenceRef": the ${isL ? 'line [n]' : 'paragraph [¶n]'} where it stands.`,
+      `- "difficulty": the CEFR band the question now demands — one of ${core.CEFR_BANDS.join(', ')}; the sheet's range is ${bands.join('–')}.`,
+      '- "Harder" means more demanding thinking — inferring, combining two places, a subtler distractor, a more precise answer — never only rarer words or longer sentences. "Easier" means a more direct question about a clearer place in the material. The language of the question stays at its band.',
+      '- Keep the skill and the place in the material (the questions follow the timeline) unless the request asks for something else.',
+    ].filter(Boolean).join('\n');
+  }
+
+  /**
+   * One change the teacher asked for in the review mode. `t`:
+   * { list, index, mode: 'block' | 'fields' | 'text' | 'span', fields: […paths inside the block],
+   *   field, span: { before, marked, after }, request, label }.
+   * Only the target comes back: the whole block (block, fields), or the new
+   * text of one field or of the marked part (text, span).
+   */
+  function buildEditPrompt(state, plan, content, worksheet, t) {
+    const isL = state.kind === 'listening';
+    const ws = worksheet || {};
+    const list = t.list;
+    const blocks = list ? (ws[list] || []) : [];
+    const block = list ? blocks[t.index] : null;
+    const isQ = list === 'questions';
+    const lines = [];
+    lines.push(`You are changing ONE part of a worksheet for the ${isL ? 'listening script' : 'reading text'} below. A teacher asked for this change while reviewing the students' sheet. Everything that is not the target stays exactly as it is. The worksheet is in English; so is everything you write.`);
+    lines.push('## Material\nTitle: ' + content.title + '\n' + contentAsText(content, state));
+    if (block) {
+      const prev = blocks[t.index - 1], next = blocks[t.index + 1];
+      lines.push(`## Where the target stands\n${blockLabel(list, t.index)} — ${LIST_NAMES[list]} ${t.index + 1} of ${blocks.length}. The whole block:\n` + JSON.stringify(bare(block))
+        + '\nBefore it: ' + (prev ? blockLabel(list, t.index - 1) + ' ' + JSON.stringify(bare(prev)) : '– it is the first –')
+        + '\nAfter it: ' + (next ? blockLabel(list, t.index + 1) + ' ' + JSON.stringify(bare(next)) : '– it is the last –'));
+    } else {
+      lines.push('## The sheet\nTitle: ' + (ws.title || content.title) + '\nInstructions: ' + (ws.instructions || ''));
+    }
+    const target = t.mode === 'span' ? { field: t.field, before: t.span.before, marked: t.span.marked, after: t.span.after }
+      : t.mode === 'text' ? { field: t.field, text: t.value }
+        : t.mode === 'fields' ? { block: bare(block), fields: t.fields }
+          : bare(block);
+    lines.push('## Target\nSCOPE: ' + t.mode + '\nTARGET: ' + (t.label || '') + '\nTARGET_JSON: ' + JSON.stringify(target));
+    lines.push('## What the teacher wants\n' + (String(t.request || '').trim() || 'Improve it.'));
+    const rules = [];
+    if (t.mode === 'block') rules.push(`- Rewrite this whole ${LIST_NAMES[list] || 'block'} as asked. Return it complete, in the same shape.`);
+    if (t.mode === 'fields') rules.push(`- Return the whole block. Only these parts may differ: ${t.fields.join(', ')}${isQ ? ' — and the answer key fields ("answer", "acceptable", "correction", "evidenceQuote", "evidenceRef", "rationale", "difficulty") where the change needs it' : ''}. Every other field comes back character for character; in a list, every other entry stays exactly as it is.`);
+    if (t.mode === 'text') rules.push('- Return only the new text of this one field — no quotation marks around it, no label, no other field.');
+    if (t.mode === 'span') rules.push('- Return only the replacement for the MARKED part. The words before and after stay as they are: before + your text + after must read as one correct text.');
+    if (isQ && (t.mode === 'text' || t.mode === 'span')) rules.push(`- The answer key stays exactly as it is (answer: ${JSON.stringify(block && block.answer)}): do not change anything the answer depends on.`);
+    if (isQ && (t.mode === 'block' || t.mode === 'fields')) rules.push(questionRules(state, plan, block, isL));
+    if (list === 'preTasks' || list === 'postTasks') rules.push(`- A ${LIST_NAMES[list]} ${list === 'preTasks' ? 'can be done BEFORE the students meet the material and gives away no answer' : 'starts from the material and goes beyond the comprehension questions'}. Its instruction stays at ${(plan[list === 'preTasks' ? 'preTask' : 'postTask'] || {}).band || plan.cefr}.` + (t.mode === 'block' ? '\n- Shape: ' + taskShape(list) : ''));
+    if (list === 'higherOrder' && t.mode === 'block') rules.push('- Shape: {"n": …, "type": ' + core.HIGHER_ORDER_TYPES.map(h => '"' + h.key + '"').join(' | ') + ', "prompt": "…", "answer": "a model answer", "rationale": "…"}');
+    lines.push('## Rules\n' + rules.join('\n'));
+    if (isQ && block && (t.mode === 'block' || t.mode === 'fields')) {
+      const formats = /different format|anderes format/i.test(t.request || '') ? (plan.formats || [block.format]) : [block.format];
+      lines.push('## Format shapes\n' + [...new Set(formats)].filter(f => FORMAT_SHAPES[f]).map(f => `- ${f}: ${FORMAT_SHAPES[f]}`).join('\n'));
+    }
+    lines.push('## Answer\nOnly JSON: ' + (t.mode === 'text' || t.mode === 'span' ? '{"text": "…"}' : '{"block": { …the whole block… }}'));
+    return lines.join('\n\n');
+  }
+
+  /**
+   * One new block at a position the teacher chose. `ins`:
+   * { list, index (where it goes), ideas: […], formats: […], request, position: "between Q2 and Q3" }.
+   */
+  function buildInsertPrompt(state, plan, content, worksheet, ins) {
+    const isL = state.kind === 'listening';
+    const ws = worksheet || {};
+    const list = ins.list;
+    const blocks = ws[list] || [];
+    const prev = blocks[ins.index - 1], next = blocks[ins.index];
+    const isQ = list === 'questions';
+    const lines = [];
+    lines.push(`You are adding ONE new ${LIST_NAMES[list]} to a worksheet for the ${isL ? 'listening script' : 'reading text'} below, at the place a teacher chose while reviewing the students' sheet. Nothing else on the sheet changes. The worksheet is in English; so is everything you write.`);
+    lines.push('## Material\nTitle: ' + content.title + '\n' + contentAsText(content, state));
+    const listLines = blocks.map((b, i) => isQ
+      ? `Q${i + 1} (${skillLabel(b.skill)}, ${b.format}, ${b.difficulty || '–'}): ${core.questionLine(b)} → ${Array.isArray(b.answer) ? b.answer.join(' / ') : b.answer} [${b.evidenceRef || ''} "${b.evidenceQuote || ''}"]`
+      : `${blockLabel(list, i)} (${b.type || ''}): ${b.title ? b.title + ' — ' : ''}${b.prompt || ''}`);
+    lines.push(`## The ${LIST_NAMES[list]}s already on the sheet\n` + (listLines.length ? listLines.join('\n') : '– none yet –'));
+    lines.push(`## Position\nThe new ${LIST_NAMES[list]} goes ${ins.position || 'here'}: it becomes ${blockLabel(list, ins.index)}` + (next ? '; the following ones move one number up.' : '.')
+      + '\nBefore it: ' + (prev ? JSON.stringify(bare(prev)) : '– nothing, it is the first –')
+      + '\nAfter it: ' + (next ? JSON.stringify(bare(next)) : '– nothing, it is the last –'));
+    lines.push('## What the teacher wants\n' + [
+      ins.ideas && ins.ideas.length ? 'Ideas: ' + ins.ideas.join('; ') : '',
+      ins.formats && ins.formats.length ? 'Format: ' + ins.formats.join(' or ') : '',
+      String(ins.request || '').trim(),
+    ].filter(Boolean).join('\n') || `A ${LIST_NAMES[list]} that fits this place.`);
+    const rules = [];
+    if (isQ) {
+      rules.push('- It tests a piece of information that NO question on the sheet tests yet — a different fact, a different place or a different reasoning step.');
+      rules.push(`- Timeline: its evidence stands in the material between the evidence of the question before it and the one after it (the questions follow the ${isL ? 'audio' : 'text'}).`);
+      rules.push(questionRules(state, plan, null, isL));
+      rules.push(`- "skill" is one of ${core.SKILL_KEYS.map(k => '"' + k + '"').join(', ')}; "format" one of ${(ins.formats && ins.formats.length ? ins.formats : plan.formats || core.FORMAT_KEYS).map(f => '"' + f + '"').join(', ')}.`);
+    } else if (list === 'higherOrder') {
+      rules.push('- Shape: {"type": ' + core.HIGHER_ORDER_TYPES.map(h => '"' + h.key + '"').join(' | ') + ', "prompt": "…", "answer": "a model answer", "rationale": "…"}. It goes beyond the text: interpreting, transferring or evaluating.');
+    } else {
+      const phase = list === 'preTasks' ? 'preTask' : 'postTask';
+      rules.push(`- A ${LIST_NAMES[list]} ${list === 'preTasks' ? 'can be done BEFORE the students meet the material and gives away no answer of the questions' : 'starts from the material and goes beyond the comprehension questions'}; its instruction stays at ${(plan[phase] || {}).band || plan.cefr}.`);
+      rules.push('- Shape: ' + taskShape(list));
+    }
+    lines.push('## Rules\n' + rules.join('\n'));
+    if (isQ) {
+      const formats = ins.formats && ins.formats.length ? ins.formats : (plan.formats || []);
+      lines.push('## Format shapes\n' + [...new Set(formats)].filter(f => FORMAT_SHAPES[f]).map(f => `- ${f}: ${FORMAT_SHAPES[f]}`).join('\n'));
+    }
+    lines.push('## Answer\nOnly JSON: {"block": { …the new ' + LIST_NAMES[list] + '… }}');
+    return lines.join('\n\n');
+  }
+
   function buildQuestionRepairPrompt(state, plan, content, worksheet, findings, numbers, fixInstructions) {
     const isL = state.kind === 'listening';
     // without an explicit list, replace exactly the questions the review named
@@ -943,7 +1067,7 @@
     scale, SKILL_DEFINITIONS, FORMAT_SHAPES, contentAsText, documentBlock, metaSpec, contentSchema,
     buildTopicPrompt, buildContentPrompt, buildQuestionPrompt, buildReviewPrompt,
     clipJSON, reviewDataFor, reviewDataGaps,
-    buildContentRevisionPrompt, buildQuestionRevisionPrompt, buildQuestionRepairPrompt, findingsBlock, buildVocabParsePrompt,
+    buildContentRevisionPrompt, buildQuestionRevisionPrompt, buildQuestionRepairPrompt, buildEditPrompt, buildInsertPrompt, findingsBlock, buildVocabParsePrompt,
     buildUnitDetectPrompt, buildUnitTopicPrompt, buildAllPrompts, buildGlossaryPrompt, buildLevelOpinionPrompt,
     chronologyRule, levelTargetBlock, questionLevelLines, taskBlock, preTaskBlock, postTaskBlock,
     buildTaskRepairPrompt, buildPreTaskRepairPrompt, buildPostTaskRepairPrompt, buildLayoutPrompt, buildLayoutRepairPrompt, buildTemplateVariantPrompt, buildPhotoPromptsPrompt,

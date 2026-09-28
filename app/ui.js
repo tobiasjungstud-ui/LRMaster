@@ -1109,7 +1109,8 @@
   /* Output                                                                */
   /* ------------------------------------------------------------------ */
 
-  function renderOutput(m) {
+  function renderOutput(m, opts) {
+    const quiet = !!(opts && opts.quiet);
     const out = $('#output');
     out.hidden = false;
     $('#out-title').textContent = m.title;
@@ -1117,15 +1118,26 @@
     const multi = variants.length > 1;
     // Student version: one sheet per question level, switchable
     $('#out-student').innerHTML = (multi ? '<div class="variant-switch" role="tablist">' + variants.map((v, i) => `<button type="button" class="chip-btn${i ? '' : ' active'}" data-variant="${esc(v.key)}">${esc(v.label)} · ${esc((v.plan || m.plan).questionBands ? (v.plan || m.plan).questionBands.join('–') : (v.plan || m.plan).questionBand)}</button>`).join('') + '</div>' : '')
-      + variants.map((v, i) => `<div class="variant-sheet" data-variant="${esc(v.key || '')}"${i ? ' hidden' : ''}>${render.renderStudentHTML(m, v.key)}</div>`).join('')
+      + variants.map((v, i) => `<div class="variant-sheet" data-variant="${esc(v.key || '')}"${i ? ' hidden' : ''}>${render.renderStudentHTML(m, v.key, { paths: true })}</div>`).join('')
       + (!variants.length ? render.renderStudentHTML(m) : '');
     const notice = incompleteNotice(m);
     if (notice) $('#out-student').prepend(notice);
     renderSheetHotspots(m, $('#out-student'));
     ensureOwnPictures(m);
+    // the review mode works on the preview too, the same as in the viewer
+    const R = window.LR.review;
+    const reviewPreview = () => {
+      if (!R) return;
+      const sheet = $$('#out-student .variant-sheet').find(x => !x.hidden);
+      $$('#out-student .variant-sheet .sheet').forEach(x => { if (x.__rvDetach) x.__rvDetach(); });
+      if (sheet) R.attach({ root: sheet.querySelector('.sheet'), host: sheet, material: m, variantKey: sheet.dataset.variant || null, api: reviewApi(m, () => { if (app.material === m) renderOutput(m, { quiet: true }); }), toolbar: bar });
+    };
+    const bar = R ? R.toolbar(() => reviewPreview()) : null;
+    if (bar) $('#out-student').prepend(bar);
     $$('#out-student [data-variant].chip-btn').forEach(b => b.addEventListener('click', () => {
       $$('#out-student .chip-btn').forEach(x => x.classList.toggle('active', x === b));
       $$('#out-student .variant-sheet').forEach(x => { x.hidden = x.dataset.variant !== b.dataset.variant; });
+      reviewPreview();
     }));
     // Word download: one student file per level
     const dl = $('#dl-variants');
@@ -1140,6 +1152,8 @@
     $('#out-json').textContent = JSON.stringify({ content: m.content, worksheet: m.worksheet, plan: m.plan }, null, 2);
     const open = $('#btn-open-viewer');
     if (open) { open.hidden = false; open.onclick = () => openViewer(m, 'creator'); }
+    out.__reviewPreview = reviewPreview;
+    if (quiet) { reviewPreview(); return; }
     showTab('student');
     out.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
@@ -1177,7 +1191,7 @@
 
     // everything the viewer shows comes from one model, so the screen cannot
     // drift apart from what the exports contain
-    const model = render.viewerModel(m, { version: viewer.version, variant: viewer.variant });
+    const model = render.viewerModel(m, { version: viewer.version, variant: viewer.variant, paths: viewer.version !== 'teacher' });
     $('#vw-title').textContent = model.title;
     $('#vw-meta').innerHTML = model.meta.concat([new Date(m.createdAt).toLocaleDateString()])
       .map(x => `<span>${esc(x)}</span>`).join('');
@@ -1226,6 +1240,24 @@
     buildViewerDownloads(model);
     markPageBreaks();
     syncViewerOffsets();
+    // the review mode: change the students' sheet right here (screen only)
+    const slot = $('#vw-review'), R = window.LR.review;
+    if (slot && R) {
+      slot.hidden = model.version !== 'student';
+      if (!slot.__bar) { slot.__bar = R.toolbar(() => renderViewer()); slot.appendChild(slot.__bar); }
+      if (model.version === 'student') R.attach({ root: $('#vw-sheet'), host: $('#vw-paper'), material: m, variantKey: model.variant, api: reviewApi(m, () => { if (viewer.material === m) renderViewer(); }), toolbar: slot.__bar });
+    }
+  }
+
+  /** What the review mode may use: Claude, the store, a new drawing of the view. */
+  function reviewApi(m, rerender) {
+    return {
+      ask: (prompt) => askJSON(prompt, { tier: 'default' }),
+      canAI: () => !!caps.sample,
+      save: (mm) => saveMaterial(mm),
+      rerender,
+      isRunning: () => !!app.running,
+    };
   }
 
   /**
@@ -2465,6 +2497,7 @@
     const f = m.quality.findings || [];
     const s = quality.summarize(f);
     let html = `<p class="stats">${s.pass} bestanden · ${s.warn} Warnungen · ${s.fail} nicht bestanden · ${s.unverified} nicht geprüft · ${Math.round((m.quality.durationMs || 0) / 1000)} s</p>`;
+    if (m.quality.edited) html += `<p class="qc-edited">Im Viewer geändert (${m.quality.edited.count} ${m.quality.edited.count === 1 ? 'Änderung' : 'Änderungen'}): Die gemessenen Prüfungen der Aufgaben sind neu gelaufen; Claudes Prüfung der Aufgaben steht auf „nicht geprüft“.</p>`;
     // blocking failures first, so nobody hands out material that did not pass them
     const blocked = quality.blockingFailures(f);
     if (blocked.length) {
@@ -2501,6 +2534,8 @@
     $$('#output .tab').forEach(b => b.classList.toggle('active', b.dataset.tab === name));
     $$('#output .pane').forEach(p => { p.hidden = p.dataset.pane !== name; });
     document.body.dataset.printpane = name;
+    // the review tools are laid over the sheet only once it can be measured
+    if (name === 'student' && $('#output') && $('#output').__reviewPreview) $('#output').__reviewPreview();
   }
 
   function fullDocument(title, bodyHtml) {
@@ -2578,7 +2613,7 @@
       data = fullDocument(m.title, vs.length > 1 ? vs.map(v => render.renderStudentHTML(m, v.key)).join('<div class="page-break"></div>') : render.renderStudentHTML(m));
     }
     else if (kind === 'teacher') { filename = slug + '-teacher.html'; data = fullDocument(m.title + ' (teacher)', render.renderTeacherHTML(m)); }
-    else { filename = slug + '.json'; data = JSON.stringify(m, null, 2); }
+    else { filename = slug + '.json'; data = JSON.stringify(window.LR.review ? window.LR.review.stripNotes(m) : m, null, 2); }
 
     // the file always carries its extension (the viewer's save takes the type from it)
     const EXT = { 'docx-student': 'docx', 'docx-teacher': 'docx', png: 'png', md: 'md', student: 'html', teacher: 'html' };
@@ -3140,6 +3175,8 @@
     document.addEventListener('keydown', (e) => {
       if (app.view !== 'viewer' || e.metaKey || e.ctrlKey || e.altKey) return;
       if (/^(INPUT|TEXTAREA|SELECT)$/.test((e.target && e.target.tagName) || '')) return;
+      // typing into the sheet (review mode) is typing, not a shortcut
+      if (e.target && e.target.isContentEditable) return;
       if (e.key === 'Escape') { showView(viewer.from || 'materials'); return; }
       if (e.key === 's' || e.key === 'l') { viewer.version = e.key === 's' ? 'student' : 'teacher'; renderViewer(); }
     });
@@ -3171,5 +3208,5 @@
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init); else init();
 
-  window.LR.ui = { app, generate, produceWorksheet, openViewer, renderViewer, markPageBreaks, syncViewerOffsets, buildViewerRail, buildViewerDownloads, paintLayoutCanvas, proportionNote, mediumPng, renderHotspots, renderSheetHotspots, hotspotLayer, paperChips, bindPaperChips, attachWebPicture, loadOwnPictures, photoPromptCard, photoPlaces, ensurePhotoPrompts, incompleteQuestions, incompleteNotice, repairIncompleteQuestions, photoToolbar, openAssignDialog, orderImages, imageURLFrom, fetchWebImage, pictureError, openPictureEditor, openCropEditor, setPictureCrop, unrotateDrag, replacePicture, resetPicture, prepareImage, viewer, store, caps, showView, openCreator, importState, detectUnits, fetchTopics, confirmImport, newTextbook, askText, askConfirm, clone, parsePasted, initLevelPage, download, renderOutput, renderQualityPanel, renderTaskPreview, refreshDerived, renderLayout, renderSetupBar, openCustomSetup, backToTemplates, redrawTemplate, templateState, buildForm };
+  window.LR.ui = { app, generate, produceWorksheet, openViewer, renderViewer, markPageBreaks, syncViewerOffsets, buildViewerRail, buildViewerDownloads, paintLayoutCanvas, proportionNote, mediumPng, renderHotspots, renderSheetHotspots, hotspotLayer, paperChips, bindPaperChips, attachWebPicture, loadOwnPictures, photoPromptCard, photoPlaces, ensurePhotoPrompts, incompleteQuestions, incompleteNotice, repairIncompleteQuestions, reviewApi, photoToolbar, openAssignDialog, orderImages, imageURLFrom, fetchWebImage, pictureError, openPictureEditor, openCropEditor, setPictureCrop, unrotateDrag, replacePicture, resetPicture, prepareImage, viewer, store, caps, showView, openCreator, importState, detectUnits, fetchTopics, confirmImport, newTextbook, askText, askConfirm, clone, parsePasted, initLevelPage, download, renderOutput, renderQualityPanel, renderTaskPreview, refreshDerived, renderLayout, renderSetupBar, openCustomSetup, backToTemplates, redrawTemplate, templateState, buildForm };
 })();

@@ -129,17 +129,29 @@
   /* Question bodies                                                      */
   /* ------------------------------------------------------------------ */
 
+  /*
+   * With `path` (the review mode of the viewer, screen only) every text a
+   * teacher can change carries the place it comes from in the worksheet
+   * (data-edit="questions.2.options.1"); without it the markup is exactly
+   * what every export gets.
+   */
+  const pathAttr = (name, path) => (path == null ? '' : ` data-${name}="${esc(path)}"`);
+  const editable = (path, text) => (path == null ? esc(text) : `<span data-edit="${esc(path)}">${esc(text)}</span>`);
+
   function questionBody(q, opts) {
     const seed = (opts.seed || '') + ':' + q.n;
+    const at = opts.path == null ? null : (field) => opts.path + '.' + field;
+    const E = (field, text) => editable(at ? at(field) : null, text);
     let html = '';
     const parts = core.questionParts(q);
-    if (parts.prompt) html += `<p class="q-prompt">${esc(parts.prompt)}</p>`;
-    if (parts.statement) html += `<p class="q-statement">“${esc(parts.statement)}”</p>`;
+    const promptField = String(q.prompt || '').trim() ? 'prompt' : 'statement';
+    if (parts.prompt) html += at ? `<p class="q-prompt"${pathAttr('edit', at(promptField))}>${esc(parts.prompt)}</p>` : `<p class="q-prompt">${esc(parts.prompt)}</p>`;
+    if (parts.statement) html += `<p class="q-statement">“${E('statement', parts.statement)}”</p>`;
     switch (q.format) {
       case 'multiple_choice':
       case 'best_summary':
       case 'select_all':
-        html += '<ol class="options" type="A">' + (q.options || []).map(o => `<li>${esc(String(o).replace(/^[A-E][).:]\s*/, ''))}</li>`).join('') + '</ol>';
+        html += '<ol class="options" type="A">' + (q.options || []).map((o, k) => `<li>${E('options.' + k, String(o).replace(/^[A-E][).:]\s*/, ''))}</li>`).join('') + '</ol>';
         break;
       case 'true_false':
         html += '<p class="tf">☐ True &nbsp; ☐ False</p>';
@@ -148,22 +160,24 @@
         html += '<p class="tf">☐ True &nbsp; ☐ False &nbsp; Correction: ______________________________</p>';
         break;
       case 'who_said_it':
-        html += '<p class="options-inline">' + (q.options || []).map(o => `☐ ${esc(o)}`).join(' &nbsp; ') + '</p>';
+        html += '<p class="options-inline">' + (q.options || []).map((o, k) => `☐ ${E('options.' + k, o)}`).join(' &nbsp; ') + '</p>';
         break;
       case 'matching': {
         const items = q.items || [];
-        const rights = seededShuffle(items.map(i => i.right), seed);
-        html += '<div class="table-wrap"><table class="matching"><tbody>' + items.map((it, i) => `<tr><td>${i + 1}. ${esc(it.left)}</td><td class="blank">___</td><td>${String.fromCharCode(97 + i)}) ${esc(rights[i])}</td></tr>`).join('') + '</tbody></table></div>';
+        // the right column is shuffled: each cell keeps the place it comes from
+        const perm = seededShuffle(items.map((_, i) => i), seed);
+        html += '<div class="table-wrap"><table class="matching"><tbody>' + items.map((it, i) => `<tr><td>${i + 1}. ${E('items.' + i + '.left', it.left)}</td><td class="blank">___</td><td>${String.fromCharCode(97 + i)}) ${E('items.' + perm[i] + '.right', (items[perm[i]] || {}).right)}</td></tr>`).join('') + '</tbody></table></div>';
         break;
       }
       case 'ordering': {
-        const items = seededShuffle(q.items || [], seed);
-        html += '<ol class="ordering">' + items.map(it => `<li>___ ${esc(typeof it === 'string' ? it : JSON.stringify(it))}</li>`).join('') + '</ol>';
+        const list = q.items || [];
+        const perm = seededShuffle(list.map((_, i) => i), seed);
+        html += '<ol class="ordering">' + perm.map(k => { const it = list[k]; return `<li>___ ${typeof it === 'string' ? E('items.' + k, it) : esc(JSON.stringify(it))}</li>`; }).join('') + '</ol>';
         break;
       }
       case 'table_completion': {
         const t = q.table || {};
-        html += '<div class="table-wrap"><table class="completion"><thead><tr>' + (t.headers || []).map(h => `<th>${esc(h)}</th>`).join('') + '</tr></thead><tbody>' + (t.rows || []).map(r => '<tr>' + (r || []).map(c => `<td>${esc(c)}</td>`).join('') + '</tr>').join('') + '</tbody></table></div>';
+        html += '<div class="table-wrap"><table class="completion"><thead><tr>' + (t.headers || []).map((h, c) => `<th>${E('table.headers.' + c, h)}</th>`).join('') + '</tr></thead><tbody>' + (t.rows || []).map((r, ri) => '<tr>' + (r || []).map((c, ci) => `<td>${E('table.rows.' + ri + '.' + ci, c)}</td>`).join('') + '</tr>').join('') + '</tbody></table></div>';
         break;
       }
       case 'gap_fill':
@@ -194,7 +208,8 @@
   function socialLabel(k) { const f = core.SOCIAL_FORMS.find(x => x.key === k); return f ? f.label : k; }
   function modeLabel(k) { const m = core.PRE_TASK_MODES.find(x => x.key === k); return m ? m.label : k; }
 
-  function preTaskHtml(p, teacher, phase) {
+  function preTaskHtml(p, teacher, phase, path) {
+    const E = (field, text) => editable(path == null ? null : path + '.' + field, text);
     // the worksheet is English: the task names itself in English, once
     const social = core.SOCIAL_FORMS.find(x => x.key === p.socialForm), mode = core.PRE_TASK_MODES.find(x => x.key === p.mode);
     const badges = [
@@ -203,13 +218,16 @@
       p.minutes ? `<span class="badge time">${p.minutes} min</span>` : '',
     ].filter(Boolean).join('');
     const isPost = phase === 'post';
-    let html = `<section class="pretask${isPost ? ' posttask' : ''}" data-mode="${esc(p.mode || 'written')}"><h3>${p.n ? esc(String(p.n)) + '. ' : ''}${esc(core.taskHeading(p, phase))}</h3>`;
+    const title = String(p.title || '').trim();
+    const heading = path == null ? esc(core.taskHeading(p, phase))
+      : esc(core.taskHeading({ type: p.type }, phase)) + (title ? esc(/[:?!]/.test(title) ? ' \u2014 ' : ': ') + E('title', title) : '');
+    let html = `<section class="pretask${isPost ? ' posttask' : ''}" data-mode="${esc(p.mode || 'written')}"${pathAttr('unit', path)}><h3>${p.n ? esc(String(p.n)) + '. ' : ''}${heading}</h3>`;
     if (badges) html += `<p class="pretask-meta">${badges}</p>`;
-    html += `<p>${esc(p.prompt)}</p>`;
-    if (p.items && p.items.length) html += '<ul class="pretask-items">' + p.items.map(i => `<li>${esc(i)}</li>`).join('') + '</ul>';
+    html += path == null ? `<p>${esc(p.prompt)}</p>` : `<p${pathAttr('edit', path + '.prompt')}>${esc(p.prompt)}</p>`;
+    if (p.items && p.items.length) html += '<ul class="pretask-items">' + p.items.map((i, k) => `<li>${E('items.' + k, i)}</li>`).join('') + '</ul>';
     if (p.mode !== 'oral') html += '<p class="answer-line">_________________________________________________</p><p class="answer-line">_________________________________________________</p>';
-    if (p.product) html += `<p class="product"><strong>Result:</strong> ${esc(p.product)}</p>`;
-    if (p.criteria && p.criteria.length) html += '<div class="criteria"><h4>Success criteria</h4><ul>' + p.criteria.map(c => `<li>${esc(c)}</li>`).join('') + '</ul></div>';
+    if (p.product) html += `<p class="product"><strong>Result:</strong> ${E('product', p.product)}</p>`;
+    if (p.criteria && p.criteria.length) html += '<div class="criteria"><h4>Success criteria</h4><ul>' + p.criteria.map((c, k) => `<li>${E('criteria.' + k, c)}</li>`).join('') + '</ul></div>';
     if (teacher) {
       if (p.reference) html += `<p class="teacher-note">Starts from: “${esc(p.reference)}”</p>`;
       if (p.vocabUsed && p.vocabUsed.length) html += `<p class="teacher-note">Target words used: ${p.vocabUsed.map(esc).join(', ')}</p>`;
@@ -244,7 +262,7 @@
     // a listening without a worksheet has no student sheet: the students get
     // neither the script nor questions, so the viewer says so and shows the
     // teacher version instead of an almost empty page
-    const studentHtml = renderStudentHTML(m, multi ? variant : undefined);
+    const studentHtml = renderStudentHTML(m, multi ? variant : undefined, { paths: !!opts.paths });
     const studentHas = /class="block|class="text|class="doc|class="qlist/.test(studentHtml);
     const shown = version === 'student' && !studentHas ? 'teacher' : version;
     const html = shown === 'teacher' ? renderTeacherHTML(m) : studentHtml;
@@ -340,29 +358,32 @@
     return html + '</div>';
   }
 
-  function renderStudentHTML(m, variantKey) {
+  function renderStudentHTML(m, variantKey, opts) {
     m = forVariant(m, variantKey);
     const ws = m.worksheet;
     const isL = m.kind === 'listening';
-    let html = `<article class="sheet student"><header><h1>${esc((ws && ws.title) || m.content.title)}</h1>`;
+    // review mode (screen only): every block and every text says where it comes from
+    const paths = !!(opts && opts.paths);
+    const at = (p) => (paths ? p : null);
+    let html = `<article class="sheet student"><header><h1${pathAttr('edit', ws && at('title'))}>${esc((ws && ws.title) || m.content.title)}</h1>`;
     html += `<p class="meta">${esc(m.plan.textbookName)} · ${esc(m.plan.unitName)} · ${esc(m.plan.cefr)}${m.variantLabel ? ` · ${esc(m.variantLabel)}` : ''}</p>`;
-    if (ws && ws.instructions) html += `<p class="instructions">${esc(ws.instructions)}</p>`;
+    if (ws && ws.instructions) html += `<p class="instructions"${pathAttr('edit', at('instructions'))}>${esc(ws.instructions)}</p>`;
     html += '</header>';
     // the sheet follows the lesson: first the pre-task, then the words the
     // text needs, then the text itself
-    if (ws && ws.preTasks && ws.preTasks.length) html += `<section class="block pre-tasks"><h2>Before you ${isL ? 'listen' : 'read'}</h2>` + ws.preTasks.map(p => preTaskHtml(p, false)).join('') + '</section>';
+    if (ws && ws.preTasks && ws.preTasks.length) html += `<section class="block pre-tasks"${pathAttr('list', at('preTasks'))}><h2>Before you ${isL ? 'listen' : 'read'}</h2>` + ws.preTasks.map((p, i) => preTaskHtml(p, false, 'pre', at('preTasks.' + i))).join('') + '</section>';
     html += glossaryHTML(m, false);
     if (!isL) {
       html += '<section class="block text">' + renderTextHTML(m, {}) + '</section>';
     }
     if (ws && ws.questions.length) {
-      html += '<section class="block questions"><h2>Questions</h2><ol class="qlist">' + ws.questions.map(q => `<li class="q" value="${q.n}"><span class="q-format">${esc(formatLabel(q.format))}</span>${questionBody(q, { seed: m.id })}</li>`).join('') + '</ol></section>';
+      html += `<section class="block questions"><h2>Questions</h2><ol class="qlist"${pathAttr('list', at('questions'))}>` + ws.questions.map((q, i) => `<li class="q" value="${q.n}"${pathAttr('unit', at('questions.' + i))}><span class="q-format">${esc(formatLabel(q.format))}</span>${questionBody(q, { seed: m.id, path: at('questions.' + i) })}</li>`).join('') + '</ol></section>';
     }
     if (ws && ws.higherOrder && ws.higherOrder.length) {
-      html += '<section class="block higher-order"><h2>Beyond the text</h2><ol class="qlist">' + ws.higherOrder.map(h => `<li class="q"><span class="q-format">${esc(hoLabel(h.type))}</span><p class="q-prompt">${esc(h.prompt)}</p><p class="answer-line">_________________________________________________</p><p class="answer-line">_________________________________________________</p></li>`).join('') + '</ol></section>';
+      html += `<section class="block higher-order"><h2>Beyond the text</h2><ol class="qlist"${pathAttr('list', at('higherOrder'))}>` + ws.higherOrder.map((h, i) => `<li class="q"${pathAttr('unit', at('higherOrder.' + i))}><span class="q-format">${esc(hoLabel(h.type))}</span><p class="q-prompt"${pathAttr('edit', at('higherOrder.' + i + '.prompt'))}>${esc(h.prompt)}</p><p class="answer-line">_________________________________________________</p><p class="answer-line">_________________________________________________</p></li>`).join('') + '</ol></section>';
     }
     if (ws && ws.postTasks && ws.postTasks.length) {
-      html += `<section class="block post-tasks"><h2>After you ${isL ? 'listen' : 'read'}</h2>` + ws.postTasks.map(p => preTaskHtml(p, false, 'post')).join('') + '</section>';
+      html += `<section class="block post-tasks"${pathAttr('list', at('postTasks'))}><h2>After you ${isL ? 'listen' : 'read'}</h2>` + ws.postTasks.map((p, i) => preTaskHtml(p, false, 'post', at('postTasks.' + i))).join('') + '</section>';
     }
     html += scriptAppendixHTML(m);
     html += '</article>';

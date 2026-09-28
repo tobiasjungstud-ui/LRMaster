@@ -2660,5 +2660,136 @@
       return ok(!problems.length, problems.slice(0, 3).join(' | '));
     } });
 
+  /* §41 Überarbeiten im Viewer: das Schülerblatt direkt ändern (Auftragserweiterung) */
+  const reviewMaterial = (env) => { const m = env.fixture.material({ createWorksheet: true, preTask: true, postTask: true }, 'reading'); m.id = 'review-check'; return m; };
+  add({ id: 'S41.paths', section: 41, title: 'Im Überarbeiten-Modus trägt jeder Block des Schülerblatts seinen Pfad (data-unit="questions.3") und jeder änderbare Text seinen eigenen (data-edit="questions.3.options.1") – der Pfad führt genau zu dem Text, der dort steht; ohne den Modus ist das Blatt Zeichen für Zeichen dasselbe, und kein Export trägt Pfade', kind: 'render',
+    check(env) {
+      const problems = [];
+      const R = env.review;
+      if (!R) return 'the review module is missing';
+      const m = reviewMaterial(env);
+      const ws = R.worksheetOf(m, null);
+      const plain = env.render.renderStudentHTML(m), withPaths = env.render.renderStudentHTML(m, undefined, { paths: true });
+      if (/data-(edit|unit|list)=/.test(plain)) problems.push('the plain sheet carries paths');
+      if (withPaths.replace(/ data-(edit|unit|list)="[^"]*"/g, '').replace(/<span>([^<]*)<\/span>/g, '$1') !== plain) problems.push('the paths change what the sheet shows');
+      const units = [...withPaths.matchAll(/data-unit="([^"]+)"/g)].map(x => x[1]);
+      const want = ['preTasks', 'questions', 'postTasks'].flatMap(l => (ws[l] || []).map((_, i) => l + '.' + i));
+      if (want.some(u => !units.includes(u))) problems.push('blocks without their path: ' + want.filter(u => !units.includes(u)).join(', '));
+      // every editable text leads to exactly the text it shows
+      const unesc = (t) => t.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'");
+      for (const hit of withPaths.matchAll(/data-edit="([^"]+)">([^<]*)</g)) {
+        const shown = unesc(hit[2]).trim(), model = String(R.getAt(ws, hit[1]) == null ? '' : R.getAt(ws, hit[1])).replace(/^[A-E][).:]\s*/, '').trim();
+        if (shown !== model) { problems.push(hit[1] + ' shows "' + shown.slice(0, 30) + '" but leads to "' + model.slice(0, 30) + '"'); break; }
+      }
+      if (!withPaths.includes('data-list="questions"')) problems.push('the list of questions is not marked for "+"');
+      const exports = [env.render.renderTeacherHTML(m), env.render.renderMarkdown(m), docText(env, m, 'student'), docText(env, m, 'teacher')];
+      if (exports.some(x => /data-(edit|unit)/.test(x))) problems.push('an export carries paths');
+      const vm = env.render.viewerModel(m, { version: 'student', paths: true });
+      if (!/data-unit="questions\.0"/.test(vm.html) || /data-unit/.test(env.render.viewerModel(m, { version: 'teacher', paths: true }).html)) problems.push('the viewer does not mark exactly the students\' sheet');
+      return ok(!problems.length, problems.slice(0, 3).join(' | '));
+    } });
+  add({ id: 'S41.change', section: 41, title: 'Eine Änderung mit Claude ändert nur ihr Ziel: den ganzen Block, einzelne Teile (alles andere kommt Zeichen für Zeichen zurück, sonst wird sie abgelehnt), einen Text oder nur den markierten Satz; der Lösungsschlüssel folgt, die richtige Option behält ihren Buchstaben; eine leere oder ungültige Antwort lässt das Blatt unverändert', kind: 'function',
+    check(env) {
+      const problems = [];
+      const R = env.review;
+      const m = reviewMaterial(env);
+      const ws = R.worksheetOf(m, null);
+      const before = JSON.stringify(ws);
+      const mi = ws.questions.findIndex(q => q.format === 'multiple_choice');
+      const Q = ws.questions[mi];
+      // parts: only the named option may change
+      const job = R.editJob(m, null, { unit: 'questions.' + mi, mode: 'fields', fields: ['questions.' + mi + '.options.1'], request: 'Clearer.' });
+      if (!/You are changing ONE part/.test(job.prompt()) || !/TARGET_JSON: /.test(job.prompt()) || !/Only these parts may differ: options\.1/.test(job.prompt())) problems.push('the request does not name its target');
+      const sneaky = job.accept({ block: Object.assign({}, Q, { prompt: 'Another question?', options: Q.options.map((o, i) => (i === 1 ? 'A clearer option' : o)) }) });
+      if (sneaky.ws || !/prompt/.test((sneaky.problems || []).join(' '))) problems.push('a change beyond the target is taken');
+      const fine = job.accept({ block: Object.assign({}, Q, { options: Q.options.map((o, i) => (i === 1 ? 'A clearer option' : o)) }) });
+      if (!fine.ws || fine.ws.questions[mi].options[1] !== 'A clearer option' || fine.ws.questions[mi].prompt !== Q.prompt) problems.push('the target change is not taken');
+      // the correct option keeps its letter
+      const ci = R.split ? 'ABCDE'.indexOf(String(Q.answer).trim()) : 0, other = (ci + 1) % Q.options.length;
+      const swapped = Q.options.slice(); [swapped[ci], swapped[other]] = [swapped[other], swapped[ci]];
+      const kept = R.keepCorrectOption(Q, Object.assign({}, Q, { options: swapped, answer: 'ABCDE'[other] }));
+      if (kept.answer !== Q.answer || kept.options[ci] !== Q.options[ci]) problems.push('the correct option moved');
+      // the marked part only: everything else stays, character for character
+      const p = ws.questions[1].prompt;
+      const span = R.editJob(m, null, { path: 'questions.1.prompt', mode: 'span', span: { start: 0, end: 4 }, request: 'Simpler.' }).accept({ text: 'Which' });
+      if (!span.ws || span.ws.questions[1].prompt !== 'Which' + p.slice(4)) problems.push('the marked part is not replaced exactly');
+      // empty, invalid or incomplete answers leave the sheet as it was
+      const block = R.editJob(m, null, { unit: 'questions.1', mode: 'block', request: 'Harder.', band: 'B2.1' });
+      for (const bad of [null, {}, 'no json', { block: { prompt: 'x' } }, { block: Object.assign({}, ws.questions[1], { evidenceQuote: 'words that are nowhere in the text at all' }) }]) {
+        if (block.accept(bad).ws) { problems.push('an invalid answer is taken: ' + JSON.stringify(bad).slice(0, 50)); break; }
+      }
+      const harder = block.accept({ block: Object.assign({}, ws.questions[1], { prompt: 'Why does the speaker say this?' }) });
+      if (!harder.ws || harder.ws.questions[1].difficulty !== 'B2.1') problems.push('the level asked for is not set');
+      if (!/previous answer was not taken/.test(block.prompt(['the evidenceQuote is not verbatim']))) problems.push('the second try does not say what was wrong');
+      if (JSON.stringify(ws) !== before) problems.push('checking a change altered the sheet');
+      return ok(!problems.length, problems.slice(0, 3).join(' | '));
+    } });
+  add({ id: 'S41.insert_remove', section: 41, title: 'Ein neuer Block kommt genau an die gewählte Stelle („zwischen Frage 2 und Frage 3“), ein entfernter lässt keine Lücke: die Nummerierung, der Plan und die gemessenen Prüfungen folgen; Claudes Prüfung der Aufgaben steht danach auf „nicht geprüft“; eine entfernte Option verschiebt den Lösungsbuchstaben mit, die richtige bleibt', kind: 'function',
+    check(env) {
+      const problems = [];
+      const R = env.review;
+      const m = reviewMaterial(env);
+      const ws = R.worksheetOf(m, null);
+      const n = ws.questions.length;
+      const ins = R.insertJob(m, null, { list: 'questions', index: 2, ideas: ['Skill: detail'], formats: ['short_answer'], request: '', position: 'between Q2 and Q3' });
+      const pr = ins.prompt();
+      if (!/You are adding ONE new comprehension question/.test(pr) || !/between Q2 and Q3/.test(pr) || !/it becomes Q3/.test(pr)) problems.push('the request does not name the place');
+      const q = { skill: 'detail', format: 'short_answer', difficulty: ws.questions[1].difficulty, prompt: 'What else does the text say here?', answer: 'An answer', evidenceQuote: ws.questions[1].evidenceQuote, evidenceRef: ws.questions[1].evidenceRef };
+      const res = ins.accept({ block: q });
+      if (!res.ws || res.ws.questions.length !== n + 1 || res.ws.questions[2].prompt !== q.prompt || res.ws.questions.map(x => x.n).join() !== Array.from({ length: n + 1 }, (_, i) => i + 1).join()) problems.push('the new question is not at its place, numbered');
+      if (res.ws) {
+        m.quality = { findings: [{ id: 'questions.answerable', group: 'questions', kind: 'llm', status: 'pass', title: 'x', detail: 'x', blocking: true }] };
+        R.applyWorksheet(m, null, res.ws);
+        const f = m.quality.findings;
+        const byId = (id) => f.find(x => x.id === id) || {};
+        if (R.planOf(m, null).questionCount !== n + 1 || byId('questions.count').status !== 'pass' || byId('questions.skill_distribution').status !== 'pass') problems.push('plan and checks do not follow the new question');
+        if (byId('questions.answerable').status !== 'unverified') problems.push('Claude\'s check is not marked out of date');
+        if (!m.quality.edited) problems.push('the material does not say it was changed');
+      }
+      const rem = R.removeBlock(JSON.parse(JSON.stringify(R.worksheetOf(m, null))), 'questions', 0);
+      if (rem.questions.map(x => x.n).join() !== Array.from({ length: n }, (_, i) => i + 1).join()) problems.push('removing leaves a gap in the numbering');
+      const mc = JSON.parse(JSON.stringify(R.worksheetOf(m, null)));
+      const mi = mc.questions.findIndex(x => x.format === 'multiple_choice');
+      mc.questions[mi].options = ['one', 'two', 'three', 'four']; mc.questions[mi].answer = 'C';
+      const r1 = R.removeEntry(mc, 'questions.' + mi + '.options.0');
+      if (!r1.ok || mc.questions[mi].answer !== 'B' || mc.questions[mi].options[1] !== 'three') problems.push('the answer letter does not follow a removed option');
+      if (R.removeEntry(mc, 'questions.' + mi + '.options.1').ok) problems.push('the correct option can be removed');
+      const pre = R.insertJob(m, null, { list: 'postTasks', index: 0, ideas: [], formats: [], request: '', position: 'before post-task 1' });
+      if (!/Shape: \{"n": …, "type": one of "discussion"/.test(pre.prompt())) problems.push('a new post-task is not asked for in its shape');
+      return ok(!problems.length, problems.slice(0, 3).join(' | '));
+    } });
+  add({ id: 'S41.notes', section: 41, title: 'Anweisungen können als Notiz am Block bleiben (später „Damit umschreiben“ oder „Löschen“, Zähler in der Leiste) – eine Notiz steht nie in einem Export: nicht im Schüler- oder Lehrerblatt, nicht in Word, Markdown oder JSON', kind: 'render',
+    check(env) {
+      const problems = [];
+      const R = env.review;
+      const m = reviewMaterial(env);
+      const ws = JSON.parse(JSON.stringify(R.worksheetOf(m, null)));
+      ws.questions[0].reviewNote = 'NOTE-FOR-TEACHER-ONLY';
+      ws.postTasks[0].reviewNote = 'NOTE-FOR-TEACHER-ONLY';
+      R.applyWorksheet(m, null, ws);
+      if (R.notesOf(R.worksheetOf(m, null)).length !== 2) problems.push('the notes are not counted');
+      const outs = [env.render.renderStudentHTML(m), env.render.renderStudentHTML(m, undefined, { paths: true }), env.render.renderTeacherHTML(m), env.render.renderMarkdown(m), docText(env, m, 'student'), docText(env, m, 'teacher'), JSON.stringify(R.stripNotes(m))];
+      if (outs.some(x => x.includes('NOTE-FOR-TEACHER-ONLY'))) problems.push('a note reaches an export');
+      if (!JSON.stringify(m).includes('NOTE-FOR-TEACHER-ONLY')) problems.push('the note is not kept with the material');
+      const job = R.editJob(m, null, { unit: 'questions.0', mode: 'block', request: 'Harder.' });
+      if (job.prompt().includes('NOTE-FOR-TEACHER-ONLY')) problems.push('a note is sent to Claude as part of the block');
+      return ok(!problems.length, problems.slice(0, 3).join(' | '));
+    } });
+  add({ id: 'S41.ui', section: 41, title: 'Viewer und Vorschau: Schalter „Überarbeiten“ und „Bearbeiten“; beim Hover die Stufe jeder Frage mit ▲/▼ und den Knöpfen „Lösung“ und „Textstelle“; Klick auf den Block öffnet das Panel, Klick auf ein Element die Blase, Markieren wird nie zum Klick; „+“ zwischen den Blöcken; Rückgängig; alles nur am Bildschirm', kind: 'function',
+    check(env) {
+      const problems = [];
+      const R = env.review;
+      const m = reviewMaterial(env);
+      // the level of each question is there to be shown and raised
+      const q = R.worksheetOf(m, null).questions[0];
+      if (!env.core.CEFR_BANDS.includes(q.difficulty) || R.nextBand('B1.2', 1) !== 'B2.1' || R.nextBand('B2.2', 1) !== null) problems.push('the question level cannot be raised step by step');
+      if (!env.render.answerText(q) || !q.evidenceQuote) problems.push('answer and evidence are not there to be shown');
+      if (R.BLOCK_CHIPS.length !== 9 || R.ITEM_CHIPS.length !== 5 || R.TEXT_CHIPS.length !== 5) problems.push('the presets are incomplete');
+      if (!env.hasControl('#vw-review')) problems.push('the viewer has no place for the switches');
+      const src = env.uiSource || '';
+      if (src && !(/R\.attach\(\{ root: \$\('#vw-sheet'\)/.test(src) && /R\.toolbar\(/.test(src) && /function reviewApi/.test(src) && /paths: viewer\.version !== 'teacher'/.test(src) && /renderStudentHTML\(m, v\.key, \{ paths: true \}\)/.test(src))) problems.push('the viewer and the preview do not lay the review tools over the students\' sheet');
+      return ok(!problems.length, problems.slice(0, 3).join(' | '));
+    } });
+
   return { REQUIREMENTS: M };
 });

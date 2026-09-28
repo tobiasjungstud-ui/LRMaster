@@ -26,6 +26,7 @@ const fixture = require(path.join(APP, 'fixture.js'));
 const controls = require(path.join(APP, 'controls.js'));
 const controlsForm = () => controls.renderForm();
 const checks = require(path.join(APP, 'checks.js'));
+const review = require(path.join(APP, 'review.js'));
 
 const CTX = { textbook: fixture.textbooks()[0], unit: fixture.textbooks()[0].units[0] };
 
@@ -1862,6 +1863,40 @@ test('2.4 2.8', 'a picture prompt always shows what the caption under its own pl
   const spec = mock.chromeSpec(fixture.material({ textType: 'News Article', authenticLayout: true, layoutMedium: 'paper' }, 'reading'));
   const field = (spec.fields.find(f => f[0] === 'photoPrompts') || [])[1] || '';
   assert.ok(/shows exactly what the caption printed under ITS picture says/.test(field) && /stays an empty object \{\}, so the order never shifts/.test(field), field);
+});
+
+test('2.5 2.11', 'review mode: in every question format each changeable text leads to exactly the text it shows — also in the shuffled columns of matching and ordering and in tables; sentences and marked parts are cut exactly', () => {
+  const m = goodMaterial({ textType: 'Blog Post', createWorksheet: true, preTask: true, postTask: true }, 'reading');
+  const base = m.worksheet.questions[0];
+  const extra = [
+    { format: 'matching', items: [{ left: 'Anna', right: 'likes films' }, { left: 'Ben', right: 'hates noise' }, { left: 'Cara', right: 'reads a lot' }, { left: 'Dev', right: 'plays chess' }], answer: 'see items' },
+    { format: 'ordering', items: ['first event', 'second event', 'third event', 'fourth event'], answer: 'see items' },
+    { format: 'table_completion', table: { headers: ['Name', 'Hobby'], rows: [['Anna', '___'], ['Ben', 'music']] }, answer: ['films'] },
+    { format: 'true_false', prompt: 'True or false?', statement: 'Ben hates noise.', answer: 'True' },
+    { format: 'select_all', options: ['one', 'two', 'three', 'four', 'five'], answer: ['A', 'C'] },
+  ].map((x, i) => Object.assign({}, base, { n: m.worksheet.questions.length + i + 1, options: undefined }, x));
+  m.worksheet = Object.assign({}, m.worksheet, { questions: m.worksheet.questions.concat(extra) });
+  const html = render.renderStudentHTML(m, undefined, { paths: true });
+  const unesc = (t) => t.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'");
+  const hits = [...html.matchAll(/data-edit="([^"]+)">([^<]*)</g)];
+  assert.ok(hits.length > 30, 'too few changeable texts: ' + hits.length);
+  for (const [, p, shown] of hits) {
+    const model = String(review.getAt(m.worksheet, p) == null ? '' : review.getAt(m.worksheet, p)).replace(/^[A-E][).:]\s*/, '');
+    assert.equal(unesc(shown).trim(), model.trim(), p + ' does not lead to the text it shows');
+  }
+  for (const f of ['items.0.right', 'items.3.right', 'table.rows.0.1', 'statement', 'options.4']) assert.ok(hits.some(h => h[1].endsWith(f)), f + ' is not changeable');
+  // without the review mode nothing of it is in the sheet
+  assert.equal(html.replace(/ data-(edit|unit|list)="[^"]*"/g, '').replace(/<span>([^<]*)<\/span>/g, '$1'), render.renderStudentHTML(m));
+  // sentences and marked parts
+  assert.deepEqual(review.sentences('Read the text. Then answer: why? Done').map(s => [s.start, s.end]), [[0, 14], [15, 32], [33, 37]]);
+  assert.equal(review.spliceText('Read the text. Then answer.', 15, 27, 'Answer now.'), 'Read the text. Answer now.');
+  // labels in the numbers the teacher sees
+  assert.equal(review.unitLabel(m.worksheet, 'questions.2'), 'Frage 3');
+  assert.equal(review.elementLabel(m.worksheet, 'questions.0.options.1'), 'Option B');
+  assert.equal(review.elementLabel(m.worksheet, 'postTasks.0.criteria.1'), 'Erfolgskriterium 2');
+  // a teacher's typing reaches the model — and with it every export
+  review.writeText(m, null, 'questions.0.prompt', 'A question typed by the teacher?');
+  assert.ok(render.renderStudentHTML(m).includes('A question typed by the teacher?'));
 });
 
 test('2.4', "a teacher's own crop is stored sanely: the zoom never shows less than the box needs, the turn is always a quarter, an untouched picture keeps the plain default crop", () => {

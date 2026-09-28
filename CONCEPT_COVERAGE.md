@@ -2,7 +2,7 @@
 
 Erzeugt von `npm run coverage`. Jede Zeile ist eine Anforderung aus `docs/Konzept_Listening_Reading_Creator.md`, gebunden an die Stelle im Code, die sie umsetzt, und das Ergebnis der automatischen Prüfung (`npm test`).
 
-**Ergebnis: 344 von 344 Anforderungen bestanden.**
+**Ergebnis: 349 von 349 Anforderungen bestanden.**
 
 Prüfarten: **setting** – Steuerelement vorhanden und Änderung des Werts verändert nachweislich den Prompt an Claude · **function** – Verhalten wird mit echten Eingaben ausgeführt und verglichen · **rule** – Qualitätsregel existiert als Messung oder Claude-Review-Kriterium · **render** – Ausgabe wird auf einer Fixture gerendert und inhaltlich geprüft · **ui** – Navigations-/Strukturelement existiert.
 
@@ -549,6 +549,16 @@ Prüfarten: **setting** – Steuerelement vorhanden und Änderung des Werts ver�
 | ✅ | `S40.words_stay` | Das Vokabular bleibt auf dem gewählten Sprachniveau: die Content Complexity ändert keinen Wortschatz-, Grammatik- oder Satzlängen-Zielwert, und der Prompt verbietet, Komplexität mit selteneren Wörtern zu erzeugen | function | Funktion (siehe Check im Manifest) |
 | ✅ | `S40.rule_words` | Kontrolle (gemessen): höhere Complexity kommt aus den Ideen, nicht aus schwierigeren Wörtern – bei abstraktem Inhalt schlägt ein Wortschatz über dem Regler an, nennt die Wörter zum Ersetzen und löst die Korrektur aus | rule | Quality rule `content.complexity_words` (gemessen in quality.js) |
 | ✅ | `S40.rule_ideas` | Kontrolle (Claude): die Ideen sind so anspruchsvoll, wie der Regler sagt – und klingen nicht nur schwer, weil seltene Wörter oder lange Sätze darin stehen | rule | Quality rule `content.idea_complexity` (Claude-Review über buildReviewPrompt) |
+
+## §41  (5/5)
+
+| Status | ID | Anforderung | Art | Umsetzung |
+|---|---|---|---|---|
+| ✅ | `S41.paths` | Im Überarbeiten-Modus trägt jeder Block des Schülerblatts seinen Pfad (data-unit="questions.3") und jeder änderbare Text seinen eigenen (data-edit="questions.3.options.1") – der Pfad führt genau zu dem Text, der dort steht; ohne den Modus ist das Blatt Zeichen für Zeichen dasselbe, und kein Export trägt Pfade | render | render.js (renderStudentHTML / renderTeacherHTML) |
+| ✅ | `S41.change` | Eine Änderung mit Claude ändert nur ihr Ziel: den ganzen Block, einzelne Teile (alles andere kommt Zeichen für Zeichen zurück, sonst wird sie abgelehnt), einen Text oder nur den markierten Satz; der Lösungsschlüssel folgt, die richtige Option behält ihren Buchstaben; eine leere oder ungültige Antwort lässt das Blatt unverändert | function | Funktion (siehe Check im Manifest) |
+| ✅ | `S41.insert_remove` | Ein neuer Block kommt genau an die gewählte Stelle („zwischen Frage 2 und Frage 3“), ein entfernter lässt keine Lücke: die Nummerierung, der Plan und die gemessenen Prüfungen folgen; Claudes Prüfung der Aufgaben steht danach auf „nicht geprüft“; eine entfernte Option verschiebt den Lösungsbuchstaben mit, die richtige bleibt | function | Funktion (siehe Check im Manifest) |
+| ✅ | `S41.notes` | Anweisungen können als Notiz am Block bleiben (später „Damit umschreiben“ oder „Löschen“, Zähler in der Leiste) – eine Notiz steht nie in einem Export: nicht im Schüler- oder Lehrerblatt, nicht in Word, Markdown oder JSON | render | render.js (renderStudentHTML / renderTeacherHTML) |
+| ✅ | `S41.ui` | Viewer und Vorschau: Schalter „Überarbeiten“ und „Bearbeiten“; beim Hover die Stufe jeder Frage mit ▲/▼ und den Knöpfen „Lösung“ und „Textstelle“; Klick auf den Block öffnet das Panel, Klick auf ein Element die Blase, Markieren wird nie zum Klick; „+“ zwischen den Blöcken; Rückgängig; alles nur am Bildschirm | function | Funktion (siehe Check im Manifest) |
 
 ## Einstellungen (core.SCHEMA)
 
