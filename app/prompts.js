@@ -633,6 +633,13 @@
   const blockLabel = (list, i) => ({ questions: 'Q', preTasks: 'Pre-task ', postTasks: 'Post-task ', higherOrder: 'Beyond-the-text task ' }[list] || 'Block ') + (i + 1);
   /** A block as the model sees it: the teacher's own notes are not part of it. */
   const bare = (b) => { if (!b || typeof b !== 'object') return b; const c = Object.assign({}, b); delete c.reviewNote; return c; };
+  /** One block in one line: what it asks, its answer and its place in the material. */
+  function blockLine(list, b, i) {
+    return list === 'questions'
+      ? `Q${i + 1} (${skillLabel(b.skill)}, ${b.format}, ${b.difficulty || '–'}): ${core.questionLine(b)}${Array.isArray(b.options) && b.options.length ? ' [options: ' + b.options.join(' | ') + ']' : ''} → ${Array.isArray(b.answer) ? b.answer.join(' / ') : b.answer}${b.correction ? ' (correction: ' + b.correction + ')' : ''} [${b.evidenceRef || ''} "${b.evidenceQuote || ''}"]`
+      : `${blockLabel(list, i)} (${b.type || ''}): ${b.title ? b.title + ' — ' : ''}${b.prompt || ''}`;
+  }
+  const NO_OVERLAP = '- It must not overlap any other on the sheet: not the same piece of information (also not in other words or from another place in the material), not the same answer, not nearly the same question — and its text (question, statement, options) must not give away the answer of another question, nor may another give away its answer.';
   function taskShape(list) {
     return '{"n": …, "type": one of ' + (list === 'postTasks' ? core.POST_TASK_TYPES : core.PRE_TASK_TYPES).map(t => '"' + t.key + '"').join(' | ')
       + ', "title": "a short title", "prompt": "the instruction for the students, in English", "items": ["…"] (optional prompts, sentence starters or statements), "socialForm": ' + core.SOCIAL_FORM_KEYS.map(k => '"' + k + '"').join(' | ')
@@ -677,6 +684,7 @@
     } else {
       lines.push('## The sheet\nTitle: ' + (ws.title || content.title) + '\nInstructions: ' + (ws.instructions || ''));
     }
+    if (block && blocks.length > 1) lines.push(`## The other ${LIST_NAMES[list]}s on the sheet — the target must not overlap any of them\n` + blocks.map((b, i) => (i === t.index ? null : blockLine(list, b, i))).filter(Boolean).join('\n'));
     const target = t.mode === 'span' ? { field: t.field, before: t.span.before, marked: t.span.marked, after: t.span.after }
       : t.mode === 'text' ? { field: t.field, text: t.value }
         : t.mode === 'fields' ? { block: bare(block), fields: t.fields }
@@ -689,7 +697,7 @@
     if (t.mode === 'text') rules.push('- Return only the new text of this one field — no quotation marks around it, no label, no other field.');
     if (t.mode === 'span') rules.push('- Return only the replacement for the MARKED part. The words before and after stay as they are: before + your text + after must read as one correct text.');
     if (isQ && (t.mode === 'text' || t.mode === 'span')) rules.push(`- The answer key stays exactly as it is (answer: ${JSON.stringify(block && block.answer)}): do not change anything the answer depends on.`);
-    if (isQ && (t.mode === 'block' || t.mode === 'fields')) rules.push(questionRules(state, plan, block, isL));
+    if (isQ && (t.mode === 'block' || t.mode === 'fields')) rules.push(questionRules(state, plan, block, isL) + '\n' + NO_OVERLAP);
     if (list === 'preTasks' || list === 'postTasks') rules.push(`- A ${LIST_NAMES[list]} ${list === 'preTasks' ? 'can be done BEFORE the students meet the material and gives away no answer' : 'starts from the material and goes beyond the comprehension questions'}. Its instruction stays at ${(plan[list === 'preTasks' ? 'preTask' : 'postTask'] || {}).band || plan.cefr}.` + (t.mode === 'block' ? '\n- Shape: ' + taskShape(list) : ''));
     if (list === 'higherOrder' && t.mode === 'block') rules.push('- Shape: {"n": …, "type": ' + core.HIGHER_ORDER_TYPES.map(h => '"' + h.key + '"').join(' | ') + ', "prompt": "…", "answer": "a model answer", "rationale": "…"}');
     lines.push('## Rules\n' + rules.join('\n'));
@@ -715,10 +723,8 @@
     const lines = [];
     lines.push(`You are adding ONE new ${LIST_NAMES[list]} to a worksheet for the ${isL ? 'listening script' : 'reading text'} below, at the place a teacher chose while reviewing the students' sheet. Nothing else on the sheet changes. The worksheet is in English; so is everything you write.`);
     lines.push('## Material\nTitle: ' + content.title + '\n' + contentAsText(content, state));
-    const listLines = blocks.map((b, i) => isQ
-      ? `Q${i + 1} (${skillLabel(b.skill)}, ${b.format}, ${b.difficulty || '–'}): ${core.questionLine(b)} → ${Array.isArray(b.answer) ? b.answer.join(' / ') : b.answer} [${b.evidenceRef || ''} "${b.evidenceQuote || ''}"]`
-      : `${blockLabel(list, i)} (${b.type || ''}): ${b.title ? b.title + ' — ' : ''}${b.prompt || ''}`);
-    lines.push(`## The ${LIST_NAMES[list]}s already on the sheet\n` + (listLines.length ? listLines.join('\n') : '– none yet –'));
+    const listLines = blocks.map((b, i) => blockLine(list, b, i));
+    lines.push(`## The ${LIST_NAMES[list]}s already on the sheet — the new one must not overlap any of them\n` + (listLines.length ? listLines.join('\n') : '– none yet –'));
     lines.push(`## Position\nThe new ${LIST_NAMES[list]} goes ${ins.position || 'here'}: it becomes ${blockLabel(list, ins.index)}` + (next ? '; the following ones move one number up.' : '.')
       + '\nBefore it: ' + (prev ? JSON.stringify(bare(prev)) : '– nothing, it is the first –')
       + '\nAfter it: ' + (next ? JSON.stringify(bare(next)) : '– nothing, it is the last –'));
@@ -730,6 +736,7 @@
     const rules = [];
     if (isQ) {
       rules.push('- It tests a piece of information that NO question on the sheet tests yet — a different fact, a different place or a different reasoning step.');
+      rules.push(NO_OVERLAP);
       rules.push(`- Timeline: its evidence stands in the material between the evidence of the question before it and the one after it (the questions follow the ${isL ? 'audio' : 'text'}).`);
       rules.push(questionRules(state, plan, null, isL));
       rules.push(`- "skill" is one of ${core.SKILL_KEYS.map(k => '"' + k + '"').join(', ')}; "format" one of ${(ins.formats && ins.formats.length ? ins.formats : plan.formats || core.FORMAT_KEYS).map(f => '"' + f + '"').join(', ')}.`);
@@ -739,6 +746,7 @@
       const phase = list === 'preTasks' ? 'preTask' : 'postTask';
       rules.push(`- A ${LIST_NAMES[list]} ${list === 'preTasks' ? 'can be done BEFORE the students meet the material and gives away no answer of the questions' : 'starts from the material and goes beyond the comprehension questions'}; its instruction stays at ${(plan[phase] || {}).band || plan.cefr}.`);
       rules.push('- Shape: ' + taskShape(list));
+      rules.push('- It must not ask the students to do nearly the same as another task on the sheet (the same kind of task about the same thing).');
     }
     lines.push('## Rules\n' + rules.join('\n'));
     if (isQ) {
@@ -747,6 +755,26 @@
     }
     lines.push('## Answer\nOnly JSON: {"block": { …the new ' + LIST_NAMES[list] + '… }}');
     return lines.join('\n\n');
+  }
+
+  /**
+   * A second look before a new or changed block goes onto the sheet: does it
+   * overlap another one? `cand` = { list, index, block }.
+   */
+  function buildOverlapCheckPrompt(state, content, worksheet, cand) {
+    const isL = state.kind === 'listening';
+    const list = cand.list, isQ = list === 'questions';
+    const others = (worksheet[list] || []).map((b, i) => (i === cand.index ? null : blockLine(list, b, i))).filter(Boolean);
+    return [
+      `You check whether ONE new or changed ${LIST_NAMES[list]} overlaps the others on a worksheet for the ${isL ? 'listening script' : 'reading text'} below. You are strict but fair: only real overlaps count.`,
+      '## Material\nTitle: ' + content.title + '\n' + contentAsText(content, state),
+      `## The others on the sheet\n` + (others.length ? others.join('\n') : '– none –'),
+      `## The candidate (${blockLabel(list, cand.index)})\n` + blockLine(list, cand.block, cand.index) + '\nCANDIDATE_JSON: ' + JSON.stringify(bare(cand.block)),
+      '## What counts as an overlap\n' + (isQ
+        ? '- The candidate and another question test the same piece of information — even in other words, with another format or quoting another place of the material.\n- They have the same answer.\n- The text of one (question, statement, options) already tells the answer of the other.\n- NOT an overlap: a question about a different detail, reason or step, even from the same paragraph.'
+        : '- The candidate asks the students to do nearly the same as another task (the same kind of activity about the same thing).\n- NOT an overlap: the same topic done in a clearly different way or with a different product.'),
+      '## Answer\nOnly JSON: {"overlaps": [{"with": "Q3", "why": "one short sentence"}]} — an empty list when there is no overlap.',
+    ].join('\n\n');
   }
 
   function buildQuestionRepairPrompt(state, plan, content, worksheet, findings, numbers, fixInstructions) {
@@ -1067,7 +1095,7 @@
     scale, SKILL_DEFINITIONS, FORMAT_SHAPES, contentAsText, documentBlock, metaSpec, contentSchema,
     buildTopicPrompt, buildContentPrompt, buildQuestionPrompt, buildReviewPrompt,
     clipJSON, reviewDataFor, reviewDataGaps,
-    buildContentRevisionPrompt, buildQuestionRevisionPrompt, buildQuestionRepairPrompt, buildEditPrompt, buildInsertPrompt, findingsBlock, buildVocabParsePrompt,
+    buildContentRevisionPrompt, buildQuestionRevisionPrompt, buildQuestionRepairPrompt, buildEditPrompt, buildInsertPrompt, buildOverlapCheckPrompt, findingsBlock, buildVocabParsePrompt,
     buildUnitDetectPrompt, buildUnitTopicPrompt, buildAllPrompts, buildGlossaryPrompt, buildLevelOpinionPrompt,
     chronologyRule, levelTargetBlock, questionLevelLines, taskBlock, preTaskBlock, postTaskBlock,
     buildTaskRepairPrompt, buildPreTaskRepairPrompt, buildPostTaskRepairPrompt, buildLayoutPrompt, buildLayoutRepairPrompt, buildTemplateVariantPrompt, buildPhotoPromptsPrompt,

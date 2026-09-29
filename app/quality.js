@@ -329,6 +329,81 @@
     }
     return '';
   }
+  /*
+   * Overlap between two questions (or two tasks): they must not test the same
+   * piece of information, and one must not give away the answer of another.
+   * Measured four ways — the same place in the material, the same answer,
+   * nearly the same question, an answer that stands in the other question.
+   */
+  const OVERLAP_STOP = new Set(('a an the of in on at to for and or with by from as is are was were be been being this that these those it its their his her our your my they them he she we you i who whom whose which what when where why how does do did has have had can could will would may might must should shall not no yes all any each some many much more most very so than then there here about into over under after before during also just only even still such own same other another text according says say said tell tells told author speaker speakers writer reader question answer true false correct following statement').split(' '));
+  const ovStem = (w) => { let x = w.toLowerCase().replace(/'s$/, ''); if (x.length > 4) x = x.replace(/ies$/, 'y').replace(/(?:es|s)$/, ''); return x.slice(0, 6); };
+  function ovWords(t) { return normalizeForSearch(t).replace(/n't\b/g, ' not').split(' ').filter(w => w.length > 2 && !OVERLAP_STOP.has(w) && !/^\d+$/.test(w)).map(ovStem); }
+  /** How much of the shorter one stands in the longer one. */
+  const ovContained = (a, b) => { const A = new Set(a), B = new Set(b); const [s, l] = A.size <= B.size ? [A, B] : [B, A]; if (!s.size) return 0; let n = 0; for (const x of s) if (l.has(x)) n++; return n / s.size; };
+  const ovJaccard = (a, b) => { const A = new Set(a), B = new Set(b); if (!A.size || !B.size) return 0; let n = 0; for (const x of A) if (B.has(x)) n++; return n / (A.size + B.size - n); };
+  const letterAt = (q, a) => { const i = /^[A-Za-z]$/.test(String(a || '').trim()) ? String(a).trim().toUpperCase().charCodeAt(0) - 65 : -1; return i >= 0 && Array.isArray(q.options) ? String(q.options[i] || '') : ''; };
+  /** What a question asks, as words: its question, its statement. */
+  function askedOf(q) { return [q.prompt, q.statement].filter(Boolean).join(' '); }
+  /** Its answer as words — empty where the answer carries no information (True/False, a letter list, "see items"). */
+  function answerWordsOf(q) {
+    if (['true_false', 'true_false_correction'].includes(q.format)) return q.correction ? String(q.correction) : '';
+    if (['multiple_choice', 'best_summary'].includes(q.format)) return letterAt(q, q.answer);
+    if (['matching', 'ordering', 'select_all', 'table_completion'].includes(q.format)) return '';
+    return Array.isArray(q.answer) ? q.answer.join(' ') : String(q.answer == null ? '' : q.answer);
+  }
+  /** The evidence of a question as a span of the material text, or null. */
+  function evidenceSpan(q, text) {
+    const p = findQuotePosition(text, q.evidenceQuote);
+    return p < 0 ? null : { start: p, end: p + normalizeForSearch(q.evidenceQuote).length };
+  }
+  /** Why two questions overlap — empty when they do not. */
+  function questionOverlap(a, b, text) {
+    const gist = (q) => q.skill === 'gist' || q.format === 'best_summary';
+    // 1. the same place in the material, asked the same way (a gist question sums up — it may touch any place)
+    if (!gist(a) && !gist(b)) {
+      const x = evidenceSpan(a, text), y = evidenceSpan(b, text);
+      if (x && y) {
+        const shared = Math.min(x.end, y.end) - Math.max(x.start, y.start);
+        const shorter = Math.min(x.end - x.start, y.end - y.start) || 1;
+        if (shared / shorter >= 0.6 && (a.skill === b.skill || ovJaccard(ovWords(answerWordsOf(a)), ovWords(answerWordsOf(b))) >= 0.5)) return 'they point at the same place in the material and test the same thing';
+      }
+    }
+    // 2. the same answer
+    const wa = ovWords(answerWordsOf(a)), wb = ovWords(answerWordsOf(b));
+    if (wa.length >= 2 && wb.length >= 2 && (ovJaccard(wa, wb) >= 0.75 || (Math.min(new Set(wa).size, new Set(wb).size) >= 3 && ovContained(wa, wb) >= 0.8))) return 'they have the same answer';
+    // 3. nearly the same question
+    const qa = ovWords(askedOf(a)), qb = ovWords(askedOf(b));
+    if (qa.length >= 3 && qb.length >= 3 && (ovJaccard(qa, qb) >= 0.6 || (Math.min(new Set(qa).size, new Set(qb).size) >= 4 && ovContained(qa, qb) >= 0.85))) return 'they ask nearly the same';
+    // 4. one gives away the answer of the other
+    const gives = (from, to) => {
+      const ans = normalizeForSearch(answerWordsOf(to));
+      if (ovWords(ans).length < 2 || ans.length < 10) return false;
+      const words = normalizeForSearch([askedOf(from), ['multiple_choice', 'best_summary'].includes(from.format) ? letterAt(from, from.answer) : ''].join(' '));
+      return (' ' + words + ' ').includes(' ' + ans + ' ');
+    };
+    if (gives(a, b)) return 'the first one gives away the answer of the second';
+    if (gives(b, a)) return 'the second one gives away the answer of the first';
+    return '';
+  }
+  /** Every overlapping pair of a list of questions. */
+  function overlapPairs(questions, content, kind) {
+    const text = materialText(content, kind).text;
+    const out = [];
+    const qs = questions || [];
+    for (let i = 0; i < qs.length; i++) for (let j = i + 1; j < qs.length; j++) {
+      const why = questionOverlap(qs[i], qs[j], text);
+      if (why) out.push({ a: qs[i].n || i + 1, b: qs[j].n || j + 1, why });
+    }
+    return out;
+  }
+  /** Two tasks overlap when they ask nearly the same (pre-, post-task, task beyond the text). */
+  function taskOverlap(a, b) {
+    const wa = ovWords([a.title, a.prompt].join(' ')), wb = ovWords([b.title, b.prompt].join(' '));
+    if (a.type && a.type === b.type && ovJaccard(wa, wb) >= 0.4) return 'the same kind of task about nearly the same';
+    if (ovJaccard(wa, wb) >= 0.55) return 'they ask nearly the same';
+    return '';
+  }
+
   /** Every question that cannot be used as it stands: `bad` blocks, `soft` warns. */
   function questionProblems(worksheet) {
         const bad = [], soft = [];
@@ -558,6 +633,13 @@
             if (topic.length && !topic.some(w => all.includes(w.slice(0, Math.max(4, w.length - 2))))) problems.push('no task mentions the topic');
           }
           return finding(this, problems.length ? 'warn' : 'pass', problems.length ? problems.join('; ') + '.' : `Focus "${plan.focus}" covered.`, mark(problems.filter(x => new RegExp('^' + P + '\\d').test(x))));
+        } }),
+      rule('distinct', { title: `No two ${name}s ask nearly the same`, needsPhase: true, blocking: false,
+        check(ctx) {
+          const got = ctx.worksheet[field] || [];
+          const pairs = [];
+          for (let i = 0; i < got.length; i++) for (let j = i + 1; j < got.length; j++) { const why = taskOverlap(got[i], got[j]); if (why) pairs.push(`${P}${got[i].n}/${P}${got[j].n} (${why})`); }
+          return finding(this, pairs.length ? 'warn' : 'pass', pairs.length ? 'Overlapping tasks: ' + pairs.join('; ') + '.' : `No two ${name}s overlap.`, mark(pairs.map(x => x.split('/')[1])));
         } }),
       rule('criteria', { title: `Every ${name} carries observable success criteria`, needsPhase: true, blocking: false,
         check(ctx) {
@@ -805,24 +887,13 @@
         return finding(this, status, problems.length ? problems.join(' ') : `Timeline verified for ${r.positions.length} question(s).`,
           { questions: [...new Set(r.violations.map(v => v.n).concat(r.gistMisplaced, r.unresolved))].sort((a, b) => a - b) });
       } },
-    { id: 'questions.no_duplicates', group: 'questions', kind: 'deterministic', title: 'No two questions test the same information', needsWorksheet: true, blocking: false,
+    { id: 'questions.no_duplicates', group: 'questions', kind: 'deterministic', title: 'No two questions test the same information', needsWorksheet: true, blocking: true,
       check(ctx) {
-        const mat = materialText(ctx.content, ctx.state.kind);
-        const seen = [];
-        const dupes = [];
-        for (const q of ctx.worksheet.questions) {
-          const p = findQuotePosition(mat.text, q.evidenceQuote);
-          const ans = normalizeForSearch(typeof q.answer === 'string' ? q.answer : JSON.stringify(q.answer || ''));
-          for (const s of seen) {
-            const sameSpot = p >= 0 && s.p >= 0 && Math.abs(p - s.p) < 25;
-            const sameAns = ans && ans.length > 3 && ans === s.ans && q.skill === s.skill;
-            if (sameSpot && (q.skill === s.skill || sameAns)) dupes.push(`Q${s.n}/Q${q.n}`);
-          }
-          seen.push({ n: q.n, p, ans, skill: q.skill });
-        }
-        return finding(this, dupes.length ? 'warn' : 'pass', dupes.length ? 'Possible duplicates: ' + dupes.join(', ') : 'No duplicated evidence.', { questions: dupes.flatMap(d => d.replace(/Q/g, '').split('/').map(Number)) });
+        // the same place asked the same way, the same answer, nearly the same question, or an answer given away
+        const pairs = overlapPairs(ctx.worksheet.questions, ctx.content, ctx.state.kind);
+        return finding(this, pairs.length ? 'fail' : 'pass', pairs.length ? 'Overlapping questions: ' + pairs.map(p => `Q${p.a}/Q${p.b} (${p.why})`).join('; ') + '.' : 'No two questions overlap.', { questions: [...new Set(pairs.map(p => p.b))] });
       } },
-    { id: 'questions.duplicates_llm', group: 'questions', kind: 'llm', title: 'No two questions test exactly the same information (review)', needsWorksheet: true, criterion: 'no two questions test exactly the same piece of information', failsWhen: 'two questions are answered by the same information, even when they quote different places', evidence: 'questions', whenUnsure: 'pass', notMine: 'questions that point at the same spot with the same skill — already measured', blocking: false },
+    { id: 'questions.duplicates_llm', group: 'questions', kind: 'llm', title: 'No two questions test exactly the same information (review)', needsWorksheet: true, criterion: 'no two questions test the same piece of information, and no question gives away the answer of another', failsWhen: 'two questions are answered by the same information, even when they quote different places or use other words — or the text of one question (its statement, its options) already tells the answer of another', evidence: 'questions', whenUnsure: 'pass', notMine: 'the same place, the same answer or nearly the same wording — already measured', blocking: false },
     { id: 'questions.skill_distribution', group: 'questions', kind: 'deterministic', title: 'Skill distribution matches the settings', needsWorksheet: true, blocking: true,
       check(ctx) {
         const counts = {};
@@ -1396,7 +1467,7 @@
     speakerStats, tagStats, normalizeContent, normalizeMeta, normalizeWorksheet, normalizeQuestion,
     repairable, repairPlan, problemScore, applyQuestionPatch, applyTaskPatch, applyPreTaskPatch, applyPostTaskPatch,
     changedQuestions, changedTasks, changedPreTasks, changedPostTasks, STRUCTURAL, applicableRules, runDeterministic,
-    normalizePreTask, preTaskText, socialLabel, questionProblems, stemProblem, taskRules, normalizeChrome, mergeChrome, layoutModel, sharedRun,
+    normalizePreTask, preTaskText, socialLabel, questionProblems, stemProblem, questionOverlap, overlapPairs, taskOverlap, answerWordsOf, taskRules, normalizeChrome, mergeChrome, layoutModel, sharedRun,
     photoCredits, layoutSVG, mediumOf, pageFit, fitComposition, runContentChecks, llmRules, mergeReview, verdictSupported, blockingFailures, summarize,
     chronologyReport, enforceChronology, normalizeGlossary, slimMeasurement,
   };

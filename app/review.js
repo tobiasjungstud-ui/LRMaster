@@ -204,6 +204,56 @@
     }
     return out;
   }
+  const OTHER_PHASE = { preTasks: 'postTasks', postTasks: 'preTasks' };
+  const overlapLabel = (list, i) => ({ questions: 'Q', preTasks: 'pre-task ', postTasks: 'post-task ', higherOrder: 'task ' }[list] || '') + (i + 1);
+  /**
+   * Does one block overlap the others of the sheet? Questions: the same
+   * place asked the same way, the same answer, nearly the same question, an
+   * answer given away. Tasks: nearly the same activity (also against the
+   * tasks of the other phase). Empty when it does not.
+   */
+  function overlapsOf(material, ws, list, index) {
+    const b = (ws[list] || [])[index];
+    if (!b) return [];
+    const out = [];
+    if (list === 'questions') {
+      const text = quality.materialText(material.content, material.kind).text;
+      ws.questions.forEach((o, i) => { if (i !== index) { const why = quality.questionOverlap(b, o, text); if (why) out.push(`overlaps with ${overlapLabel(list, i)}: ${why}`); } });
+      return out;
+    }
+    const lists = [list].concat(OTHER_PHASE[list] ? [OTHER_PHASE[list]] : []);
+    for (const l of lists) (ws[l] || []).forEach((o, i) => { if (l === list && i === index) return; const why = quality.taskOverlap(b, o); if (why) out.push(`overlaps with ${overlapLabel(l, i)}: ${why}`); });
+    return out;
+  }
+  /** Claude's second look: the answer of the overlap check as problems. */
+  function overlapCheck(material, key, ws, list, index) {
+    return {
+      prompt: prompts.buildOverlapCheckPrompt(stateOf(material, key), material.content, ws, { list, index, block: ws[list][index] }),
+      read(raw) {
+        const r = raw && typeof raw === 'object' ? raw : null;
+        if (!r || !Array.isArray(r.overlaps)) return { error: 'the overlap check could not be read' };
+        return { problems: r.overlaps.filter(o => o && (o.with || o.why)).map(o => `overlaps with ${String(o.with || 'another one').trim()}: ${String(o.why || '').trim()} (review)`) };
+      },
+    };
+  }
+  /** The reasons in the teacher's words. */
+  const REASONS_DE = [
+    [/they point at the same place in the material and test the same thing/, 'gleiche Textstelle, gleiche Sache'],
+    [/they have the same answer/, 'gleiche Antwort'],
+    [/they ask nearly the same/, 'fast dieselbe Frage'],
+    [/the first one gives away the answer of the second/, 'sie verrät die Lösung der anderen'],
+    [/the second one gives away the answer of the first/, 'die andere verrät ihre Lösung'],
+    [/the same kind of task about nearly the same/, 'gleiche Art Aufgabe zum fast Gleichen'],
+  ];
+  function reasonDe(p) {
+    const m = /^overlaps with (Q|pre-task |post-task |task )?(\d+)?[^:]*: (.*)$/.exec(p);
+    if (!m) return p;
+    const who = m[2] ? ({ Q: 'Frage ', 'pre-task ': 'Pre-Task ', 'post-task ': 'Post-Task ', 'task ': 'Beyond-Aufgabe ' }[m[1] || 'Q'] || '') + m[2] : 'einer anderen Aufgabe';
+    let why = m[3].replace(/ \(review\)$/, '');
+    for (const [re, de] of REASONS_DE) if (re.test(why)) why = de;
+    return `überschneidet sich mit ${who} (${why}${/\(review\)$/.test(p) ? ', laut Claude' : ''})`;
+  }
+
   /**
    * A block Claude returned for a change of some of its parts: every other
    * part must come back exactly as it was (in a list: every other entry).
@@ -423,6 +473,7 @@
         const base = prompts.buildEditPrompt(st, plan, m.content, ws0, spec);
         return problems && problems.length ? base + '\n\n## Your previous answer was not taken\n' + problems.map(p => '- ' + p).join('\n') + '\nAnswer again, fixing exactly this.' : base;
       },
+      verify: (res) => overlapCheck(m, key, res.ws, res.check.list, res.check.index),
       accept(raw) {
         const ws = clone(ws0);
         if (t.mode === 'text' || t.mode === 'span') {
@@ -436,7 +487,8 @@
             const bad = quality.questionProblems({ questions: [Object.assign({}, getAt(ws, unit), { n: 1 })] }).bad;
             if (bad.length) return { problems: bad.map(x => x.replace(/^Q\d+: /, '')) };
           }
-          return { ws, flash: t.path };
+          if (list) { const ov = overlapsOf(m, ws, list, index); if (ov.length) return { problems: ov }; }
+          return { ws, flash: t.path, check: list ? { list, index } : null };
         }
         let nb = normalizeBlock(list, unwrap(raw, 'block'), index, block);
         if (!nb) return { problems: ['no block came back'] };
@@ -453,7 +505,9 @@
         if (block && block.reviewNote && !t.dropNote) nb.reviewNote = block.reviewNote;
         ws[list][index] = nb;
         renumber(ws, list, firstNumber(ws0, list));
-        return { ws, flash: t.mode === 'fields' && spec.fields.length === 1 ? unit + '.' + spec.fields[0] : unit };
+        const ov = overlapsOf(m, ws, list, index);
+        if (ov.length) return { problems: ov };
+        return { ws, flash: t.mode === 'fields' && spec.fields.length === 1 ? unit + '.' + spec.fields[0] : unit, check: { list, index } };
       },
     };
   }
@@ -472,13 +526,16 @@
         const problems = blockProblems(ins.list, nb, m);
         if (problems.length) return { problems };
         const ws = insertBlock(clone(ws0), ins.list, ins.index, nb);
+        const ov = overlapsOf(m, ws, ins.list, ins.index);
+        if (ov.length) return { problems: ov };
         let note = '';
         if (ins.list === 'questions') {
           const r = quality.chronologyReport(ws, m.content, m.kind);
           if (r.violations.some(v => v.n === ins.index + 1 || v.n === ins.index + 2)) note = 'Die Textstelle der neuen Frage liegt nicht zwischen denen ihrer Nachbarn.';
         }
-        return { ws, flash: ins.list + '.' + ins.index, note };
+        return { ws, flash: ins.list + '.' + ins.index, note, check: { list: ins.list, index: ins.index } };
       },
+      verify: (res) => overlapCheck(m, key, res.ws, res.check.list, res.check.index),
     };
   }
   /** Write a new worksheet into the material: plan and checks follow. */
@@ -499,7 +556,7 @@
     LISTS, KEY_FIELDS, split, getAt, setAt, unitOf, parseUnit, inner, unitLabel, elementLabel, elementKind, listEntry, shownNumber,
     variantOf, worksheetOf, planOf, stateOf, commitWorksheet, renumber, insertBlock, removeBlock, removeEntry,
     normalizeBlock, blockProblems, verifyFields, keepCorrectOption, spliceText, sentences, unwrap, syncPlan, refreshChecks,
-    notesOf, stripNotes, nextBand, editJob, insertJob, applyWorksheet, writeText, requestFrom, insertIdeas, insertFormats,
+    notesOf, stripNotes, nextBand, editJob, insertJob, overlapsOf, overlapCheck, reasonDe, applyWorksheet, writeText, requestFrom, insertIdeas, insertFormats,
     BLOCK_CHIPS, ITEM_CHIPS, TEXT_CHIPS, LIST_LABEL, LIST_NEW,
   };
 
@@ -1104,13 +1161,22 @@
         spin(ui.status, ui.label + ' …');
         let problems = [];
         try {
-          for (let attempt = 1; attempt <= 2; attempt++) {
+          for (let attempt = 1; attempt <= 3; attempt++) {
+            spin(ui.status, ui.label + ' …');
             const raw = await api.ask(job.prompt(problems));
             const res = job.accept(raw);
+            if (res && res.ws && res.check && job.verify) {
+              // a second look: does it overlap another task on the sheet?
+              spin(ui.status, 'Prüfe auf Überschneidungen mit den anderen Aufgaben …');
+              const chk = job.verify(res);
+              const seen = chk.read(await api.ask(chk.prompt));
+              if (seen.error) { say(ui.status, 'Nicht übernommen – die Prüfung auf Überschneidungen ging nicht. Das Blatt bleibt, wie es war.', 'error'); return; }
+              if (seen.problems.length) { problems = seen.problems; continue; }
+            }
             if (res && res.ws) { busy = false; await commit(res.ws, res.flash, ui.done || 'Geändert', res.note, { shift: ui.shift }); return; }
             problems = (res && res.problems) || ['the answer could not be read'];
           }
-          say(ui.status, 'Nicht übernommen – das Blatt bleibt, wie es war. Grund: ' + problems.join('; '), 'error');
+          say(ui.status, 'Nicht übernommen – das Blatt bleibt, wie es war. Grund: ' + problems.map(M.reasonDe).join('; '), 'error');
         } catch (e) {
           say(ui.status, 'Fehler – das Blatt bleibt, wie es war: ' + ((e && (e.message || e.code)) || String(e)), 'error');
         } finally {

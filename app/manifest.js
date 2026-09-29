@@ -2758,6 +2758,42 @@
       if (!/Shape: \{"n": …, "type": one of "discussion"/.test(pre.prompt())) problems.push('a new post-task is not asked for in its shape');
       return ok(!problems.length, problems.slice(0, 3).join(' | '));
     } });
+  add({ id: 'S41.no_overlap', section: 41, title: 'Eine neue oder geänderte Aufgabe überschneidet sich nie mit einer bestehenden: Claude bekommt alle anderen mit der Vorgabe; die App misst (gleiche Textstelle, gleiche Antwort, fast gleiche Frage, verratene Lösung; bei Aufgaben: fast gleiche Tätigkeit, auch zwischen Pre- und Post-Task) und lässt Claude eigens prüfen – bei einer Überschneidung wird neu angefragt, sonst bleibt das Blatt unverändert; auch in der Erstellung blockiert die Regel', kind: 'function',
+    check(env) {
+      const problems = [];
+      const R = env.review;
+      const m = reviewMaterial(env);
+      const ws = R.worksheetOf(m, null);
+      const q2 = ws.questions[1];
+      // Claude is given every other question and told not to overlap
+      const ins = R.insertJob(m, null, { list: 'questions', index: 2, ideas: [], formats: [], request: '', position: 'between Q2 and Q3' });
+      const edit = R.editJob(m, null, { unit: 'questions.0', mode: 'block', request: 'Other content.' });
+      for (const pr of [ins.prompt(), edit.prompt()]) if (!/must not overlap any/.test(pr) || !pr.includes(env.core.questionLine(q2))) problems.push('the request does not show the other questions and forbid overlaps');
+      // the measured check: a copy of Q2 in other words is refused
+      const copy = { skill: q2.skill, format: 'short_answer', difficulty: q2.difficulty, prompt: 'In other words: ' + q2.prompt, answer: q2.answer + ' indeed', evidenceQuote: q2.evidenceQuote, evidenceRef: q2.evidenceRef };
+      const res = ins.accept({ block: copy });
+      if (res.ws || !(res.problems || []).some(p => /overlaps with Q2/.test(p))) problems.push('a copy of Q2 in other words is taken: ' + JSON.stringify(res.problems));
+      const changed = edit.accept({ block: Object.assign({}, copy, { n: 1 }) });
+      if (changed.ws) problems.push('a question changed into a copy of another is taken');
+      // Claude's second look is asked for, and what it finds refuses the change
+      const fresh = { skill: 'detail', format: 'short_answer', difficulty: q2.difficulty, prompt: 'What does the text say about something else entirely?', answer: 'Something else entirely', evidenceQuote: ws.questions[ws.questions.length - 1].evidenceQuote, evidenceRef: '[¶1]' };
+      const ok2 = ins.accept({ block: fresh });
+      if (!ok2.ws || !ok2.check || typeof ins.verify !== 'function') problems.push('a new question is not handed to the second look');
+      else {
+        const chk = ins.verify(ok2);
+        if (!/You check whether ONE new or changed comprehension question overlaps/.test(chk.prompt) || !/CANDIDATE_JSON: /.test(chk.prompt)) problems.push('the second look is not asked for');
+        if (chk.read({ overlaps: [] }).problems.length !== 0 || chk.read({ overlaps: [{ with: 'Q2', why: 'same information' }] }).problems.length !== 1 || !chk.read({}).error || !chk.read(null).error) problems.push('the answer of the second look is not read strictly');
+      }
+      // the pipeline: the rule blocks
+      const dup = JSON.parse(JSON.stringify(ws)); dup.questions.push(Object.assign({}, copy, { n: dup.questions.length + 1 }));
+      const f = env.quality.runDeterministic(m.settings, m.plan, m.content, dup).find(x => x.id === 'questions.no_duplicates');
+      if (!f || f.status !== 'fail' || !f.blocking) problems.push('in the pipeline an overlap does not block');
+      // tasks: nearly the same activity, also across the phases
+      const tw = JSON.parse(JSON.stringify(ws));
+      tw.postTasks[0] = Object.assign({}, tw.preTasks[0], { n: 1 });
+      if (!R.overlapsOf(m, tw, 'postTasks', 0).length) problems.push('a post-task repeating the pre-task passes');
+      return ok(!problems.length, problems.slice(0, 3).join(' | '));
+    } });
   add({ id: 'S41.notes', section: 41, title: 'Anweisungen können als Notiz am Block bleiben (später „Damit umschreiben“ oder „Löschen“, Zähler in der Leiste) – eine Notiz steht nie in einem Export: nicht im Schüler- oder Lehrerblatt, nicht in Word, Markdown oder JSON', kind: 'render',
     check(env) {
       const problems = [];

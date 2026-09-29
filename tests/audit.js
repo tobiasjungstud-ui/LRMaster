@@ -116,6 +116,7 @@ function splitParts(sentences, wants) {
 }
 
 /** A complete, plan-conforming material — the positive control. */
+const AUDIT_WORDS = ['apples', 'bridges', 'candles', 'dolphins', 'engines', 'forests', 'gardens', 'harbours', 'islands', 'jackets', 'kettles', 'lanterns', 'meadows', 'needles', 'oranges', 'pencils'];
 function goodMaterial(over, kind) {
   kind = kind || 'listening';
   const settings = core.normalizeState(Object.assign(core.defaults(kind), { cefr: 'B1.2', levelMeter: true }, over || {}));
@@ -202,18 +203,22 @@ function goodWorksheet(m) {
   // several distinct, unambiguous quotes per part, so no two questions have to
   // point at the same spot in the material
   const taken = new Set();
+  const takenRanges = {};
   const quoteFor = (i, nth) => {
     const ref = m.kind === 'listening' ? `[${i + 1}]` : `[¶${i + 1}]`;
     const words = units[i].split(/\s+/);
     const end = mat.offsets[i + 1] === undefined ? Infinity : mat.offsets[i + 1];
     let seen = 0;
-    for (let start = Math.min(nth * 10, Math.max(0, words.length - 8)); start + 6 <= words.length; start++) {
+    // quotes of one part never lie on top of each other (as questions about different things)
+    const used = takenRanges[i] || (takenRanges[i] = []);
+    for (let start = 0; start + 6 <= words.length; start++) {
       const quote = words.slice(start, start + 8).join(' ');
-      if (taken.has(quote)) continue;
+      if (taken.has(quote) || used.some(([a, b]) => start < b && start + 8 > a)) continue;
       const pos = quality.findQuotePosition(mat.text, quote);
       if (pos < mat.offsets[i] || pos >= end) continue;
-      if (seen++ < nth) continue;
+      if (seen++ < 0) continue;
       taken.add(quote);
+      used.push([start, start + 8]);
       return { quote, ref };
     }
     return { quote: words.slice(0, 8).join(' '), ref };
@@ -228,14 +233,14 @@ function goodWorksheet(m) {
     const format = plan.formatSequence[i] || plan.formats[0];
     const skill = plan.skillSequence[i] || 'specific';
     const base = { n: i + 1, skill, format, difficulty: bands[i % bands.length], prompt: `Question ${i + 1}: what does part ${1 + (i % 6)} tell us about ${skill} here?`, evidenceQuote: q.quote, evidenceRef: q.ref, rationale: '' };
-    if (format === 'multiple_choice' || format === 'best_summary') Object.assign(base, { options: ['Audit option one', 'Audit option two', 'Audit option three'], answer: 'A' });
-    else if (format === 'true_false' || format === 'true_false_correction') Object.assign(base, { statement: base.prompt, answer: i % 2 ? 'False' : 'True', correction: i % 2 ? 'The corrected statement.' : '' });
+    if (format === 'multiple_choice' || format === 'best_summary') Object.assign(base, { options: [`Audit option one about ${AUDIT_WORDS[i % AUDIT_WORDS.length]}`, `Audit option two about ${AUDIT_WORDS[i % AUDIT_WORDS.length]}`, `Audit option three about ${AUDIT_WORDS[i % AUDIT_WORDS.length]}`], answer: 'A' });
+    else if (format === 'true_false' || format === 'true_false_correction') Object.assign(base, { statement: base.prompt, answer: i % 2 ? 'False' : 'True', correction: i % 2 ? `The corrected statement of question ${i + 1}.` : '' });
     else if (format === 'matching') Object.assign(base, { items: [{ left: 'one', right: 'two' }, { left: 'three', right: 'four' }, { left: 'five', right: 'six' }], answer: 'see items' });
     else if (format === 'ordering') Object.assign(base, { items: ['first event', 'second event', 'third event'], answer: 'see items' });
     else if (format === 'select_all') Object.assign(base, { options: ['a one', 'b two', 'c three', 'd four', 'e five'], answer: ['A', 'C'] });
     else if (format === 'who_said_it') Object.assign(base, { options: (m.plan.speakerLabels || ['Speaker A', 'Speaker B']).slice(), statement: base.prompt, answer: (m.plan.speakerLabels || ['Speaker A'])[0] });
     else if (format === 'sentence_completion') Object.assign(base, { prompt: `Question ${i + 1}: the class decided to ____ about it.`, answer: 'talk' });
-    else if (format === 'gap_fill' || format === 'note_taking') Object.assign(base, { answer: ['first', 'second'] });
+    else if (format === 'gap_fill' || format === 'note_taking') Object.assign(base, { answer: [`first ${AUDIT_WORDS[i % AUDIT_WORDS.length]}`, `second ${AUDIT_WORDS[(i + 5) % AUDIT_WORDS.length]}`] });
     else if (format === 'table_completion') Object.assign(base, { table: { headers: ['A', 'B'], rows: [['x', '___']] }, answer: ['y'] });
     else base.answer = 'Audit answer ' + (i + 1);
     questions.push(base);
@@ -1897,6 +1902,50 @@ test('2.5 2.11', 'review mode: in every question format each changeable text lea
   // a teacher's typing reaches the model — and with it every export
   review.writeText(m, null, 'questions.0.prompt', 'A question typed by the teacher?');
   assert.ok(render.renderStudentHTML(m).includes('A question typed by the teacher?'));
+});
+
+test('2.2 2.8', 'no new or changed question overlaps another — on a real sheet (a review of "The Midnight Line", B1.1, 10 questions): every kind of duplicate is caught, a question about another detail passes', () => {
+  const data = JSON.parse(require('node:fs').readFileSync(path.join(__dirname, 'data', 'midnight-line-b1.json'), 'utf8'));
+  const m = goodMaterial({ textType: 'Review', createWorksheet: true }, 'reading');
+  m.content = Object.assign({}, m.content, { title: data.title, paragraphs: data.paragraphs });
+  m.worksheet = Object.assign({}, m.worksheet, { questions: data.questions.map((q, i) => quality.normalizeQuestion(q, i)) });
+  const ws = m.worksheet;
+  // the sheet as Claude wrote it has no overlap
+  assert.deepEqual(quality.overlapPairs(ws.questions, m.content, 'reading'), []);
+  const other = 'Every episode ends with a surprise that nobody expects.';
+  const DUPES = [
+    ['the same fact in other words and format', { skill: 'specific', format: 'wh_question', prompt: 'How many episodes could viewers watch at the same time?', answer: 'Ten', evidenceQuote: 'Ten episodes came out at once' }, 3],
+    ['the same answer from another place', { skill: 'detail', format: 'short_answer', prompt: 'Which detective is missing in the show?', answer: 'Sarah Voss', evidenceQuote: other }, 4],
+    ['a True/False statement that gives the answer away', { skill: 'specific', format: 'true_false', prompt: 'True or false?', statement: 'Ten episodes came out at once.', answer: 'True', evidenceQuote: other }, 3],
+    ['nearly the same question', { skill: 'detail', format: 'short_answer', prompt: 'According to the text, how does the director create tension in the episodes?', answer: 'mixing calm and scary moments', evidenceQuote: other }, 5],
+    ['the same correction in other words', { skill: 'detail', format: 'true_false_correction', prompt: 'True or false? Correct it.', statement: 'The writers always knew what to do.', answer: 'False', correction: 'The writers were not sure how to solve the problem they had created.', evidenceQuote: other }, 6],
+    ['the same place asked the same way', { skill: 'attitude', format: 'short_answer', prompt: 'How does the writer feel about people who finish series so quickly?', answer: 'slightly critical', evidenceQuote: 'It seems that nobody can wait any more.' }, 9],
+  ];
+  const NEW = [
+    ['where the ideas are shared', { skill: 'detail', format: 'short_answer', prompt: 'Where do people share their ideas about the story?', answer: 'In the group chats', evidenceQuote: 'The group chats are full of ideas about the story.' }],
+    ['why the story stops', { skill: 'detail', format: 'short_answer', prompt: 'Why does the story stop moving forward in some scenes?', answer: 'Because there are long conversations between unimportant characters', evidenceQuote: 'Some scenes are only long conversations between characters who are not important.' }],
+    ['an award', { skill: 'inference', format: 'short_answer', prompt: 'Does the writer expect the show to win prizes?', answer: 'No, maybe not', evidenceQuote: 'Maybe it will not win an award.' }],
+  ];
+  for (const [name, q, with_] of DUPES) {
+    const w = review.insertBlock(JSON.parse(JSON.stringify(ws)), 'questions', 5, quality.normalizeQuestion(Object.assign({ difficulty: 'B1.2', evidenceRef: '[¶1]' }, q), 5));
+    const ov = review.overlapsOf(m, w, 'questions', 5);
+    const shown = w.questions.findIndex(x => x.prompt === ws.questions[with_ - 1].prompt) + 1;
+    assert.ok(ov.some(o => o.startsWith('overlaps with Q' + shown + ':')), name + ' is not caught: ' + JSON.stringify(ov));
+    // as the pipeline sees it: a blocking failure that sends the question to the repair
+    const f = quality.runDeterministic(m.settings, m.plan, m.content, w).find(x => x.id === 'questions.no_duplicates');
+    assert.ok(f.status === 'fail' && f.blocking, name + ': the rule of the pipeline does not block');
+  }
+  for (const [name, q] of NEW) {
+    const w = review.insertBlock(JSON.parse(JSON.stringify(ws)), 'questions', 5, quality.normalizeQuestion(Object.assign({ difficulty: 'B1.2', evidenceRef: '[¶1]' }, q), 5));
+    assert.deepEqual(review.overlapsOf(m, w, 'questions', 5), [], name + ' is refused although it asks something new');
+  }
+  // the teacher reads the reason in German
+  assert.equal(review.reasonDe('overlaps with Q4: they have the same answer'), 'überschneidet sich mit Frage 4 (gleiche Antwort)');
+  assert.equal(review.reasonDe('overlaps with Q2: same information (review)'), 'überschneidet sich mit Frage 2 (same information, laut Claude)');
+  // tasks: nearly the same activity, also across pre- and post-task
+  const t = { type: 'discussion', title: 'Binge-watching', prompt: 'Discuss with your partner whether binge-watching is a good habit.', socialForm: 'pair', mode: 'oral', minutes: 8, criteria: [] };
+  const tw = { preTasks: [Object.assign({ n: 1 }, t)], postTasks: [Object.assign({ n: 1 }, t, { prompt: 'Discuss with your partner if binge-watching is a good habit or not.' })], questions: [] };
+  assert.ok(review.overlapsOf(m, tw, 'postTasks', 0).some(o => /pre-task 1/.test(o)), 'a post-task that repeats the pre-task passes');
 });
 
 test('2.4', "a teacher's own crop is stored sanely: the zoom never shows less than the box needs, the turn is always a quarter, an untouched picture keeps the plain default crop", () => {

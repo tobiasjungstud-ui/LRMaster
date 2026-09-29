@@ -1,0 +1,139 @@
+{
+ "title": "The Midnight Line: Why Everyone Is Talking About It",
+ "paragraphs": [
+  "Everyone at school is talking about The Midnight Line right now. The group chats are full of ideas about the story. The show is a crime drama. It is an adaptation of a graphic novel, and a year ago nobody knew this book. Now it is the most popular show of the season. Ten episodes came out at once, so most people finished the whole series in one weekend. Every episode ends with a surprise that nobody expects.",
+  "The director does a really good job. The actor who plays Sarah Voss, the missing detective, is excellent. You remember her for a long time after the show ends. The director mixes different styles: one moment is quiet and feels like real life, and the next moment is tense and scary. This mixture keeps you guessing from one episode to the next. Even people who usually don't watch scary shows say they were amazed by it.",
+  "But the show is not perfect. Around episode six, the story gets a bit lost. It seems that the writers weren't sure how to solve the problem they had created. Some scenes are only long conversations between characters who are not important. In these scenes, the story doesn't move forward. The middle part should be shorter. Also, a few jokes don't work well next to such a dark story.",
+  "The show also asks an important question about trust: can you believe anyone when secrets start to come out? People show one thing and hide another, and viewers can't stop thinking about it. The show also tells us something about how we watch TV today. We finish a series in a few days. Then we start the next one right away. It seems that nobody can wait any more.",
+  "So, is it worth watching? Yes. The show has some problems. But it is still one of the most entertaining shows of the year, and it would be a mistake to skip it. Maybe it will not win an award. But very few shows have made people talk so much in such a short time."
+ ],
+ "questions": [
+  {
+   "n": 1,
+   "skill": "gist",
+   "format": "best_summary",
+   "difficulty": "B1.2",
+   "prompt": "Which summary best describes the text as a whole?",
+   "answer": "B",
+   "evidenceQuote": "Now it is the most popular show of the season.",
+   "evidenceRef": "¶1",
+   "options": [
+    "The Midnight Line is a flawless crime drama that has already won several major awards.",
+    "The Midnight Line is a gripping but imperfect crime series that has become very popular and sparked a lot of discussion, despite some weaknesses in the middle episodes.",
+    "The Midnight Line is a graphic novel that schools now use as required reading because of its complex characters."
+   ]
+  },
+  {
+   "n": 2,
+   "skill": "context",
+   "format": "true_false_correction",
+   "difficulty": "B2.1",
+   "prompt": "Decide if the statement is true or false, based on who seems to be discussing the show.",
+   "answer": "False",
+   "evidenceQuote": "Everyone at school is talking about The Midnight Line right now. The group chats are full of ideas about the story.",
+   "evidenceRef": "¶1",
+   "statement": "The text suggests that mainly older adults are discussing the show with each other.",
+   "correction": "The text suggests that students/young people are discussing the show, since it mentions school and group chats."
+  },
+  {
+   "n": 3,
+   "skill": "specific",
+   "format": "short_answer",
+   "difficulty": "B1.2",
+   "prompt": "How many episodes were released for viewers to watch at once?",
+   "answer": "Ten episodes",
+   "evidenceQuote": "Ten episodes came out at once, so most people finished the whole series in one weekend.",
+   "evidenceRef": "¶1"
+  },
+  {
+   "n": 4,
+   "skill": "specific",
+   "format": "wh_question",
+   "difficulty": "B1.2",
+   "prompt": "What is the name of the missing detective played by the praised actor?",
+   "answer": "Sarah Voss",
+   "evidenceQuote": "The actor who plays Sarah Voss, the missing detective, is excellent.",
+   "evidenceRef": "¶2"
+  },
+  {
+   "n": 5,
+   "skill": "detail",
+   "format": "multiple_choice",
+   "difficulty": "B1.2",
+   "prompt": "According to the text, how does the director create tension across episodes?",
+   "answer": "B",
+   "evidenceQuote": "one moment is quiet and feels like real life, and the next moment is tense and scary",
+   "evidenceRef": "¶2",
+   "options": [
+    "By using only frightening and violent scenes throughout",
+    "By combining calm, realistic scenes with tense, frightening ones",
+    "By focusing mostly on comedy between episodes",
+    "By repeating the same visual style in every episode"
+   ]
+  },
+  {
+   "n": 6,
+   "skill": "detail",
+   "format": "true_false_correction",
+   "difficulty": "B1.2",
+   "prompt": "Decide if the statement about episode six is true or false.",
+   "answer": "False",
+   "evidenceQuote": "It seems that the writers weren't sure how to solve the problem they had created.",
+   "evidenceRef": "¶3",
+   "statement": "The writers clearly knew exactly how to resolve the story around episode six.",
+   "correction": "The writers weren't sure how to solve the problem they had created around episode six."
+  },
+  {
+   "n": 7,
+   "skill": "connecting",
+   "format": "multiple_choice",
+   "difficulty": "B2.1",
+   "prompt": "What contrast does the text draw between the show's strengths and its weaknesses?",
+   "answer": "A",
+   "evidenceQuote": "Also, a few jokes don't work well next to such a dark story.",
+   "evidenceRef": "¶3",
+   "options": [
+    "The direction and acting are praised, while the humour and pacing around episode six are criticised",
+    "The acting is criticised while the jokes are described as the best part of the show",
+    "Both the direction and the jokes are described as excellent throughout",
+    "The plot is praised while the acting is described as weak"
+   ]
+  },
+  {
+   "n": 8,
+   "skill": "inference",
+   "format": "short_answer",
+   "difficulty": "B2.1",
+   "prompt": "What does the text suggest is the main reason the show keeps audiences emotionally hooked?",
+   "answer": "Not knowing who to trust once secrets start being revealed",
+   "evidenceQuote": "can you believe anyone when secrets start to come out?",
+   "evidenceRef": "¶4"
+  },
+  {
+   "n": 9,
+   "skill": "attitude",
+   "format": "multiple_choice",
+   "difficulty": "B2.1",
+   "prompt": "What tone does the author use when commenting on how quickly people now watch entire series?",
+   "answer": "B",
+   "evidenceQuote": "It seems that nobody can wait any more.",
+   "evidenceRef": "¶4",
+   "options": [
+    "Enthusiastic approval of fast viewing habits",
+    "Mild criticism, suggesting people have lost patience",
+    "Complete indifference toward how people watch shows",
+    "Strong anger directed at streaming services"
+   ]
+  },
+  {
+   "n": 10,
+   "skill": "purpose",
+   "format": "wh_question",
+   "difficulty": "B2.1",
+   "prompt": "Why does the author say it 'would be a mistake to skip' the show, even after listing its flaws?",
+   "answer": "To persuade readers that the show is still worth watching despite its weaknesses",
+   "evidenceQuote": "it would be a mistake to skip it",
+   "evidenceRef": "¶5"
+  }
+ ]
+}

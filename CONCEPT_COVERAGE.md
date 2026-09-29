@@ -2,7 +2,7 @@
 
 Erzeugt von `npm run coverage`. Jede Zeile ist eine Anforderung aus `docs/Konzept_Listening_Reading_Creator.md`, gebunden an die Stelle im Code, die sie umsetzt, und das Ergebnis der automatischen Prüfung (`npm test`).
 
-**Ergebnis: 349 von 349 Anforderungen bestanden.**
+**Ergebnis: 352 von 352 Anforderungen bestanden.**
 
 Prüfarten: **setting** – Steuerelement vorhanden und Änderung des Werts verändert nachweislich den Prompt an Claude · **function** – Verhalten wird mit echten Eingaben ausgeführt und verglichen · **rule** – Qualitätsregel existiert als Messung oder Claude-Review-Kriterium · **render** – Ausgabe wird auf einer Fixture gerendert und inhaltlich geprüft · **ui** – Navigations-/Strukturelement existiert.
 
@@ -271,7 +271,7 @@ Prüfarten: **setting** – Steuerelement vorhanden und Änderung des Werts ver�
 | ✅ | `S28.viewer` | Viewer: das fertige Material als Dokument – Blatt in A4-Breite mit Druckumbruch, Inhaltsverzeichnis, Schüler-/Lehrerfassung, Niveaus, Zoom, Bild des Mediums, Qualität und allen Downloads an einem Ort | ui | Element `#view-viewer` |
 | ✅ | `X.no_hardcoded_content` | Kontrolle: keine hartkodierten Textbausteine für Titel, Instruktion, Fragen, Pre-Tasks oder Themen | function | Funktion (siehe Check im Manifest) |
 
-## §29 Quality Check (39/39)
+## §29 Quality Check (41/41)
 
 | Status | ID | Anforderung | Art | Umsetzung |
 |---|---|---|---|---|
@@ -312,6 +312,8 @@ Prüfarten: **setting** – Steuerelement vorhanden und Änderung des Werts ver�
 | ✅ | `X.rule_questions.duplicates_llm` | Quality rule „questions.duplicates_llm“ (No two questions test exactly the same information (review)) – zusätzliche Regel über das Konzept hinaus | meta | `questions.duplicates_llm` — extra rule |
 | ✅ | `X.rule_questions.formats` | Quality rule „questions.formats“ (Only enabled response formats are used) – zusätzliche Regel über das Konzept hinaus | meta | `questions.formats` — extra rule |
 | ✅ | `X.rule_questions.evidence` | Quality rule „questions.evidence“ (Every question has verifiable evidence) – zusätzliche Regel über das Konzept hinaus | meta | `questions.evidence` — extra rule |
+| ✅ | `X.rule_pretask.distinct` | Quality rule „pretask.distinct“ (No two pre-tasks ask nearly the same) – zusätzliche Regel über das Konzept hinaus | meta | `pretask.distinct` — extra rule |
+| ✅ | `X.rule_posttask.distinct` | Quality rule „posttask.distinct“ (No two post-tasks ask nearly the same) – zusätzliche Regel über das Konzept hinaus | meta | `posttask.distinct` — extra rule |
 | ✅ | `X.rule_layout.furniture` | Quality rule „layout.furniture“ (The medium shows more than the text alone) – zusätzliche Regel über das Konzept hinaus | meta | `layout.furniture` — extra rule |
 | ✅ | `X.rule_layout.page_limit` | Quality rule „layout.page_limit“ (The text fits the pages it may fill) – zusätzliche Regel über das Konzept hinaus | meta | `layout.page_limit` — extra rule |
 
@@ -550,13 +552,14 @@ Prüfarten: **setting** – Steuerelement vorhanden und Änderung des Werts ver�
 | ✅ | `S40.rule_words` | Kontrolle (gemessen): höhere Complexity kommt aus den Ideen, nicht aus schwierigeren Wörtern – bei abstraktem Inhalt schlägt ein Wortschatz über dem Regler an, nennt die Wörter zum Ersetzen und löst die Korrektur aus | rule | Quality rule `content.complexity_words` (gemessen in quality.js) |
 | ✅ | `S40.rule_ideas` | Kontrolle (Claude): die Ideen sind so anspruchsvoll, wie der Regler sagt – und klingen nicht nur schwer, weil seltene Wörter oder lange Sätze darin stehen | rule | Quality rule `content.idea_complexity` (Claude-Review über buildReviewPrompt) |
 
-## §41  (5/5)
+## §41  (6/6)
 
 | Status | ID | Anforderung | Art | Umsetzung |
 |---|---|---|---|---|
 | ✅ | `S41.paths` | Im Überarbeiten-Modus trägt jeder Block des Schülerblatts seinen Pfad (data-unit="questions.3") und jeder änderbare Text seinen eigenen (data-edit="questions.3.options.1") – der Pfad führt genau zu dem Text, der dort steht; ohne den Modus ist das Blatt Zeichen für Zeichen dasselbe, und kein Export trägt Pfade | render | render.js (renderStudentHTML / renderTeacherHTML) |
 | ✅ | `S41.change` | Eine Änderung mit Claude ändert nur ihr Ziel: den ganzen Block, einzelne Teile (alles andere kommt Zeichen für Zeichen zurück, sonst wird sie abgelehnt), einen Text oder nur den markierten Satz; der Lösungsschlüssel folgt, die richtige Option behält ihren Buchstaben; eine leere oder ungültige Antwort lässt das Blatt unverändert | function | Funktion (siehe Check im Manifest) |
 | ✅ | `S41.insert_remove` | Ein neuer Block kommt genau an die gewählte Stelle („zwischen Frage 2 und Frage 3“), ein entfernter lässt keine Lücke: die Nummerierung, der Plan und die gemessenen Prüfungen folgen; Claudes Prüfung der Aufgaben steht danach auf „nicht geprüft“; eine entfernte Option verschiebt den Lösungsbuchstaben mit, die richtige bleibt | function | Funktion (siehe Check im Manifest) |
+| ✅ | `S41.no_overlap` | Eine neue oder geänderte Aufgabe überschneidet sich nie mit einer bestehenden: Claude bekommt alle anderen mit der Vorgabe; die App misst (gleiche Textstelle, gleiche Antwort, fast gleiche Frage, verratene Lösung; bei Aufgaben: fast gleiche Tätigkeit, auch zwischen Pre- und Post-Task) und lässt Claude eigens prüfen – bei einer Überschneidung wird neu angefragt, sonst bleibt das Blatt unverändert; auch in der Erstellung blockiert die Regel | function | Funktion (siehe Check im Manifest) |
 | ✅ | `S41.notes` | Anweisungen können als Notiz am Block bleiben (später „Damit umschreiben“ oder „Löschen“, Zähler in der Leiste) – eine Notiz steht nie in einem Export: nicht im Schüler- oder Lehrerblatt, nicht in Word, Markdown oder JSON | render | render.js (renderStudentHTML / renderTeacherHTML) |
 | ✅ | `S41.ui` | Viewer und Vorschau: Schalter „Überarbeiten“ und „Bearbeiten“; beim Hover die Stufe jeder Frage mit ▲/▼ und den Knöpfen „Lösung“ und „Textstelle“; Klick auf den Block öffnet das Panel, Klick auf ein Element die Blase, Markieren wird nie zum Klick; „+“ zwischen den Blöcken; Rückgängig; alles nur am Bildschirm | function | Funktion (siehe Check im Manifest) |
 
@@ -680,7 +683,7 @@ Prüfarten: **setting** – Steuerelement vorhanden und Änderung des Werts ver�
 | `questions.distractors` | questions | llm | nein | Distractors are plausible |
 | `questions.complete` | questions | deterministic | ja | Every question can be used as it stands |
 | `questions.chronology` | questions | deterministic | ja | Questions follow the timeline of the audio/text |
-| `questions.no_duplicates` | questions | deterministic | nein | No two questions test the same information |
+| `questions.no_duplicates` | questions | deterministic | ja | No two questions test the same information |
 | `questions.duplicates_llm` | questions | llm | nein | No two questions test exactly the same information (review) |
 | `questions.skill_distribution` | questions | deterministic | ja | Skill distribution matches the settings |
 | `questions.formats` | questions | deterministic | ja | Only enabled response formats are used |
@@ -693,6 +696,7 @@ Prüfarten: **setting** – Steuerelement vorhanden und Änderung des Werts ver�
 | `pretask.social_forms` | pretask | deterministic | ja | Social forms match the settings (individual, partner, group, plenary) |
 | `pretask.modes` | pretask | deterministic | ja | Oral and written tasks as configured |
 | `pretask.focus` | pretask | deterministic | nein | Pre-task prepares topic and target vocabulary as configured |
+| `pretask.distinct` | pretask | deterministic | nein | No two pre-tasks ask nearly the same |
 | `pretask.criteria` | pretask | deterministic | nein | Every pre-task carries observable success criteria |
 | `pretask.time` | pretask | deterministic | nein | Time budget of the pre-task is kept |
 | `pretask.language` | pretask | deterministic | nein | Pre-task instructions stay at the configured level |
@@ -704,6 +708,7 @@ Prüfarten: **setting** – Steuerelement vorhanden und Änderung des Werts ver�
 | `posttask.social_forms` | posttask | deterministic | ja | Social forms match the settings (individual, partner, group, plenary) |
 | `posttask.modes` | posttask | deterministic | ja | Oral and written tasks as configured |
 | `posttask.focus` | posttask | deterministic | nein | Post-task takes the content further and uses the target vocabulary as configured |
+| `posttask.distinct` | posttask | deterministic | nein | No two post-tasks ask nearly the same |
 | `posttask.criteria` | posttask | deterministic | nein | Every post-task carries observable success criteria |
 | `posttask.time` | posttask | deterministic | nein | Time budget of the post-task is kept |
 | `posttask.language` | posttask | deterministic | nein | Post-task instructions stay at the configured level |

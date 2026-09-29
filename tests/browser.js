@@ -116,6 +116,7 @@ function claudeStub({ scenario, text, xss, worksheet }) {
         : /materials writer/.test(s) ? 'content'
           : /test writer/.test(s) ? 'questions'
             : /You are revising a worksheet/.test(s) ? 'questionRepair'
+              : /You check whether ONE new or changed/.test(s) ? 'overlapCheck'
               : /You are changing ONE part/.test(s) ? 'reviewEdit'
                 : /You are adding ONE new/.test(s) ? 'reviewInsert' : 'other';
     window.__calls.push(kind);
@@ -153,9 +154,13 @@ function claudeStub({ scenario, text, xss, worksheet }) {
       else b.prompt = (/Make this question harder/.test(s) ? 'Harder: ' : 'Rewritten: ') + (b.prompt || '');
       return { block: b };
     }
+    if (kind === 'overlapCheck') return { overlaps: /SNEAKY/.test(/^CANDIDATE_JSON: (.*)$/m.exec(s)[1]) ? [{ with: 'Q1', why: 'it asks for the same information as Q1' }] : [] };
     if (kind === 'reviewInsert') {
       const near = /^Before it: (\{.*\})$/m.exec(s) || /^After it: (\{.*\})$/m.exec(s);
       const nb = JSON.parse(near[1]);
+      // a careless model: the question before it once more, in other words
+      if (/DUPLICATE/.test(s) && /comprehension question/.test(s)) return { block: Object.assign({}, nb, { prompt: 'In other words: ' + nb.prompt }) };
+      if (/SNEAKY/.test(s)) return { block: { skill: 'context', format: 'short_answer', difficulty: nb.difficulty || 'B1.2', prompt: 'SNEAKY question about the text?', answer: 'Another answer', evidenceQuote: nb.evidenceQuote, evidenceRef: nb.evidenceRef } };
       if (/comprehension question/.test(s)) return { block: { skill: 'detail', format: 'short_answer', difficulty: nb.difficulty || 'B1.2', prompt: 'New inserted question about the text?', answer: 'An answer', evidenceQuote: nb.evidenceQuote, evidenceRef: nb.evidenceRef } };
       return { block: Object.assign({}, nb, { title: 'New task', prompt: 'Talk to your partner about the new idea from the text.' }) };
     }
@@ -1055,6 +1060,23 @@ const SETTINGS = (extra) => `(() => {
     const ins = await W();
     const plan = await page.evaluate(() => window.LR.review.planOf(window.__m, null).questionCount);
     check('the new question stands at place 3, everything after it moves up one number, the plan follows', ins.questions.length === before.questions.length + 1 && ins.questions[2].prompt === 'New inserted question about the text?' && ins.questions.every((q, i) => q.n === i + 1) && plan === ins.questions.length, JSON.stringify(ins.questions.map(q => q.n + ':' + q.prompt.slice(0, 20))));
+    check('before a new question goes onto the sheet, Claude checks it once more for overlaps', await page.evaluate(() => window.__calls.includes('overlapCheck')), '');
+    // a new question that repeats the one before it: refused, the sheet stays as it is
+    const addAt = async (words) => {
+      const g = await page.$('#vw-paper .rv-gap[data-list="questions"][data-index="2"]');
+      await g.scrollIntoViewIfNeeded(); await g.click();
+      await page.fill('.rv-insert .rv-words', words);
+      await page.click('.rv-insert [data-a="add"]');
+      await page.waitForTimeout(1200);
+      const r = await page.evaluate(() => ((document.querySelector('.rv-insert .rv-status') || {}).textContent || ''));
+      await page.keyboard.press('Escape');
+      return r;
+    };
+    const w1 = await W();
+    const dupMsg = await addAt('DUPLICATE');
+    check('a new question that asks what question 2 asks is refused — the teacher reads why, the sheet stays as it is', /Nicht übernommen/.test(dupMsg) && /überschneidet sich mit Frage 2/.test(dupMsg) && JSON.stringify(await W()) === JSON.stringify(w1), dupMsg);
+    const sneakyMsg = await addAt('SNEAKY');
+    check('an overlap only Claude\'s second look finds is refused as well', /Nicht übernommen/.test(sneakyMsg) && /laut Claude/.test(sneakyMsg) && JSON.stringify(await W()) === JSON.stringify(w1), sneakyMsg);
     await page.click('#vw-sheet [data-unit="questions.0"] .q-format');
     await page.click('.rv-panel [data-a="remove"]');
     const armed = await page.evaluate(() => document.querySelector('.rv-panel [data-a="remove"]').textContent);
