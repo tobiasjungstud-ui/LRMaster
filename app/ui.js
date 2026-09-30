@@ -86,7 +86,12 @@
         try {
           const snap = await caps.db.collection(coll).get();
           // Snapshots are frozen; hand out mutable copies so the app can edit them.
-          return snap.docs.filter(d => d.exists).map(d => Object.assign(clone(d.data()), { id: d.id }));
+          const shared = snap.docs.filter(d => d.exists).map(d => Object.assign(clone(d.data()), { id: d.id }));
+          // what the shared store refused to take stayed in this browser: it belongs to the list, too
+          let local = [];
+          try { local = JSON.parse(localStorage.getItem('lr:' + coll) || '[]'); } catch (e) { local = []; }
+          const ids = new Set(shared.map(x => x.id));
+          return shared.concat((Array.isArray(local) ? local : []).filter(x => x && x.id && !ids.has(x.id)));
         }
         catch (e) { console.warn('db list failed, using local', e); this.backend = 'local'; }
       }
@@ -128,6 +133,8 @@
     },
     async remove(coll, id) {
       if (this.backend === 'db') {
+        // a copy kept in this browser goes, too — or it would come back in the list
+        try { const local = JSON.parse(localStorage.getItem('lr:' + coll) || '[]'); if (Array.isArray(local) && local.some(x => x && x.id === id)) localStorage.setItem('lr:' + coll, JSON.stringify(local.filter(x => x && x.id !== id))); } catch (e) { /* nothing kept here */ }
         try { await caps.db.doc(coll + '/' + id).delete(); return; } catch (e) { this.backend = 'local'; }
       }
       const all = (await this.list(coll)).filter(x => x.id !== id);
@@ -753,7 +760,10 @@
             if (!items.length) break;
             progress('layout', 'running', `Runde ${round}: ${findingsLabel(items)}`);
             usedPrompts['layoutRepair' + round] = prompts.buildLayoutRepairPrompt(state, plan, content, chrome, items, spec);
-            const cand = quality.mergeChrome(fallback, quality.normalizeChrome(await askJSON(usedPrompts['layoutRepair' + round], { signal: ctl.signal }), spec));
+            // a failed repair round keeps the design Claude already made
+            let cand;
+            try { cand = quality.mergeChrome(fallback, quality.normalizeChrome(await askJSON(usedPrompts['layoutRepair' + round], { signal: ctl.signal }), spec)); }
+            catch (e) { if (e && e.code === 'cancelled') throw e; repairs.push({ round, target: 'layout', fixed: items.map(f => f.title), accepted: false }); break; }
             const candFindings = check(cand);
             const better = quality.problemScore(candFindings) < quality.problemScore(layoutFindings);
             repairs.push({ round, target: 'layout', fixed: items.map(f => f.title), accepted: better });
@@ -837,7 +847,12 @@
 
       /* 5. Assemble */
       progress('done', 'running');
-      const contentOnlyReview = !state.createWorksheet ? await reviewContentOnly(state, plan, content, contentFindings, ctl, layout).catch(() => []) : [];
+      // a stop during this last review stops the run; a failed review leaves its rules unverified
+      const contentOnlyReview = !state.createWorksheet ? await reviewContentOnly(state, plan, content, contentFindings, ctl, layout).catch((e) => {
+        if (e && e.code === 'cancelled') throw e;
+        return quality.mergeReview(quality.llmRules(state, plan, null, { layout }), null);
+      }) : [];
+      if (ctl.signal.aborted) throw { code: 'cancelled' };
       const variantsOut = results.map((r, i) => ({
         key: variants[i] ? variants[i].key : null, label: variants[i] ? variants[i].label : '',
         plan: plans[i], worksheet: r.worksheet,
@@ -932,15 +947,20 @@
       return { review: res, findings: quality.mergeReview(rules, res, { unavailable: gaps }) };
     };
     // Every worksheet that arrives is put into the timeline of the material first (concept §26 — always).
+    // A candidate that is thrown away afterwards leaves no trace in the log:
+    // its reordering is noted only when the candidate is kept (`keep`).
+    let pendingOrder = null;
     const inOrder = (ws, round, cont) => {
       const r = quality.enforceChronology(ws, cont || content, state.kind);
-      if (r.changed) repairs.push({ round, target: 'order', questions: r.moved, fixed: ['Questions follow the timeline of the audio/text'], accepted: true, variant: tag || undefined });
+      pendingOrder = r.changed ? { round, target: 'order', questions: r.moved, fixed: ['Questions follow the timeline of the audio/text'], accepted: true, variant: tag || undefined } : null;
       return r.worksheet;
     };
+    const keepOrder = () => { if (pendingOrder) repairs.push(pendingOrder); pendingOrder = null; };
 
     progress('questions', 'running', pfx + 'Claude schreibt Aufgaben …');
     usedPrompts[key('questions')] = prompts.buildQuestionPrompt(state, plan, content);
     let worksheet = inOrder(quality.normalizeWorksheet(await askJSON(usedPrompts[key('questions')], Object.assign({ signal: ctl.signal }, stream))), 0);
+    keepOrder();
     progress('questions', 'done', `${pfx}${worksheet.questions.length} Fragen`);
 
     progress('question-check', 'running');
@@ -985,6 +1005,7 @@
           const better = quality.problemScore(candAll) < quality.problemScore(contentFindings.concat(findings));
           repairs.push({ round, target: 'content+worksheet', fixed: contentFails.map(f => f.title), accepted: better, variant: tag || undefined });
           if (better) {
+            keepOrder();
             content = newContent; contentFindings = newContentFindings; worksheet = newWorksheet;
             questionFindings = newDet; reviewFindings = r.findings; review = r.review;
             findings = newDet.concat(r.findings);
@@ -1019,7 +1040,8 @@
           repairs.push(Object.assign({ round, target: phase + 'task', fixed: items.map(f => f.title), accepted: better, variant: tag || undefined },
             phase === 'pre' ? { preTasks: changedTasks } : { postTasks: changedTasks }));
           if (better) {
-            worksheet = candidate; questionFindings = candDet; reviewFindings = candLlm; review = candReview; findings = candFindings;
+            keepOrder();
+      worksheet = candidate; questionFindings = candDet; reviewFindings = candLlm; review = candReview; findings = candFindings;
             progress(step, 'done', `${pfx}Runde ${round}: ${mark}${changedTasks.join(', ' + mark)} ersetzt · ${summaryText(findings)}`);
           } else { givenUp[phase] = true; progress(step, 'done', `${pfx}Runde ${round}: keine Verbesserung, vorige Fassung behalten`); }
         } catch (e) { if (e.code === 'cancelled') throw e; givenUp[phase] = true; progress(step, 'warn', pfx + errorCopy(e)); }
@@ -1057,6 +1079,7 @@
       const better = quality.problemScore(candFindings) < quality.problemScore(findings);
       repairs.push({ round, target: targeted ? 'questions' : 'worksheet', questions: changed, fixed: rp.items.map(f => f.title), accepted: better, variant: tag || undefined });
       if (!better) { progress('question-fix', 'done', `${pfx}Runde ${round}: keine Verbesserung, vorige Fassung behalten`); break; }
+      keepOrder();
       worksheet = candidate; questionFindings = candDet; reviewFindings = candLlm; review = candReview; findings = candFindings;
       progress('question-check', quality.repairable(questionFindings, state.autoFix).length ? 'warn' : 'done', pfx + summaryText(questionFindings));
       progress('review', quality.repairable(reviewFindings, state.autoFix).length ? 'warn' : 'done', pfx + summaryText(reviewFindings));
@@ -1082,6 +1105,7 @@
         const newBlock = candDet.some(f => f.blocking && f.status === 'fail' && !blockedBefore.has(f.id));
         if (quality.questionProblems(cand).bad.length >= quality.questionProblems(worksheet).bad.length || newBlock) continue;
         const changed = quality.changedQuestions(worksheet, cand);
+        keepOrder();
         worksheet = cand; questionFindings = candDet;
         try { const r = await reviewNow(worksheet, contentFindings.concat(candDet), 'Complete' + attempt); review = r.review; reviewFindings = r.findings; }
         catch (e) { if (e.code === 'cancelled') throw e; }
@@ -1126,6 +1150,12 @@
     const out = $('#output');
     out.hidden = false;
     $('#out-title').textContent = m.title;
+    // how it stands, and where to go on: the viewer to check and change the sheet
+    const st = $('#out-status');
+    if (st) {
+      const blocked = quality.blockingFailures((m.quality && m.quality.findings) || []).length;
+      st.innerHTML = materialStatus(m) + `<span class="muted small">${blocked ? 'Im Viewer zeigt eine Leiste über dem Blatt, was zu beheben ist – mit einem Klick.' : 'Im Viewer lässt sich das Blatt direkt überarbeiten: Aufgaben ändern, schwieriger machen, ergänzen.'}</span>`;
+    }
     const variants = render.variantsOf(m).filter(v => v.worksheet);
     const multi = variants.length > 1;
     // Student version: one sheet per question level, switchable
@@ -2590,7 +2620,9 @@
   }
 
   async function download(kind, variant) {
-    const m = app.material; if (!m) return;
+    // the material on screen: in the viewer the one it shows, even when a new one has just been made
+    const m = app.view === 'viewer' && viewer.material ? viewer.material : app.material;
+    if (!m) return;
     const slug = word.slug(m.title);
     let filename, data;
     // the stored photos first, so an export never carries their loading tone
@@ -2748,7 +2780,7 @@
       return `<div class="textbook" data-tb="${esc(t.id)}"><div class="tb-head"><h3>${esc(t.name)}${t.example ? ' <span class="badge">Beispiel</span>' : ''}</h3>`
         + `<div class="tb-actions">`
         + `<button type="button" class="btn tiny" data-tb-import="${esc(t.id)}">Hierhin importieren</button>`
-        + (units.length ? `<button type="button" class="btn tiny" data-tb-topics="${esc(t.id)}"${missing ? '' : ' disabled'} title="Claude leitet die Themen der Units aus deren Wortschatz ab">Themen von Claude${missing ? ` (${missing})` : ''}</button>` : '')
+        + (units.length && missing ? `<button type="button" class="btn tiny" data-tb-topics="${esc(t.id)}" title="Claude leitet die fehlenden Themen der Units aus deren Wortschatz ab">Themen von Claude (${missing})</button>` : '')
         + `<button type="button" class="btn tiny" data-tb-rename="${esc(t.id)}">Umbenennen</button>`
         + `<button type="button" class="btn tiny danger" data-tb-delete="${esc(t.id)}">Löschen</button></div></div>`
         + (units.length ? '<ul class="units">' + units.map(u => `<li><span class="unit-name">${esc(u.name)}</span><input type="text" class="unit-topic" data-topic="${esc(t.id)}:${esc(u.id)}" value="${esc(u.topic || '')}" placeholder="Thema der Unit"><span class="muted">${u.words.length} Wörter</span><button type="button" class="btn tiny" data-unit-show="${esc(t.id)}:${esc(u.id)}">Anzeigen</button><button type="button" class="btn tiny danger" data-unit-delete="${esc(t.id)}:${esc(u.id)}">Löschen</button></li>`).join('') + '</ul>'
@@ -2903,7 +2935,7 @@
     }
   }
 
-  function parsePasted() {
+  function parsePastedList() {
     const text = $('#import-text').value;
     if (!text.trim()) { toast('Bitte Text einfügen oder eine Datei wählen.'); return; }
     afterParse(vocab.parseText(text, { defaultUnit: unitNameField() || undefined }), 'Eingefügter Text');
@@ -3285,7 +3317,7 @@
     $('#import-unit-mode').addEventListener('change', onUnitModeChange);
     $('#import-unit').addEventListener('input', () => { if ($('#import-unit-mode').value === 'single' && importState.parsed) applyUnitMode(); });
     $('#btn-detect-units').addEventListener('click', detectUnits);
-    $('#btn-parse-text').addEventListener('click', parsePasted);
+    $('#btn-parse-text').addEventListener('click', parsePastedList);
     $('#btn-parse-claude').addEventListener('click', parseWithClaude);
     $('#btn-import-confirm').addEventListener('click', confirmImport);
     $('#btn-run-check').addEventListener('click', runConceptCheck);
@@ -3300,5 +3332,5 @@
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init); else init();
 
-  window.LR.ui = { app, generate, produceWorksheet, openViewer, renderViewer, markPageBreaks, syncViewerOffsets, buildViewerRail, buildViewerDownloads, paintLayoutCanvas, proportionNote, mediumPng, renderHotspots, renderSheetHotspots, hotspotLayer, paperChips, bindPaperChips, attachWebPicture, loadOwnPictures, photoPromptCard, photoPlaces, ensurePhotoPrompts, incompleteQuestions, incompleteNotice, repairIncompleteQuestions, reviewApi, photoToolbar, openAssignDialog, orderImages, imageURLFrom, fetchWebImage, pictureError, openPictureEditor, openCropEditor, setPictureCrop, unrotateDrag, replacePicture, resetPicture, prepareImage, viewer, store, caps, showView, openCreator, importState, detectUnits, fetchTopics, confirmImport, newTextbook, askText, askConfirm, clone, parsePasted, initLevelPage, download, renderOutput, renderQualityPanel, renderTaskPreview, refreshDerived, renderLayout, renderSetupBar, openCustomSetup, backToTemplates, redrawTemplate, templateState, buildForm };
+  window.LR.ui = { app, generate, produceWorksheet, openViewer, renderViewer, markPageBreaks, syncViewerOffsets, buildViewerRail, buildViewerDownloads, paintLayoutCanvas, proportionNote, mediumPng, renderHotspots, renderSheetHotspots, hotspotLayer, paperChips, bindPaperChips, attachWebPicture, loadOwnPictures, photoPromptCard, photoPlaces, ensurePhotoPrompts, incompleteQuestions, incompleteNotice, repairIncompleteQuestions, reviewApi, photoToolbar, openAssignDialog, orderImages, imageURLFrom, fetchWebImage, pictureError, openPictureEditor, openCropEditor, setPictureCrop, unrotateDrag, replacePicture, resetPicture, prepareImage, viewer, store, caps, showView, openCreator, importState, detectUnits, fetchTopics, confirmImport, newTextbook, askText, askConfirm, clone, parsePasted, parsePastedList, initLevelPage, download, renderOutput, renderQualityPanel, renderTaskPreview, refreshDerived, renderLayout, renderSetupBar, openCustomSetup, backToTemplates, redrawTemplate, templateState, buildForm };
 })();

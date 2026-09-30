@@ -701,6 +701,13 @@ body:has(#view-viewer:not([hidden])) .page { max-width: none; padding-block-end:
   .vw-sheet .table-wrap, .vw-section .table-wrap { overflow-x: auto; }
   .viewer-stage { padding: 1rem .5rem 2rem; }
 }
+@media (max-width: 640px) {
+  /* on a phone the sheet comes first: the contents are the sheet itself, the zoom is the screen */
+  .viewer-rail .vw-card:has(.vw-toc) { display: none; }
+  #vw-zoom { display: none; }
+  .viewer-rail { gap: .5rem; }
+  .viewer-rail .vw-card { padding: .55rem .7rem; }
+}
 @media print {
   .topbar, .viewer-bar, .viewer-rail, .vw-section:not(.vw-print) { display: none !important; }
   .viewer-body { display: block; }
@@ -798,3 +805,8 @@ body:has(#view-viewer:not([hidden])) .page { max-width: none; padding-block-end:
   .rv-ui, .rv-toolbar, .rv-slot, .rv-layer, .rv-toast { display: none !important; }
   .rv-on [data-unit].rv-hover, .rv-edit [data-edit], [data-edit].rv-typing { outline: none !important; background: none !important; box-shadow: none !important; }
 }
+
+.out-status { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem .6rem; margin: .2rem 0 .6rem; }
+
+.nav-dev { opacity: .6; font-size: .85em; }
+.nav-dev:hover, .nav-dev.active { opacity: 1; }

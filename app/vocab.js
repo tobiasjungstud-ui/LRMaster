@@ -8,7 +8,8 @@
 })(typeof self !== 'undefined' ? self : this, function () {
   'use strict';
 
-  const UNIT_HEADING = /^\s*(unit|einheit|lektion|lesson|chapter|kapitel|module|topic)\s*([0-9]+[a-z]?)?\s*[:\-\u2013\u2014.]?\s*(.*)$/i;
+  // the keyword must stand alone: "unite", "topical" or "lessons" are words, not headings
+  const UNIT_HEADING = /^\s*(unit|einheit|lektion|lesson|chapter|kapitel|module|topic)(?![a-z\u00E4\u00F6\u00FC])\s*([0-9]+[a-z]?)?\s*[:\-\u2013\u2014.]?\s*(.*)$/i;
   /** A line or cell only counts as vocabulary if it carries a letter or digit. */
   const HAS_WORD = /[0-9A-Za-z\u00C0-\u00FF\u0100-\u024F\u0370-\uFFFF]/;
 
@@ -67,7 +68,10 @@
         if (HEADER_WORDS[field].includes(k) && !(field in map)) { map[field] = i; hits++; return; }
       }
     });
-    return hits >= 1 && ('word' in map || 'translation' in map) ? map : null;
+    // a header row is made of header words only — a first entry like "term;Begriff"
+    // (one known word, one translation) is an entry, not a header
+    const filled = cells.filter(c => String(c || '').trim()).length;
+    return hits >= 1 && hits === filled && ('word' in map || 'translation' in map) ? map : null;
   }
 
   /**

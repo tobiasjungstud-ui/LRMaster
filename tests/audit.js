@@ -1948,6 +1948,59 @@ test('2.2 2.8', 'no new or changed question overlaps another — on a real sheet
   assert.ok(review.overlapsOf(m, tw, 'postTasks', 0).some(o => /pre-task 1/.test(o)), 'a post-task that repeats the pre-task passes');
 });
 
+test('2.5 2.7 2.12', 'audit round: the confirmed bugs stay fixed — duplicate functions, tasks of every level in every export, no script without a worksheet, vocabulary import, tables and pairs in Word', () => {
+  const fs = require('node:fs');
+  // 1. no module declares the same top-level function twice (the second one silently replaces the first)
+  for (const f of fs.readdirSync(APP).filter(x => x.endsWith('.js'))) {
+    const names = [...fs.readFileSync(path.join(APP, f), 'utf8').matchAll(/^  (?:async )?function (\w+)\(/gm)].map(x => x[1]);
+    const dup = names.filter((n, i) => names.indexOf(n) !== i);
+    assert.deepEqual(dup, [], f + ' declares a function twice: ' + dup.join(', '));
+  }
+  // 6. two levels with their own pre- and post-tasks: both reach Markdown and the Word teacher version
+  const m = goodMaterial({ textType: 'Blog Post', createWorksheet: true, preTask: true, postTask: true }, 'reading');
+  const B = JSON.parse(JSON.stringify(m.worksheet));
+  B.preTasks = B.preTasks.map(p => Object.assign({}, p, { prompt: 'LEVEL-B pre-task: ' + p.prompt }));
+  B.postTasks = B.postTasks.map(p => Object.assign({}, p, { prompt: 'LEVEL-B post-task: ' + p.prompt }));
+  m.variants = [{ key: 'A', label: 'Niveau A', plan: m.plan, worksheet: m.worksheet }, { key: 'B', label: 'Niveau B', plan: m.plan, worksheet: B }];
+  const md = render.renderMarkdown(m);
+  const wordTeacher = require(path.join(APP, 'ooxml.js')).textOf(word.partsFor(m, 'teacher'));
+  assert.ok(md.includes('LEVEL-B pre-task') && md.includes('LEVEL-B post-task'), 'Markdown drops the tasks of Niveau B');
+  // the Word teacher version gives each level its own overview table
+  assert.ok(/Pre-Task — Niveau B/.test(wordTeacher) && /Post-Task — Niveau B/.test(wordTeacher) && /Pre-Task — Niveau A/.test(wordTeacher), 'the Word teacher version drops the tasks of Niveau B');
+  // 7. a listening without a worksheet: the script stays with the teacher
+  const l = goodMaterial({ createWorksheet: false, appendScript: true }, 'listening');
+  l.worksheet = null; l.variants = [];
+  const line = l.content.lines[0].text;
+  assert.ok(!render.renderStudentHTML(l).includes(line), 'the students get the script without a worksheet');
+  // 8./9. vocabulary: words that begin like a heading stay words; a first entry is no header
+  const vocab = require(path.join(APP, 'vocab.js'));
+  const words = (t) => vocab.parseText(t, {}).units.flatMap(u => u.words.map(w => w.word + (w.translation ? '=' + w.translation : '')));
+  assert.deepEqual(words('unite\ntopical\nlessons\nargue'), ['unite', 'topical', 'lessons', 'argue']);
+  assert.deepEqual(words('term;Begriff\nargue;streiten'), ['term=Begriff', 'argue=streiten']);
+  assert.deepEqual(words('Word;Translation\nargue;streiten'), ['argue=streiten']);
+  assert.deepEqual(vocab.parseText('Unit 3: Movies\nplot - Handlung\nUnit 4\ntrust - Vertrauen', {}).units.map(u => u.words.length), [1, 1]);
+  // 10./11. a table without headers and rows of different width, a pair with a missing side: Word stays valid, nothing reads "undefined"
+  const w = goodMaterial({ textType: 'Blog Post', createWorksheet: true }, 'reading');
+  const base = w.worksheet.questions[0];
+  w.worksheet.questions = w.worksheet.questions.concat([
+    Object.assign({}, base, { n: 90, format: 'table_completion', options: undefined, table: { rows: [['Anna', '___', 'x'], ['Ben']] }, answer: ['films'] }),
+    Object.assign({}, base, { n: 91, format: 'matching', options: undefined, items: [{ left: 'a', right: 'b' }, { left: 'c', right: 'd' }, { left: 'e', right: 'f' }, { left: 'g' }], answer: 'see items' }),
+  ]);
+  const ooxml = require(path.join(APP, 'ooxml.js'));
+  for (const which of ['student', 'teacher']) {
+    const parts = word.partsFor(w, which);
+    assert.deepEqual(ooxml.validate(parts), [], which + ': the Word file is invalid');
+    assert.ok(!/undefined/.test(ooxml.textOf(parts)), which + ': "undefined" stands in the Word file');
+  }
+  const done = quality.questionProblems({ questions: [w.worksheet.questions[w.worksheet.questions.length - 1]] });
+  assert.ok(done.bad.some(x => /missing side/.test(x)), 'a pair with a missing side passes the check');
+  // 11c. every export names the same target words used
+  const html = render.renderTeacherHTML(w);
+  const items = render.vocabUsedItems(w);
+  const wt = ooxml.textOf(word.partsFor(w, 'teacher'));
+  for (const v of items) assert.ok(html.includes(render.esc(v.word)) && wt.includes(v.word), v.word + ' is missing in an export');
+});
+
 test('2.4', "a teacher's own crop is stored sanely: the zoom never shows less than the box needs, the turn is always a quarter, an untouched picture keeps the plain default crop", () => {
   const own = (extra) => mock.ownPicture({ x: Object.assign({ src: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=' }, extra) }, 'x');
   assert.equal(own({}).zoom, 1); assert.equal(own({}).rotate, 0);

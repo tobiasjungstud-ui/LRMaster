@@ -560,8 +560,10 @@
 
   /** Teacher overview of one task phase: form, mode, time, material and note. */
   function preTaskTableBlocks(ctx, phase) {
-    const { m } = ctx;
-    const list = (m.worksheet && (phase === 'post' ? m.worksheet.postTasks : m.worksheet.preTasks)) || [];
+    // every level with its own tasks
+    return render.phaseTasks(ctx.m, phase).flatMap((g, i) => (i ? [SP(8)] : []).concat(taskTable(ctx, phase, g.tasks, g.label)));
+  }
+  function taskTable(ctx, phase, list, label) {
     if (!list.length) return [];
     const accent = '274060';
     const c5 = cols(ctx.W, [0.05, 0.19, 0.16, 0.12, 0.48]);
@@ -577,7 +579,7 @@
       ] });
     }
     return [
-      P(phase === 'post' ? 'Post-Task' : 'Pre-Task', { after: 6, keepNext: true, run: { font: WS.display, size: 12, bold: true, color: INK } }),
+      P((phase === 'post' ? 'Post-Task' : 'Pre-Task') + (label ? ' — ' + label : ''), { after: 6, keepNext: true, run: { font: WS.display, size: 12, bold: true, color: INK } }),
       TBL({ width: ctx.W, widthType: 'dxa', cols: c5, cellMargin: { top: 0.06, left: 0.1, bottom: 0.06, right: 0.1 },
         borders: { top: hairline(SOFT), bottom: hairline(SOFT), insideH: hairline(LINE), insideV: hairline('EDF0F3') }, rows }),
       SP(10),
@@ -618,12 +620,12 @@
         break;
       case 'matching': {
         const items = q.items || [];
-        const right = render.seededShuffle(items.map(it => it.right), seed + ':' + q.n);
+        const right = render.seededShuffle(items.map(it => (it && it.right) || ''), seed + ':' + q.n);
         const c3 = cols(ctx.W - docx.cm(0.8), [0.44, 0.1, 0.46]);
         out.push(TBL({ width: ctx.W - docx.cm(0.8), widthType: 'dxa', cols: c3, indent: 0.8,
           cellMargin: { top: 0.08, left: 0.05, bottom: 0.08, right: 0.15 },
           rows: items.map((it, i) => ({ cells: [
-            { text: (i + 1) + '. ' + it.left, props: { after: 0, run: { font: WS.body, size: 10.5, color: INK } } },
+            { text: (i + 1) + '. ' + ((it && it.left) || ''), props: { after: 0, run: { font: WS.body, size: 10.5, color: INK } } },
             { borders: { bottom: hairline(SOFT) }, text: '', props: { after: 0 } },
             { text: String.fromCharCode(97 + i) + ') ' + right[i], props: { after: 0, run: { font: WS.body, size: 10.5, color: INK } } },
           ] })) }), SP(8));
@@ -637,14 +639,19 @@
       }
       case 'table_completion': {
         const t = q.table || {};
-        const headers = t.headers || [];
+        // every row as wide as the widest one; a table without headers has no header row
+        const rowsIn = (t.rows || []).map(r => (Array.isArray(r) ? r : []));
+        const n = Math.max(1, (t.headers || []).length, ...rowsIn.map(r => r.length));
+        const pad = (r) => Array.from({ length: n }, (_, i) => (r[i] == null ? '' : String(r[i])));
+        const headers = (t.headers || []).length ? pad(t.headers) : null;
         const width = ctx.W - docx.cm(0.8);
-        const cw = cols(width, headers.map(() => 1 / Math.max(1, headers.length)));
+        const cw = cols(width, Array.from({ length: n }, () => 1 / n));
+        const body = rowsIn.map(r => ({ height: 0.6, cells: pad(r).map(cell => ({ text: cell, props: { after: 0, run: { font: WS.body, size: 10.5, color: INK } } })) }));
         out.push(TBL({ width, widthType: 'dxa', cols: cw, indent: 0.8,
           borders: { top: hairline(SOFT), left: hairline(SOFT), bottom: hairline(SOFT), right: hairline(SOFT), insideH: hairline(LINE), insideV: hairline(LINE) },
           cellMargin: { top: 0.1, left: 0.12, bottom: 0.1, right: 0.12 },
-          rows: [{ header: true, cells: headers.map(h => ({ shd: 'EFF2F6', text: h, props: { after: 0, run: { font: WS.display, size: 10, bold: true, color: INK } } })) }]
-            .concat((t.rows || []).map(r => ({ height: 0.6, cells: (r || []).map(cell => ({ text: cell, props: { after: 0, run: { font: WS.body, size: 10.5, color: INK } } })) }))) }), SP(8));
+          rows: (headers ? [{ header: true, cells: headers.map(h => ({ shd: 'EFF2F6', text: h, props: { after: 0, run: { font: WS.display, size: 10, bold: true, color: INK } } })) }] : [])
+            .concat(body.length ? body : [{ height: 0.6, cells: pad([]).map(() => ({ text: '', props: { after: 0 } })) }]) }), SP(8));
         break;
       }
       case 'gap_fill':
@@ -796,7 +803,7 @@
 
   function vocabBlocks(ctx) {
     const { m, d } = ctx;
-    const items = (m.plan.vocabulary || []).filter(v => (m.vocabFound || []).includes(v.word));
+    const items = render.vocabUsedItems(m);
     const out = [P('Target vocabulary used', { after: 6, keepNext: true, run: { font: WS.display, size: 12, bold: true, color: INK } })];
     if (!items.length) { out.push(P('No target item detected.', { run: { font: WS.body, size: 10, italic: true, color: GREY } })); return out; }
     const half = Math.ceil(items.length / 2);
@@ -821,7 +828,7 @@
     const parts = core.questionParts(q);
     const judged = ['true_false', 'true_false_correction', 'who_said_it'].includes(q.format) ? parts.statement || parts.prompt : '';
     if (judged) return '\u201C' + judged + '\u201D \u2192 ' + answerText(Object.assign({}, q, { format: q.format + ':answer' }));
-    if (q.format === 'matching') return (q.items || []).map(it => it.left + ' → ' + it.right).join('; ');
+    if (q.format === 'matching') return (q.items || []).map(it => ((it && it.left) || '–') + ' → ' + ((it && it.right) || '–')).join('; ');
     if (q.format === 'ordering') return (q.items || []).map((it, i) => (i + 1) + '. ' + (typeof it === 'string' ? it : JSON.stringify(it))).join('  ');
     if (Array.isArray(q.answer)) return q.answer.join(' · ');
     if (q.answer && typeof q.answer === 'object') return JSON.stringify(q.answer);
@@ -948,7 +955,7 @@
     if (material.worksheet) {
       sections.push({ blocks: worksheetBlocks(wsCtx, 'after'), props: { margins: M_DOC } });
       // Listening option: the script on the last page, after the questions.
-      if (material.kind === 'listening' && material.settings.appendScript) {
+      if (material.kind === 'listening' && material.worksheet && material.settings.appendScript) {
         sections[sections.length - 1].props = Object.assign({}, sections[sections.length - 1].props, { type: 'nextPage' });
         sections.push({ blocks: scriptBlocks(wsCtx), props: { margins: M_DOC } });
       }
@@ -968,18 +975,18 @@
 
   /** Teacher version: metadata, full script/text, vocabulary, key, quality report. */
   function teacherSpec(material, opts) {
-    const ctx = context(material, { highlight: material.settings.highlightVocab ? (material.plan.vocabulary || []).filter(v => (material.vocabFound || []).includes(v.word)) : null, numbered: material.kind === 'reading', medium: (opts && opts.medium) || null });
+    const ctx = context(material, { highlight: material.settings.highlightVocab ? render.vocabUsedItems(material) : null, numbered: material.kind === 'reading', medium: (opts && opts.medium) || null });
     const d = ctx.d;
     const wsCtx = Object.assign({}, ctx, { W: usableWidth(M_DOC), margins: M_DOC });
     // same order as the lesson: what happens before the text stands before it
     const head = teacherHeadBlocks(wsCtx)
-      .concat(material.worksheet && (material.worksheet.preTasks || []).length ? [SP(14)].concat(preTaskTableBlocks(wsCtx, 'pre')) : [])
+      .concat(render.phaseTasks(material, 'pre').length ? [SP(14)].concat(preTaskTableBlocks(wsCtx, 'pre')) : [])
       .concat([SP(14)]).concat(vocabBlocks(wsCtx))
       .concat(material.glossary && material.glossary.length ? [SP(14)].concat(glossaryBlocks(wsCtx)) : []);
     const medium = material.kind === 'reading' ? mediumBlocks(ctx) : [];
     const body = material.kind === 'listening' ? scriptBlocks(wsCtx) : textBlocks(ctx);
     const rest = (material.worksheet ? keyBlocks(wsCtx) : [])
-      .concat(material.worksheet && (material.worksheet.postTasks || []).length ? [SP(14)].concat(preTaskTableBlocks(wsCtx, 'post')) : [])
+      .concat(render.phaseTasks(material, 'post').length ? [SP(14)].concat(preTaskTableBlocks(wsCtx, 'post')) : [])
       .concat(levelBlocks(wsCtx))
       .concat(creditBlocks(wsCtx))
       .concat(qualityBlocks(wsCtx));

@@ -19,7 +19,7 @@
     <button type="button" id="nav-vocab" data-nav="vocab">Vocabulary / Lehrmittel verwalten</button>
     <button type="button" id="nav-level" data-nav="level">Niveau messen</button>
     <button type="button" id="nav-materials" data-nav="materials">Materialien</button>
-    <button type="button" id="nav-check" data-nav="check">Konzept-Check</button>
+    <button type="button" id="nav-check" data-nav="check" class="nav-dev" title="Prüft die App gegen das Konzeptdokument (für die Entwicklung)">Konzept-Check</button>
   </nav>
   <span class="status claude-status" data-state="pending"></span>
   <div class="mode" id="mode-toggle" role="group" aria-label="Modus" hidden>
@@ -84,6 +84,7 @@
     <section id="output" class="output" hidden>
       <div class="output-head">
         <h2 id="out-title"></h2>
+        <div class="out-status" id="out-status" role="status"></div>
         <div class="tabs" role="tablist">
           <button type="button" class="tab active" data-tab="student">Student Version</button>
           <button type="button" class="tab" data-tab="teacher">Teacher Version</button>

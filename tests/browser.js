@@ -969,6 +969,93 @@ const SETTINGS = (extra) => `(() => {
     await page.close();
   }
 
+  console.log('\nBrowser audit: the library, the start page, fixing what blocks (2.7, 2.11)');
+  {
+    const { page, errors } = await open({ scenario: 'ok' });
+    const r = await page.evaluate(async () => {
+      const { fixture, ui, quality } = window.LR;
+      for (let i = 0; i < 30 && !ui.caps.sample; i++) await new Promise(res => setTimeout(res, 100));
+      const a = fixture.material({ createWorksheet: true, textType: 'Review', questionCount: 6, cefr: 'B2.1' }, 'reading'); a.id = 'lib-a'; a.title = 'Alpha review of a series'; a.createdAt = Date.now() - 1000;
+      const b = fixture.material({ createWorksheet: true }, 'listening'); b.id = 'lib-b'; b.title = 'Beta podcast'; b.createdAt = Date.now();
+      // an older material whose questions no longer follow the text
+      const qs = a.worksheet.questions;
+      if (qs.length > 3) { [qs[1], qs[2]] = [qs[2], qs[1]]; qs.forEach((q, i) => { q.n = i + 1; }); }
+      a.quality = { findings: quality.runDeterministic(a.settings, a.plan, a.content, a.worksheet) };
+      await ui.store.put('materials', a); await ui.store.put('materials', b);
+      ui.app.materials = await ui.store.list('materials');
+      ui.showView('home');
+      await new Promise(res => setTimeout(res, 200));
+      const recent = Array.from(document.querySelectorAll('#home-recent .hr-card .hr-title')).map(x => x.textContent);
+      ui.showView('materials');
+      await new Promise(res => setTimeout(res, 150));
+      const rows = () => Array.from(document.querySelectorAll('#materials-list .mr-title')).map(x => x.textContent);
+      const all = rows();
+      const meta = (document.querySelector('#materials-list .mr-meta') || {}).textContent || '';
+      const badge = Array.from(document.querySelectorAll('#materials-list .mst')).map(x => x.textContent).join('|');
+      const search = document.querySelector('#mat-search'); search.value = 'podcast'; search.dispatchEvent(new Event('input'));
+      const found = rows();
+      search.value = ''; search.dispatchEvent(new Event('input'));
+      document.querySelector('#mat-kind [data-kind="reading"]').click();
+      const reading = rows();
+      document.querySelector('#mat-kind [data-kind="all"]').click();
+      // reuse the settings of a material
+      document.querySelector('#materials-list [data-reuse="lib-a"]').click();
+      await new Promise(res => setTimeout(res, 300));
+      const reused = { view: ui.app.view, textType: ui.app.state.textType, cefr: ui.app.state.cefr, questions: ui.app.state.questionCount, stored: a.settings.questionCount, draft: JSON.parse(localStorage.getItem('lr:draft:reading') || '{}').textType };
+      return { recent, all, meta, badge, found, reading, reused, chrono: quality.chronologyReport(a.worksheet, a.content, 'reading').violations.length };
+    });
+    check('the start page shows the latest materials first, one click from the viewer', r.recent[0] === 'Beta podcast' && r.recent.includes('Alpha review of a series'), JSON.stringify(r.recent));
+    check('the library lists newest first, with kind, level, number of questions, a Swiss date and a status badge instead of a count', r.all[0] === 'Beta podcast' && /Listening/.test(r.meta) && /Fragen/.test(r.meta) && /\d\d\.\d\d\.\d{4}/.test(r.meta) && /geprüft|blockierend|offen/.test(r.badge), JSON.stringify(r));
+    check('the library can be searched and filtered', r.found.join() === 'Beta podcast' && r.reading.join() === 'Alpha review of a series', JSON.stringify(r));
+    check('„Einstellungen übernehmen“ loads exactly the settings of that material into the creator', r.reused.view === 'creator' && r.reused.textType === 'Review' && r.reused.cefr === 'B2.1' && String(r.reused.questions) === String(r.reused.stored) && r.reused.draft === 'Review', JSON.stringify(r.reused));
+    // the blocking order problem is put right in the viewer with one click
+    const o = await page.evaluate(async () => {
+      const { ui, quality, review } = window.LR;
+      const a = ui.app.materials.find(x => x.id === 'lib-a');
+      ui.app.material = a; ui.openViewer(a, 'materials');
+      await new Promise(res => setTimeout(res, 400));
+      const bar = document.querySelector('#vw-sheet .rv-blocking');
+      const text = bar ? bar.innerText : '';
+      const btn = bar && bar.querySelector('[data-order]');
+      if (btn) btn.click();
+      await new Promise(res => setTimeout(res, 500));
+      return { text, clicked: !!btn, after: quality.chronologyReport(review.worksheetOf(a, null), a.content, 'reading').violations.length, still: !!document.querySelector('#vw-sheet .rv-blocking [data-order]') };
+    });
+    check('a blocking check stands above the sheet; „Nach dem Text ordnen“ puts the questions in the order of the text', r.chrono > 0 && o.clicked && /blockierende Prüfung/.test(o.text) && o.after === 0 && !o.still, JSON.stringify({ chrono: r.chrono, o }));
+    // the pasted word list is read (the button was silently dead)
+    const imp = await page.evaluate(async () => {
+      const { ui } = window.LR;
+      ui.showView('vocab');
+      await new Promise(res => setTimeout(res, 150));
+      document.querySelector('#import-text').value = 'argue - streiten\ntrust - vertrauen\nplot - Handlung';
+      document.querySelector('#btn-parse-text').click();
+      await new Promise(res => setTimeout(res, 200));
+      return (ui.importState.units || ui.importState.parsed || []).reduce((a, u) => a + (u.words || []).length, 0);
+    });
+    check('„Liste einlesen“ reads a pasted word list', imp === 3, String(imp));
+    // a material the shared store refused stays in the list after a reload
+    const kept = await page.evaluate(async () => {
+      const { ui } = window.LR;
+      const real = { db: ui.caps.db, backend: ui.store.backend };
+      const docs = [];
+      ui.caps.db = {
+        collection: () => ({ get: async () => ({ docs: docs.map(d => ({ id: d.id, exists: true, data: () => d.data })) }) }),
+        doc: (p) => ({ set: async () => { const e = new Error('too big'); e.code = 'invalid_argument'; throw e; }, delete: async () => {} }),
+      };
+      ui.store.backend = 'db';
+      const m = window.LR.fixture.material({ createWorksheet: true }, 'reading'); m.id = 'refused-one'; m.title = 'Refused by the store';
+      await ui.store.put('materials', m);
+      const listed = (await ui.store.list('materials')).some(x => x.id === 'refused-one');
+      await ui.store.remove('materials', 'refused-one');
+      const gone = !(await ui.store.list('materials')).some(x => x.id === 'refused-one');
+      ui.caps.db = real.db; ui.store.backend = real.backend;
+      return { listed, gone };
+    });
+    check('a material the shared store refuses stays in the list (kept in this browser) and can still be deleted', kept.listed && kept.gone, JSON.stringify(kept));
+    check('the library and the fixes raise no page error', errors.length === 0, errors[0]);
+    await page.close();
+  }
+
   console.log('\nBrowser audit: review mode — change the students\' sheet in the viewer (2.5, 2.8, 2.11)');
   {
     const { page, errors } = await open({ scenario: 'ok', before: () => { try { localStorage.setItem('lr.review.v1', JSON.stringify({ review: true, edit: false })); } catch (e) { /* keep */ } } });

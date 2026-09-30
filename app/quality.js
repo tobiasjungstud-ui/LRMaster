@@ -444,6 +444,7 @@
             case 'matching': {
               const pairs = items.filter(it => it && String(it.left || '').trim() && String(it.right || '').trim());
               if (pairs.length < 3) say(`only ${pairs.length} complete pair(s)`);
+              else if (pairs.length < items.length) say(`${items.length - pairs.length} pair(s) with a missing side`);
               break;
             }
             case 'ordering': { if (items.length < 3) say(`only ${items.length} item(s) to order`); break; }
@@ -455,6 +456,7 @@
             case 'table_completion': {
               const t = q.table || {};
               if (!Array.isArray(t.rows) || !t.rows.length) say('no table');
+              else if (!Array.isArray(t.headers) || !t.headers.length) soft.push(`Q${q.n}: the table has no column headers`);
               if (!Array.isArray(q.answer) || !q.answer.length) say('no entries for the blanks');
               break;
             }

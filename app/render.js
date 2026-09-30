@@ -195,7 +195,7 @@
     const parts = core.questionParts(q);
     const judged = ['true_false', 'true_false_correction', 'who_said_it'].includes(q.format) ? parts.statement || parts.prompt : '';
     if (judged) return `“${esc(judged)}” → ` + answerText(Object.assign({}, q, { format: q.format + ':answer' }));
-    if (q.format === 'matching') return (q.items || []).map(it => `${esc(it.left)} → ${esc(it.right)}`).join('; ');
+    if (q.format === 'matching') return (q.items || []).map(it => `${esc((it && it.left) || '–')} → ${esc((it && it.right) || '–')}`).join('; ');
     if (q.format === 'ordering') return (q.items || []).map((it, i) => `${i + 1}. ${esc(typeof it === 'string' ? it : JSON.stringify(it))}`).join(' ');
     if (Array.isArray(q.answer)) return q.answer.map(esc).join(', ');
     if (q.answer && typeof q.answer === 'object') return esc(JSON.stringify(q.answer));
@@ -310,6 +310,24 @@
     };
   }
 
+  /** The target words the text really uses — one list for every export. */
+  function vocabUsedItems(m) {
+    // materials saved by an older version carry plain words instead of entries
+    const vocabList = ((m.plan && m.plan.vocabulary) || []).map(v => (typeof v === 'string' ? { word: v, translation: '' } : v)).filter(v => v && v.word);
+    const used = ((m.content && m.content.vocabularyUsed) || []).map(x => String(x).toLowerCase());
+    return vocabList.filter(v => used.includes(String(v.word).toLowerCase()) || (m.vocabFound || []).includes(v.word));
+  }
+  /**
+   * The pre- or post-tasks of a material, per level: each level has its own;
+   * where all levels have the same ones they are listed once.
+   */
+  function phaseTasks(m, phase) {
+    const field = phase === 'post' ? 'postTasks' : 'preTasks';
+    const vs = variantsOf(m).filter(v => v.worksheet && (v.worksheet[field] || []).length);
+    if (!vs.length) return [];
+    const same = vs.every(v => JSON.stringify(v.worksheet[field]) === JSON.stringify(vs[0].worksheet[field]));
+    return same ? [{ label: '', tasks: vs[0].worksheet[field] }] : vs.map(v => ({ label: v.label || '', tasks: v.worksheet[field] }));
+  }
   function variantsOf(m) {
     if (Array.isArray(m.variants) && m.variants.length) return m.variants;
     return [{ key: null, label: '', plan: m.plan, worksheet: m.worksheet, quality: m.quality }];
@@ -330,7 +348,8 @@
   }
 
   function scriptAppendixHTML(m) {
-    if (m.kind !== 'listening' || !(m.settings && m.settings.appendScript)) return '';
+    // without a worksheet there is no students' sheet: the script stays with the teacher
+    if (m.kind !== 'listening' || !m.worksheet || !(m.settings && m.settings.appendScript)) return '';
     return '<section class="block script appendix page-break"><h2>Script</h2><div class="script-lines">' + (m.content.lines || []).map((l, i) =>
       `<p class="line"><span class="line-no">${i + 1}</span><span class="speaker">${esc(l.speaker)}:</span> ${l.emotion ? `<span class="tag">[${esc(l.emotion)}]</span> ` : ''}${esc(l.text)}</p>`).join('') + '</div></section>';
   }
@@ -398,10 +417,7 @@
     const ws = m.worksheet;
     const isL = m.kind === 'listening';
     const variants = variantsOf(m).filter(v => v.worksheet);
-    // materials saved by an older version carry plain words instead of entries
-    const vocabList = (m.plan.vocabulary || []).map(v => (typeof v === 'string' ? { word: v, translation: '' } : v)).filter(v => v && v.word);
-    const used = (m.content.vocabularyUsed || []).map(x => String(x).toLowerCase());
-    const vocabItems = vocabList.filter(v => used.includes(String(v.word).toLowerCase()) || (m.vocabFound || []).includes(v.word));
+    const vocabItems = vocabUsedItems(m);
     const hl = m.settings && m.settings.highlightVocab;
     let html = `<article class="sheet teacher"><header><h1>${esc((ws && ws.title) || m.content.title)} <span class="badge">Teacher version</span></h1>`;
     html += `<p class="meta">${esc(m.plan.textbookName)} · ${esc(m.plan.unitName)} · Language ${esc(m.plan.cefr)}` + (m.level ? ` (measured ${esc(m.level.band)})` : '') + (ws ? ' · Questions ' + variants.map(v => (v.label ? esc(v.label) + ' ' : '') + esc((v.plan || m.plan).questionBands ? (v.plan || m.plan).questionBands.join('–') : (v.plan || m.plan).questionBand)).join(' / ') : '') + (isL ? ` · ≈ ${Math.round(m.plan.seconds / 60 * 10) / 10} min · ${esc(m.plan.preset.label)}` : ` · ${esc(m.settings.textType)}`) + '</p>';
@@ -510,12 +526,9 @@
       '', p.prompt, ...(p.items || []).map(i => `- ${i}`),
       ...(p.product ? ['', `Result: ${p.product}`] : []),
       ...((p.criteria || []).length ? ['', 'Success criteria:', ...p.criteria.map(c => `- ${c}`)] : []), '']);
-    if (ws && (ws.preTasks || []).length) out.push(`## Before you ${isL ? 'listen' : 'read'}`, '');
-    for (const p of (ws && ws.preTasks) || []) out.push(
-      `### ${p.n ? p.n + '. ' : ''}${core.taskHeading(p, 'pre')}`,
-      core.taskMeta(p).join(' · '),
-      '', p.prompt, ...(p.items || []).map(i => `- ${i}`),
-      ...((p.criteria || []).length ? ['', 'Success criteria:', ...p.criteria.map(c => `- ${c}`)] : []), '');
+    // every level with its own pre- and post-tasks
+    const byLevel = (phase) => phaseTasks(m, phase).flatMap(g => (g.label ? [`#### ${g.label}`, ''] : []).concat(taskLines(g.tasks, phase)));
+    if (phaseTasks(m, 'pre').length) out.push(`## Before you ${isL ? 'listen' : 'read'}`, '', ...byLevel('pre'));
     // the words the text needs come after the pre-task and before the text
     if (m.glossary && m.glossary.length) out.push('### Words to know', ...m.glossary.map(g => `- **${g.form || g.word}** — ${g.explanation}${g.german ? ' (' + g.german + ')' : ''}`), '');
     if (!isL) out.push(...(m.content.paragraphs || []), '');
@@ -529,11 +542,11 @@
     }
     for (const h of v.worksheet.higherOrder || []) out.push(`- [${hoLabel(h.type)}] ${h.prompt}`);
     }
-    if (ws && (ws.postTasks || []).length) out.push('', `## After you ${isL ? 'listen' : 'read'}`, '', ...taskLines(ws.postTasks, 'post'));
-    if (isL && m.settings && m.settings.appendScript) out.push('', '### Script', ...(m.content.lines || []).map(l => `${l.speaker}: ${l.emotion ? '[' + l.emotion + '] ' : ''}${l.text}`));
+    if (phaseTasks(m, 'post').length) out.push('', `## After you ${isL ? 'listen' : 'read'}`, '', ...byLevel('post'));
+    if (isL && m.worksheet && m.settings && m.settings.appendScript) out.push('', '### Script', ...(m.content.lines || []).map(l => `${l.speaker}: ${l.emotion ? '[' + l.emotion + '] ' : ''}${l.text}`));
     // the lesson order also holds for the teacher: pre-task and the words first, the text after them
     out.push('', '## Teacher version', '');
-    if (ws && (ws.preTasks || []).length) out.push('### Pre-task', ...taskLines(ws.preTasks, 'pre'));
+    if (phaseTasks(m, 'pre').length) out.push('### Pre-task', ...byLevel('pre'));
     out.push('### Target vocabulary used', ...(m.vocabFound || []).map(w => `- ${w}`), '');
     if (m.glossary && m.glossary.length) out.push('### Words to know', ...m.glossary.map(g => `- **${g.form || g.word}** — ${g.explanation}${g.german ? ' (' + g.german + ')' : ''}`), '');
     out.push(`### ${isL ? 'Script' : 'Text'}`);
@@ -557,5 +570,5 @@
   }
 
   return { esc, seededShuffle, highlight, viewerModel, renderTextHTML, isHeadingLike, repairLabel, repairListHTML, renderStudentHTML, renderTeacherHTML, renderMarkdown, questionBody, answerText, preTaskHtml, socialLabel, modeLabel, preLabel, postLabel,
-    variantsOf, forVariant, glossaryHTML, scriptAppendixHTML, levelMeterHTML };
+    variantsOf, forVariant, phaseTasks, vocabUsedItems, glossaryHTML, scriptAppendixHTML, levelMeterHTML };
 });
