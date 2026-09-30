@@ -177,6 +177,7 @@
     window.scrollTo({ top: 0 });
     if (name === 'vocab') renderVocabManager();
     if (name === 'materials') renderMaterials();
+    if (name === 'home') renderHomeCounts();
     if (name === 'check') runConceptCheck();
     if (name === 'level') initLevelPage();
   }
@@ -187,6 +188,7 @@
    * single settings stay folded away; "Vorlage anpassen" opens them with the
    * template's values, "Alles selbst einstellen" opens them from scratch.
    */
+  const openCards = new Set();   // template cards whose details the teacher opened
   function renderSetupBar() {
     const s = app.state;
     const box = $('#setup-presets');
@@ -199,14 +201,15 @@
     box.innerHTML = custom ? '' : core.setupPresets(s.kind).map(p => {
       const cardState = templateState(p.key);
       const v = app.templateVariants[p.key];
-      return `<div class="setup-card${p.key === active ? ' active' : ''}" data-card="${esc(p.key)}">
+      return `<div class="setup-card${p.key === active ? ' active' : ''}${openCards.has(p.key) ? ' open' : ''}" data-card="${esc(p.key)}">
         <button type="button" class="sc-pick" data-setup-preset="${esc(p.key)}">
           <span class="sc-title">${esc(v && v.label ? v.label : p.label)}</span>
           <span class="sc-tags">${core.tagsFor(cardState, ctx()).map(t => `<span class="sc-tag">${esc(t)}</span>`).join('')}</span>
           <span class="sc-blurb">${esc(v && v.blurb ? v.blurb : p.blurb)}</span>
-          <ul class="sc-list">${core.describeSetup(cardState, ctx()).map(b => `<li>${esc(b)}</li>`).join('')}</ul>
+          <ul class="sc-list" id="sc-list-${esc(p.key)}">${core.describeSetup(cardState, ctx()).map(b => `<li>${esc(b)}</li>`).join('')}</ul>
         </button>
         <button type="button" class="sc-redo" data-redo="${esc(p.key)}" title="Neue Variante dieser Vorlage von Claude vorschlagen lassen" aria-label="Vorlage neu laden"${caps.sample ? '' : ' disabled'}>↻</button>
+        <button type="button" class="sc-more" data-more="${esc(p.key)}" aria-expanded="${openCards.has(p.key)}" aria-controls="sc-list-${esc(p.key)}">${openCards.has(p.key) ? 'Weniger' : 'Details'}</button>
       </div>`;
     }).join('');
     $$('#setup-presets [data-setup-preset]').forEach(b => b.addEventListener('click', () => {
@@ -215,6 +218,15 @@
       onStateChange('setupMode');
     }));
     $$('#setup-presets [data-redo]').forEach(b => b.addEventListener('click', () => redrawTemplate(b.dataset.redo, b)));
+    // the details of a card: folded away, so the choice stays at a glance
+    $$('#setup-presets [data-more]').forEach(b => b.addEventListener('click', () => {
+      const k = b.dataset.more;
+      if (openCards.has(k)) openCards.delete(k); else openCards.add(k);
+      const card = b.closest('.setup-card');
+      card.classList.toggle('open', openCards.has(k));
+      b.setAttribute('aria-expanded', String(openCards.has(k)));
+      b.textContent = openCards.has(k) ? 'Weniger' : 'Details';
+    }));
 
     $('#setup-title').textContent = custom ? 'Eigene Einstellungen' : 'Vorlage wählen';
     $('#setup-hint').textContent = custom
@@ -583,8 +595,8 @@
     const p = $('#plan-preview');
     const rows = [
       ['Topic', plan.topic || '–', plan.topicSource === 'unit' ? '(Unit-Thema)' : '(eigenes Thema)'],
-      ['Sprache', plan.cefr, `Complexity ${app.state.languageComplexity}/100`],
-      ['Inhalt', plan.contentComplexity.de, `Content Complexity ${plan.contentComplexity.value}/100 · Wortschatz bleibt auf ${plan.cefr}`],
+      ['Sprache', plan.cefr, `sprachliche Komplexität ${app.state.languageComplexity}/100`],
+      ['Inhalt', plan.contentComplexity.de, `inhaltliche Komplexität ${plan.contentComplexity.value}/100 · Wortschatz bleibt auf ${plan.cefr}`],
       app.state.kind === 'listening' ? ['Audio', `${Math.round(plan.seconds / 60 * 10) / 10} min → ≈ ${plan.targetWords} Wörter`, plan.preset.label] : ['Text', `≈ ${plan.targetWords} Wörter`, app.state.textType],
       app.state.kind === 'reading' ? ['Seiten', `höchstens ${plan.pageLimit} A4 · ${PAGE_MEDIUM_LABEL[plan.pageMedium] || ''} ≈ ${plan.pageCapacity} Wörter`,
         plan.wordsCapped ? `(${app.state.wordCount} Wörter passen nicht auf ${plan.pageLimit} Seite${plan.pageLimit > 1 ? 'n' : ''} – auf ${plan.targetWords} begrenzt)` : ''] : null,
@@ -593,8 +605,8 @@
       plan.questionCount ? ['Fragen', `${plan.questionCount} · ${plan.questionLevelLabel ? plan.questionLevelLabel + ' (' + plan.questionBands.join('–') + ')' : 'Niveau ' + plan.questionBand} · ` + core.SKILLS.filter(sk => plan.skillMix[sk.key]).map(sk => `${plan.skillMix[sk.key]} × ${sk.short}`).join(', '), ''] : ['Worksheet', 'aus – nur Skript/Text', ''],
       plan.questionCount ? ['Formate', (plan.formatSequence ? 'Balanced mix: ' : 'frei aus: ') + plan.formats.map(f => core.QUESTION_FORMATS.find(x => x.key === f).label).join(', '), ''] : null,
       plan.higherOrderCount ? ['Higher-Order', `${plan.higherOrderCount} × ${plan.higherOrderTypes.join('/')}`, ''] : null,
-      plan.preTask ? ['Pre-Task', `${plan.preTask.count} Aufgabe(n) · ${plan.preTask.minutes} min · ${plan.preTask.oralCount} mündlich`, plan.preTask.types.join(', ')] : null,
-      plan.postTask ? ['Post-Task', `${plan.postTask.count} Aufgabe(n) · ${plan.postTask.minutes} min · ${plan.postTask.oralCount} mündlich`, plan.postTask.types.join(', ')] : null,
+      plan.preTask ? ['Pre-Task', `${plan.preTask.count} Aufgabe(n) · ${plan.preTask.minutes} min · ${plan.preTask.oralCount} mündlich`, plan.preTask.types.map(k => (core.PRE_TASK_TYPES.find(t => t.key === k) || { label: k }).label).join(', ')] : null,
+      plan.postTask ? ['Post-Task', `${plan.postTask.count} Aufgabe(n) · ${plan.postTask.minutes} min · ${plan.postTask.oralCount} mündlich`, plan.postTask.types.map(k => (core.POST_TASK_TYPES.find(t => t.key === k) || { label: k }).label).join(', ')] : null,
     ].filter(Boolean);
     p.innerHTML = '<h3>Plan</h3><dl>' + rows.map(r => `<div><dt>${esc(r[0])}</dt><dd>${esc(r[1])} <span class="muted">${esc(r[2])}</span></dd></div>`).join('') + '</dl>';
   }
@@ -1193,7 +1205,7 @@
     // drift apart from what the exports contain
     const model = render.viewerModel(m, { version: viewer.version, variant: viewer.variant, paths: viewer.version !== 'teacher' });
     $('#vw-title').textContent = model.title;
-    $('#vw-meta').innerHTML = model.meta.concat([new Date(m.createdAt).toLocaleDateString()])
+    $('#vw-meta').innerHTML = model.meta.concat([new Date(m.createdAt).toLocaleDateString('de-CH')])
       .map(x => `<span>${esc(x)}</span>`).join('');
 
     // which version, which level
@@ -2715,6 +2727,7 @@
     const onlyExamples = app.textbooks.every(t => t.example);
     el.textContent = `${app.textbooks.length} Lehrmittel · ${units} Units · ${words} Vokabeln · ${app.materials.length} gespeicherte Materialien`
       + (onlyExamples ? ' · nur Beispieldaten – lege unter „Vocabulary / Lehrmittel verwalten“ dein eigenes Lehrmittel an' : '');
+    renderHomeRecent();
   }
 
   const importState = { units: null, warnings: [], sourceName: '', source: 'none' };
@@ -3029,17 +3042,88 @@
   /* Materials library                                                     */
   /* ------------------------------------------------------------------ */
 
+  /** How a material stands, in one badge: checked, blocking checks open, changed in the viewer. */
+  function materialStatus(m) {
+    const f = (m.quality && m.quality.findings) || [];
+    const blocked = quality.blockingFailures(f).length;
+    const s = quality.summarize(f);
+    const edited = m.quality && m.quality.edited;
+    const out = [];
+    if (blocked) out.push(`<span class="mst bad" title="Im Quality Check nachsehen">⚠ ${blocked} blockierend</span>`);
+    else if (s.fail) out.push(`<span class="mst warn" title="${s.fail} Prüfung(en) nicht bestanden, keine davon blockierend">${s.fail} offen</span>`);
+    else out.push(`<span class="mst good" title="${s.pass} Prüfungen bestanden">✓ geprüft</span>`);
+    if (edited) out.push(`<span class="mst edit" title="Im Viewer geändert – die gemessenen Prüfungen sind aktuell">✎ überarbeitet</span>`);
+    return out.join('');
+  }
+  const dateDe = (t) => { try { return new Date(t).toLocaleString('de-CH', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }); } catch (e) { return new Date(t).toLocaleString(); } };
+  /** One line about a material: kind, where from, level, what it holds, when. */
+  function materialMeta(m) {
+    const ws = m.worksheet;
+    const vs = render.variantsOf(m).filter(v => v.worksheet && v.label);
+    return [
+      `<span class="mr-kind ${m.kind === 'listening' ? 'listening' : 'reading'}">${m.kind === 'listening' ? 'Listening' : 'Reading'}</span>`,
+      esc([m.plan.textbookName, m.plan.unitName].filter(Boolean).join(' · ')),
+      esc(m.plan.cefr),
+      m.kind === 'listening' ? esc(Math.round((m.plan.seconds || 0) / 60 * 10) / 10 + ' min') : esc((m.settings && m.settings.textType) || ''),
+      ws ? esc((ws.questions || []).length + ' Fragen' + (vs.length > 1 ? ' · ' + vs.map(v => v.label).join(' / ') : '')) : 'ohne Worksheet',
+      esc(dateDe(m.createdAt)),
+    ].filter(Boolean).join(' · ');
+  }
+  const materialsFilter = { q: '', kind: 'all' };
   function renderMaterials() {
     const el = $('#materials-list');
-    const list = app.materials.slice().sort((a, b) => b.createdAt - a.createdAt);
-    el.innerHTML = list.length ? list.map(m => { const s = quality.summarize((m.quality && m.quality.findings) || []); return `<div class="material-row"><div><strong>${esc(m.title)}</strong><div class="muted small">${m.kind === 'listening' ? 'Listening' : 'Reading'} · ${esc(m.plan.unitName)} · ${esc(m.plan.cefr)} · ${new Date(m.createdAt).toLocaleString()} · QC ${s.pass}/${s.pass + s.warn + s.fail + s.unverified}</div></div><div class="tb-actions"><button type="button" class="btn tiny primary" data-open="${esc(m.id)}">Ansehen</button><button type="button" class="btn tiny" data-edit="${esc(m.id)}">Einstellungen</button><button type="button" class="btn tiny danger" data-del="${esc(m.id)}">Löschen</button></div></div>`; }).join('') : '<p class="muted">Noch keine Materialien gespeichert.</p>';
+    const all = app.materials.slice().sort((a, b) => b.createdAt - a.createdAt);
+    const q = materialsFilter.q.trim().toLowerCase();
+    const list = all.filter(m => (materialsFilter.kind === 'all' || m.kind === materialsFilter.kind)
+      && (!q || [m.title, m.content && m.content.title, m.plan && m.plan.topic, m.plan && m.plan.unitName, m.plan && m.plan.textbookName, m.plan && m.plan.cefr, m.settings && m.settings.textType].filter(Boolean).join(' ').toLowerCase().includes(q)));
+    const count = $('#mat-count');
+    if (count) count.textContent = all.length ? (list.length === all.length ? `${all.length} Materialien` : `${list.length} von ${all.length}`) : '';
+    el.innerHTML = list.length ? list.map(m => `<div class="material-row">
+        <div class="mr-main"><button type="button" class="mr-title" data-open="${esc(m.id)}">${esc(m.title)}</button><div class="mr-meta">${materialMeta(m)}</div></div>
+        <div class="mr-status">${materialStatus(m)}</div>
+        <div class="tb-actions"><button type="button" class="btn tiny primary" data-open="${esc(m.id)}">Ansehen</button><button type="button" class="btn tiny" data-reuse="${esc(m.id)}" title="Die Einstellungen dieses Materials in den Creator laden – für ein ähnliches Material">Einstellungen übernehmen</button><button type="button" class="btn tiny danger" data-del="${esc(m.id)}">Löschen</button></div>
+      </div>`).join('')
+      : `<p class="muted">${all.length ? 'Kein Material passt zur Suche.' : 'Noch keine Materialien gespeichert – erstelle unter „Reading erstellen“ oder „Listening erstellen“ das erste.'}</p>`;
     $$('[data-open]', el).forEach(b => b.addEventListener('click', () => { const m = app.materials.find(x => x.id === b.dataset.open); app.material = m; openViewer(m, 'materials'); }));
-    $$('[data-edit]', el).forEach(b => b.addEventListener('click', () => { const m = app.materials.find(x => x.id === b.dataset.edit); app.material = m; openCreator(m.kind); renderOutput(m); }));
+    $$('[data-reuse]', el).forEach(b => b.addEventListener('click', () => reuseSettings(app.materials.find(x => x.id === b.dataset.reuse))));
     $$('[data-del]', el).forEach(b => b.addEventListener('click', async () => {
       const m = app.materials.find(x => x.id === b.dataset.del);
       if (!await askConfirm({ title: 'Material löschen', text: `„${m ? m.title : ''}“ endgültig löschen?`, okLabel: 'Löschen', danger: true })) return;
-      await store.remove('materials', b.dataset.del); app.materials = await store.list('materials'); renderMaterials();
+      await store.remove('materials', b.dataset.del); app.materials = await store.list('materials'); renderMaterials(); renderHomeCounts();
     }));
+  }
+  /**
+   * "Einstellungen übernehmen": the creator opens with exactly the settings
+   * this material was made with — for a similar one (another unit, another
+   * topic, another level) — and shows the material below.
+   */
+  function reuseSettings(m) {
+    if (!m) return;
+    app.material = m;
+    openCreator(m.kind);
+    app.state = core.normalizeState(Object.assign(core.defaults(m.kind), clone(m.settings || {}), { kind: m.kind }));
+    // a textbook or unit that no longer exists falls back to the first one
+    const tb = app.textbooks.find(t => t.id === app.state.textbookId) || app.textbooks[0];
+    if (tb) { app.state.textbookId = tb.id; if (!(tb.units || []).some(u => u.id === app.state.unitId)) app.state.unitId = tb.units[0] ? tb.units[0].id : ''; }
+    fillForm();
+    onStateChange('setupMode');
+    saveDraft();
+    renderOutput(m, { quiet: true });
+    window.scrollTo({ top: 0 });
+    toast(`Einstellungen von „${m.title}“ übernommen – Unit oder Thema anpassen und neu erstellen.`);
+  }
+
+  /** The start page: the last materials, one click away. */
+  function renderHomeRecent() {
+    const box = $('#home-recent');
+    if (!box) return;
+    const list = (app.materials || []).slice().sort((a, b) => b.createdAt - a.createdAt).slice(0, 4);
+    box.hidden = !list.length;
+    if (!list.length) { box.innerHTML = ''; return; }
+    box.innerHTML = `<div class="hr-head"><h2>Zuletzt erstellt</h2><button type="button" class="btn tiny ghost" data-nav-go="materials">Alle ${app.materials.length} Materialien ›</button></div>`
+      + '<div class="hr-grid">' + list.map(m => `<button type="button" class="hr-card ${m.kind === 'listening' ? 'listening' : 'reading'}" data-open="${esc(m.id)}"><span class="hr-title">${esc(m.title)}</span><span class="hr-meta">${esc(m.kind === 'listening' ? 'Listening' : 'Reading')} · ${esc(m.plan.cefr)} · ${esc(dateDe(m.createdAt))}</span><span class="hr-status">${materialStatus(m)}</span></button>`).join('') + '</div>';
+    $$('[data-open]', box).forEach(b => b.addEventListener('click', () => { const m = app.materials.find(x => x.id === b.dataset.open); if (m) { app.material = m; openViewer(m, 'home'); } }));
+    const all = box.querySelector('[data-nav-go]'); if (all) all.addEventListener('click', () => showView('materials'));
   }
 
   /* ------------------------------------------------------------------ */
@@ -3160,6 +3244,14 @@
     }));
     $$('#mode-toggle button').forEach(b => b.addEventListener('click', () => setMode(b.dataset.mode)));
     $$('#output .tab').forEach(b => b.addEventListener('click', () => showTab(b.dataset.tab)));
+    // the list of materials: search and filter as the teacher types
+    const ms = $('#mat-search');
+    if (ms) ms.addEventListener('input', () => { materialsFilter.q = ms.value; renderMaterials(); });
+    $$('#mat-kind [data-kind]').forEach(b => b.addEventListener('click', () => {
+      materialsFilter.kind = b.dataset.kind;
+      $$('#mat-kind [data-kind]').forEach(x => x.classList.toggle('active', x === b));
+      renderMaterials();
+    }));
     $$('[data-download]:not([data-variant])').forEach(b => b.addEventListener('click', () => download(b.dataset.download)));
     $('#btn-print').addEventListener('click', () => window.print());
     // Viewer

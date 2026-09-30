@@ -739,6 +739,55 @@
       }
       decorate();
 
+      /* --- blocking checks that hang on a question: one click has Claude fix exactly that question --- */
+      function blockingBar() {
+        if (!m.quality) return;
+        const v = M.variantOf(m, key);
+        const single = !Array.isArray(m.variants) || m.variants.length <= 1;
+        const W = ws();
+        // the numbers a finding names: questions, or the tasks (also only in its words, "T2")
+        const numbersOf = (f) => {
+          if (f.group === 'questions') return f.questions || [];
+          const own = f.tasks || f.preTasks || f.postTasks || [];
+          if (own.length) return own;
+          const mark = f.group === 'pretask' ? 'P' : 'T';
+          return [...new Set((String(f.detail || '').match(new RegExp('\\b' + mark + '(\\d+)\\b', 'g')) || []).map(x => Number(x.slice(1))))];
+        };
+        const open = quality.blockingFailures(m.quality.findings || []).filter(f => numbersOf(f).length
+          && (single || !f.variant || f.variant === (v && v.key)) && ['questions', 'pretask', 'posttask'].includes(f.group));
+        // the order of the questions is not a question to rewrite: it is put right in one step
+        const order = open.find(f => f.id === 'questions.chronology');
+        const items = [];
+        for (const f of open.filter(x => x !== order)) for (const n of numbersOf(f)) {
+          const list = f.group === 'pretask' ? 'preTasks' : f.group === 'posttask' ? 'postTasks' : 'questions';
+          const index = list === 'questions' ? n - 1 : (W[list] || []).findIndex(b => Number(b.n) === Number(n));
+          if (index < 0 || !(W[list] || [])[index] || items.some(x => x.unit === list + '.' + index && x.f === f)) continue;
+          items.push({ f, unit: list + '.' + index });
+        }
+        if (!items.length && !order) return;
+        const n = items.length + (order ? 1 : 0);
+        const bar = h('div', { class: 'rv-blocking rv-ui', role: 'region', 'aria-label': 'Blockierende Prüfungen' },
+          `<strong>⚠ ${n === 1 ? 'Eine blockierende Prüfung ist' : n + ' blockierende Prüfungen sind'} nicht bestanden.</strong>`
+          + '<ul>' + (order ? `<li><span><b>Reihenfolge</b> – ${esc(order.title)}: <span class="rv-muted">${esc(String(order.detail || '').slice(0, 180))}</span></span> <button type="button" class="btn tiny primary" data-order="1">Nach dem Text ordnen</button></li>` : '')
+          + items.map((x, i) => `<li><span><b>${esc(M.unitLabel(W, x.unit))}</b> – ${esc(x.f.title)}${x.f.detail ? ': <span class="rv-muted">' + esc(String(x.f.detail).slice(0, 180)) + '</span>' : ''}</span> <button type="button" class="btn tiny primary" data-fix="${i}">Mit Claude beheben</button></li>`).join('') + '</ul>'
+          + '<p class="rv-status" role="status"></p>');
+        bar.addEventListener('click', (e) => {
+          if (e.target.closest('[data-order]')) {
+            const r = quality.enforceChronology(clone(ws()), m.content, m.kind);
+            if (!r.changed) return say(bar.querySelector('.rv-status'), 'Die Reihenfolge lässt sich nicht sicher ordnen – eine Belegstelle fehlt im Text.', 'error');
+            return commit(r.worksheet, 'questions.0', 'Fragen nach dem Text geordnet' + (r.moved && r.moved.length ? ' (Q' + r.moved.join(', Q') + ' verschoben)' : ''));
+          }
+          const b = e.target.closest('[data-fix]'); if (!b) return;
+          const x = items[Number(b.dataset.fix)];
+          const L = M.unitLabel(ws(), x.unit);
+          const request = `Fix exactly this problem the quality check found: ${x.f.title}: ${x.f.detail || ''}${x.f.failsWhen ? ' [broken when: ' + x.f.failsWhen + ']' : ''}. Keep the skill, the format and the place in the material unless the problem itself requires a change.`;
+          run(M.editJob(m, key, { unit: x.unit, mode: 'block', request, label: L }),
+            { status: bar.querySelector('.rv-status'), controls: bar.querySelectorAll('button'), label: L + ' wird verbessert', done: L + ' verbessert' });
+        });
+        root.insertBefore(bar, root.firstChild);
+      }
+      blockingBar();
+
       /* --- Bearbeiten: every text can be typed into; each input goes into the model --- */
       if (state.edit) {
         let saveTimer = null;

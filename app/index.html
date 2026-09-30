@@ -54,6 +54,7 @@
         <span class="choice-desc">Lehrmittel anlegen, Vocabulary-Dateien importieren, aktualisieren oder ersetzen. Units mit Thema und Wortliste.</span>
       </button>
     </div>
+    <section class="home-recent" id="home-recent" hidden aria-label="Zuletzt erstellt"></section>
   </section>
 
   <!-- Creator -->
@@ -217,7 +218,12 @@
 
   <!-- Materials -->
   <section class="view" id="view-materials" hidden>
-    <div class="creator-head"><h1>Gespeicherte Materialien</h1></div>
+    <div class="creator-head"><h1>Gespeicherte Materialien</h1><div class="creator-actions"><button type="button" class="btn primary" data-nav="reading">Neues Reading</button><button type="button" class="btn secondary" data-nav="listening">Neues Listening</button></div></div>
+    <div class="mat-tools">
+      <input type="search" id="mat-search" placeholder="Suchen: Titel, Thema, Lehrmittel, Unit …" aria-label="Materialien durchsuchen">
+      <div class="seg" id="mat-kind" role="group" aria-label="Art"><button type="button" data-kind="all" class="active">Alle</button><button type="button" data-kind="reading">Reading</button><button type="button" data-kind="listening">Listening</button></div>
+      <span class="muted small" id="mat-count" role="status"></span>
+    </div>
     <div id="materials-list"></div>
   </section>
 
